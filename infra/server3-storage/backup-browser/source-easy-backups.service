@@ -1,0 +1,15 @@
+[Unit]
+Description=Source Easy backup browser
+After=network.target
+
+[Service]
+User=backup
+Environment=BACKUP_ROOT=/srv/backups
+Environment=USERS_FILE=/etc/source-easy/backup-users.json
+Environment=HOST=127.0.0.1
+Environment=PORT=8088
+ExecStart=/usr/bin/python3 /opt/source-easy/infra/server3-storage/backup-browser/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
