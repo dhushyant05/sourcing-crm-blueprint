@@ -12,12 +12,15 @@
 ## Input Methods
 4. Voice notes for factory visits. Useful for China staff walking supplier floors, but adds transcription and storage complexity.
 
-## Infrastructure
-5. Shared vs separate VPS for Chatwoot. Separate gives isolation and independent scaling; shared saves cost. Webhooks work either way.
-
 ## Operations
-6. Account administration ownership. One trusted admin per office, or a single global admin?
-7. Backup strategy. Daily snapshots to object storage, with a tested restore procedure.
+5. Account administration ownership. One trusted admin per office, or a single global admin?
 
 ## Distribution
-8. APK sideload vs store publish. Sideloading is faster for China (Play Store access is restricted); stores give easier updates for India.
+6. APK sideload vs store publish. Sideloading is faster for China (Play Store access is restricted); stores give easier updates for India.
+
+## Backups
+7. Should the read-only backup browser page on the storage VPS show download links for dumps, or only metadata like timestamps and sizes?
+
+## Resolved
+- Shared vs separate VPS: DECIDED — separate. Three servers: Twenty app, Chatwoot, storage.
+- WhatsApp integration: DECIDED — Chatwoot via Meta Cloud API as primary; unofficial libraries as fallback only.
