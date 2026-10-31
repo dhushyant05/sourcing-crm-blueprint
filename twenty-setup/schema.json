@@ -1,0 +1,109 @@
+{
+  "objects": [
+    {
+      "nameSingular": "lead", "namePlural": "leads", "labelSingular": "Lead", "labelPlural": "Leads",
+      "icon": "IconUserPlus", "description": "Client lead captured by the India office",
+      "fields": [
+        {"name": "clientName", "label": "Client name", "type": "TEXT"},
+        {"name": "contactPhone", "label": "Contact phone", "type": "PHONES"},
+        {"name": "contactEmail", "label": "Contact email", "type": "EMAILS"},
+        {"name": "productInterest", "label": "Product interest", "type": "TEXT"},
+        {"name": "quantity", "label": "Quantity", "type": "NUMBER"},
+        {"name": "targetPrice", "label": "Target price", "type": "CURRENCY"},
+        {"name": "sourceChannel", "label": "Source channel", "type": "SELECT", "options": ["WALK_IN", "REFERRAL", "PHONE", "WHATSAPP", "EXHIBITION", "WEBSITE", "OTHER"]},
+        {"name": "status", "label": "Status", "type": "SELECT", "options": ["NEW", "ASSIGNED", "SOURCING", "QUOTED", "APPROVED", "SHIPPING", "DELIVERED", "WON", "LOST"]},
+        {"name": "assignedOffice", "label": "Assigned office", "type": "SELECT", "options": ["INDIA", "CHINA"]},
+        {"name": "assignedChinaAgent", "label": "Assigned China agent", "type": "TEXT"},
+        {"name": "chatwootConversationUrl", "label": "Chatwoot conversation", "type": "LINKS"},
+        {"name": "winLossReason", "label": "Win/loss reason", "type": "TEXT"}
+      ]
+    },
+    {
+      "nameSingular": "sourcingRequest", "namePlural": "sourcingRequests", "labelSingular": "Sourcing Request", "labelPlural": "Sourcing Requests",
+      "icon": "IconSearch", "description": "China-side sourcing work for a lead",
+      "fields": [
+        {"name": "productDescription", "label": "Product description", "type": "TEXT"},
+        {"name": "quantity", "label": "Quantity", "type": "NUMBER"},
+        {"name": "targetPrice", "label": "Target price", "type": "CURRENCY"},
+        {"name": "deadline", "label": "Deadline", "type": "DATE"},
+        {"name": "assignedChinaAgent", "label": "Assigned China agent", "type": "TEXT"},
+        {"name": "sampleStatus", "label": "Sample status", "type": "SELECT", "options": ["NOT_REQUESTED", "REQUESTED", "RECEIVED", "APPROVED", "REJECTED"]},
+        {"name": "status", "label": "Status", "type": "SELECT", "options": ["OPEN", "IN_PROGRESS", "QUOTED", "CLOSED"]},
+        {"name": "chatwootThreadUrl", "label": "Chatwoot thread", "type": "LINKS"},
+        {"name": "chatwootConversationId", "label": "Chatwoot conversation ID", "type": "NUMBER"},
+        {"name": "lead", "label": "Lead", "type": "RELATION", "target": "lead", "targetLabel": "Sourcing requests"}
+      ]
+    },
+    {
+      "nameSingular": "supplier", "namePlural": "suppliers", "labelSingular": "Supplier", "labelPlural": "Suppliers",
+      "icon": "IconBuildingFactory", "description": "China-side only supplier directory",
+      "fields": [
+        {"name": "phone", "label": "Phone", "type": "PHONES"},
+        {"name": "wechatId", "label": "WeChat ID", "type": "TEXT"},
+        {"name": "notes", "label": "Notes", "type": "TEXT"},
+        {"name": "sourcingRequest", "label": "Sourcing request", "type": "RELATION", "target": "sourcingRequest", "targetLabel": "Suppliers"}
+      ]
+    },
+    {
+      "nameSingular": "quotation", "namePlural": "quotations", "labelSingular": "Quotation", "labelPlural": "Quotations",
+      "icon": "IconReceipt", "description": "Supplier quote stored in the quoted currency",
+      "fields": [
+        {"name": "unitCost", "label": "Unit cost", "type": "NUMBER", "settings": {"decimals": 4}},
+        {"name": "totalCost", "label": "Total cost", "type": "NUMBER", "settings": {"decimals": 2}},
+        {"name": "currency", "label": "Currency", "type": "SELECT", "options": ["CNY", "USD"]},
+        {"name": "exchangeRateUsed", "label": "Exchange rate used (to INR)", "type": "NUMBER", "settings": {"decimals": 4}},
+        {"name": "inrEquivalent", "label": "INR equivalent", "type": "NUMBER", "settings": {"decimals": 2}},
+        {"name": "clientUnitPriceInr", "label": "Client unit price (INR)", "type": "NUMBER", "settings": {"decimals": 2}},
+        {"name": "validityDate", "label": "Valid until", "type": "DATE"},
+        {"name": "pdfAttachment", "label": "Quote PDF", "type": "LINKS"},
+        {"name": "sourcingRequest", "label": "Sourcing request", "type": "RELATION", "target": "sourcingRequest", "targetLabel": "Quotations"},
+        {"name": "supplier", "label": "Supplier", "type": "RELATION", "target": "supplier", "targetLabel": "Quotations"}
+      ]
+    },
+    {
+      "nameSingular": "clientApproval", "namePlural": "clientApprovals", "labelSingular": "Client Approval", "labelPlural": "Client Approvals",
+      "icon": "IconThumbUp", "description": "Client yes/no on a quotation",
+      "fields": [
+        {"name": "status", "label": "Status", "type": "SELECT", "options": ["PENDING", "APPROVED", "REJECTED"]},
+        {"name": "approver", "label": "Approver", "type": "TEXT"},
+        {"name": "decidedAt", "label": "Decided at", "type": "DATE_TIME"},
+        {"name": "notes", "label": "Notes", "type": "TEXT"},
+        {"name": "quotation", "label": "Quotation", "type": "RELATION", "target": "quotation", "targetLabel": "Client approvals"}
+      ]
+    },
+    {
+      "nameSingular": "shippingOrder", "namePlural": "shippingOrders", "labelSingular": "Shipping Order", "labelPlural": "Shipping Orders",
+      "icon": "IconShip", "description": "Forwarder booking and tracking",
+      "fields": [
+        {"name": "forwarder", "label": "Forwarder", "type": "TEXT"},
+        {"name": "trackingNumber", "label": "Tracking number", "type": "TEXT"},
+        {"name": "containerType", "label": "Container type", "type": "SELECT", "options": ["LCL", "FCL_20", "FCL_40", "FCL_40HC", "AIR", "COURIER"]},
+        {"name": "etd", "label": "ETD", "type": "DATE"},
+        {"name": "eta", "label": "ETA", "type": "DATE"},
+        {"name": "customsStatus", "label": "Customs status", "type": "SELECT", "options": ["NOT_STARTED", "FILED", "HELD", "CLEARED"]},
+        {"name": "shipmentStatus", "label": "Shipment status", "type": "SELECT", "options": ["BOOKED", "IN_TRANSIT", "AT_PORT", "OUT_FOR_DELIVERY", "DELIVERED"]},
+        {"name": "currentLocation", "label": "Current location", "type": "TEXT"},
+        {"name": "latitude", "label": "Latitude", "type": "NUMBER", "settings": {"decimals": 6}},
+        {"name": "longitude", "label": "Longitude", "type": "NUMBER", "settings": {"decimals": 6}},
+        {"name": "lead", "label": "Lead", "type": "RELATION", "target": "lead", "targetLabel": "Shipping orders"},
+        {"name": "quotation", "label": "Quotation", "type": "RELATION", "target": "quotation", "targetLabel": "Shipping orders"}
+      ]
+    },
+    {
+      "nameSingular": "exchangeRate", "namePlural": "exchangeRates", "labelSingular": "Exchange Rate", "labelPlural": "Exchange Rates",
+      "icon": "IconCurrencyRupee", "description": "Admin-controlled rates to INR",
+      "fields": [
+        {"name": "currencyPair", "label": "Currency pair", "type": "SELECT", "options": ["CNY_INR", "USD_INR", "USD_CNY"]},
+        {"name": "rate", "label": "Rate", "type": "NUMBER", "settings": {"decimals": 6}},
+        {"name": "source", "label": "Source", "type": "SELECT", "options": ["MANUAL", "RBI_REFERENCE", "API"]},
+        {"name": "isManualOverride", "label": "Manual override", "type": "BOOLEAN"},
+        {"name": "setBy", "label": "Set by", "type": "TEXT"},
+        {"name": "effectiveDate", "label": "Effective date", "type": "DATE"}
+      ]
+    }
+  ],
+  "commonFields": [
+    {"name": "office", "label": "Office", "type": "SELECT", "options": ["INDIA", "CHINA", "BOTH"], "description": "Office tag used for filtered views (approximate RLS)"},
+    {"name": "clientRef", "label": "Client-generated ID", "type": "TEXT", "description": "Idempotency key set by the mobile offline queue"}
+  ]
+}
