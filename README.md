@@ -221,7 +221,15 @@ lib/services/   session.dart (login, config, sync), quote_pdf.dart
 lib/ui/         home_shell.dart, screens/, widgets/
 ```
 
+## 6. Web dashboard
+
+`web/` is a React/Tailwind dashboard with a collapsible sidebar, ⌘K search, KPI cards with sparklines, a drag-and-drop lead pipeline, data tables with sticky headers and slide-over details, and light/dark mode. It uses the same roles and currency rules as the mobile app. Setup is in [web/README.md](web/README.md), and screenshots are in [docs/screenshots](docs/screenshots).
+
+![Dashboard](docs/screenshots/dashboard-light.png)
+
 ## Known limitations / TODO
+
+* Web live mode: the GraphQL field names follow `twenty-setup/schema.json` and have not been tested against a live Twenty yet. The role is not read from Team Member yet; live sign-in defaults to India staff.
 
 - Role visibility is enforced in the app only (see Roles above).
 - A sourcing request created offline can't have suppliers attached until it has synced.
