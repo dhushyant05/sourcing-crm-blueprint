@@ -31,6 +31,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
 
 dependency_overrides:
   # image 4.11 needs ZLibDecoder.decodeLazy (archive >=4.0.10); something pins 4.0.9
