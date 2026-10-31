@@ -9,7 +9,7 @@ class T(unittest.TestCase):
     def test_all_objects_present(self):
         names = {o["nameSingular"] for o in self.schema["objects"]}
         self.assertEqual(names, {"lead", "sourcingRequest", "supplier", "quotation",
-                                 "clientApproval", "shippingOrder", "exchangeRate"})
+                                 "clientApproval", "shippingOrder", "exchangeRate", "teamMember"})
 
     def test_relations_target_known_objects(self):
         names = {o["nameSingular"] for o in self.schema["objects"]}
