@@ -2353,6 +2353,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sourcing made easy'**
   String get tagline;
+
+  /// No description provided for @camera.
+  ///
+  /// In en, this message translates to:
+  /// **'Take photo'**
+  String get camera;
+
+  /// No description provided for @gallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from gallery'**
+  String get gallery;
 }
 
 class _AppLocalizationsDelegate

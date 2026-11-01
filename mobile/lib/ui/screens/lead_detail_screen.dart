@@ -11,6 +11,7 @@ import '../../services/session.dart';
 import '../widgets/common.dart';
 import '../widgets/lead_attachments.dart';
 import '../widgets/lead_quotes.dart';
+import '../widgets/lead_workflow.dart';
 import 'chat_screen.dart';
 import 'quotation_screen.dart';
 import 'shipping_screen.dart';
@@ -43,7 +44,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     final repo = context.read<Session>().repo;
     final lead = await repo.lead(widget.leadId);
     if (lead == null) throw Exception('Lead not found');
-    return _Detail(lead, await repo.sourcingRequests(leadId: lead.id), await repo.timeline(lead));
+    return _Detail(lead, await repo.sourcingRequests(leadId: lead.id), const []);
   }
 
   void _reload() => setState(() => _f = _load());
@@ -147,7 +148,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     style: t.textTheme.headlineSmall)),
                 StatusChip(l.status),
               ]),
-              if (l.leadRef != null) Padding(padding: const EdgeInsets.only(top: 6), child: RefTag(l.leadRef!)),
+              if (l.leadRef != null || l.priority || l.sla != null) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                if (l.leadRef != null) RefTag(l.leadRef!), if (l.priority) const PriorityBadge(), if (l.sla != null) SlaChip(l.sla!)])),
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -190,6 +192,10 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               LeadAttachments(leadId: l.id, canEdit: p.canCreateLead),
               const SizedBox(height: 12),
               LeadQuotesSection(key: ValueKey('quotes-${l.id}'), leadId: l.id, lead: l),
+              const SizedBox(height: 12),
+              RejectionCard(key: ValueKey('rej-${l.id}-${l.status}'), lead: l, onLead: (_) => _reload()),
+              LostActions(key: ValueKey('lost-${l.id}-${l.status}'), lead: l, onLead: (_) => _reload(),
+                  openLead: (n) => Navigator.pushReplacement(c, MaterialPageRoute(builder: (_) => LeadDetailScreen(leadId: n.id)))),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (p.canSeeCustomerDetails && l.owner != 'CHINA' && !['WON', 'LOST'].contains(l.status))
@@ -240,35 +246,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     ),
                   )),
               const SizedBox(height: 20),
-              Text(context.l10n.timeline, style: t.textTheme.titleMedium),
-              ...d.timeline.map((e) => ListTile(
-                    dense: true,
-                    leading: Icon(switch (e.kind) {
-                      'lead' => Icons.person_add_alt,
-                      'sourcing' => Icons.search,
-                      'quote' => Icons.receipt_long,
-                      'approval' => Icons.thumb_up_alt_outlined,
-                      _ => Icons.local_shipping_outlined,
-                    }),
-                    title: Text(_tlTitle(context, e)),
-                    subtitle: Text('${dateFmt.format(e.at.toLocal())}  ${e.kind == 'lead' ? context.l10n.tlOffice(codeLabel(context, e.code)) : e.subtitle}'),
-                  )),
+              LeadWorkflow(key: ValueKey('wf-${l.id}-${l.status}-${l.assignedTo}-${l.owner}'), lead: l),
             ]),
           );
         },
       ),
     );
   }
-}
-
-String _tlTitle(BuildContext context, TimelineEvent e) {
-  final l = context.l10n;
-  return switch (e.kind) {
-    'lead' => l.tlLeadCreated,
-    'sourcing' => l.sourcingRequest,
-    'quote' => l.quotation,
-    'approval' => '${l.client} · ${codeLabel(context, e.code)}',
-    'shipping' => '${l.shipping} · ${codeLabel(context, e.code)}',
-    _ => e.title,
-  };
 }

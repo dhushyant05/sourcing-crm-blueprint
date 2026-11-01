@@ -29,7 +29,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _nc = NotificationCenter(context.read<Session>().repo);
+    final ses = context.read<Session>();
+    _nc = NotificationCenter(ses.repo)..onChange = ses.onServerChange;
     WidgetsBinding.instance.addObserver(this);
     _nc.start();
     _nc.requestPermission();
@@ -50,6 +51,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final china = s.role.office == Office.china;
     _nc.describe = china ? (n) => [n.leadRef ?? '', n.product ?? ''].where((x) => x.isNotEmpty).join(' · ') : (n) => notifText(context, n);
     _nc.title = context.l10n.newLeadNotif;
+    // Per-user permissions: hide the Quotes tab when /api/me does not grant quotes.view (updates live).
+    final showQ = s.perms.canViewQuotes;
+    final pages = showQ ? _pages : [..._pages.take(2), ..._pages.skip(3)];
+    final idx = _i.clamp(0, pages.length - 1);
     return ChangeNotifierProvider.value(value: _nc, child: Builder(builder: (context) { final nc = context.watch<NotificationCenter>(); return Scaffold(
       body: Column(children: [
         if (!s.online || s.pendingOps > 0)
@@ -60,16 +65,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             leading: Icon(s.online ? Icons.sync : Icons.cloud_off),
             actions: [TextButton(onPressed: s.syncNow, child: Text(context.l10n.syncNow))],
           ),
-        Expanded(child: IndexedStack(index: _i, children: _pages)),
+        Expanded(child: IndexedStack(index: idx, children: pages)),
       ]),
       bottomNavigationBar: NavigationBar(
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: _i,
+        selectedIndex: idx,
         onDestinationSelected: (i) => setState(() => _i = i),
         destinations: [
           NavigationDestination(icon: const Icon(Icons.dashboard_outlined), selectedIcon: const Icon(Icons.dashboard), label: context.l10n.dashboard),
           NavigationDestination(icon: const Icon(Icons.people_outline), selectedIcon: const Icon(Icons.people), label: context.l10n.leads),
-          NavigationDestination(key: const Key('nav-quotes'), icon: const Icon(Icons.request_quote_outlined), selectedIcon: const Icon(Icons.request_quote), label: context.l10n.quotesTab),
+          if (showQ) NavigationDestination(key: const Key('nav-quotes'), icon: const Icon(Icons.request_quote_outlined), selectedIcon: const Icon(Icons.request_quote), label: context.l10n.quotesTab),
           NavigationDestination(key: const Key('nav-orders'), icon: const Icon(Icons.inventory_2_outlined), selectedIcon: const Icon(Icons.inventory_2), label: context.l10n.ordersTab),
           NavigationDestination(key: const Key('nav-notifications'),
               icon: Badge(isLabelVisible: nc.unread > 0, label: Text('${nc.unread}'), child: const Icon(Icons.notifications_outlined)),

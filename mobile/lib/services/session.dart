@@ -29,7 +29,10 @@ class Session extends ChangeNotifier {
   AppConfig config = AppConfig();
   String? email, displayName;
   Role role = Role.indiaStaff;
-  Permissions get perms => Permissions(role);
+  /// Per-user feature grants from /api/me (null until the first successful fetch; cached for offline).
+  Set<String>? granted;
+  String? userId, avatarUrl;
+  Permissions get perms => Permissions(role, granted);
   bool get signedIn => _repo != null;
   bool online = true;
   int pendingOps = 0;
@@ -88,6 +91,9 @@ class Session extends ChangeNotifier {
         email = await _secure.read(key: 'email');
         displayName = await _secure.read(key: 'name');
         role = Role.fromCode(await _secure.read(key: 'role'));
+        final g = await _secure.read(key: 'perms');
+        if (g != null) granted = g.isEmpty ? <String>{} : g.split(',').toSet();
+        userId = await _secure.read(key: 'userId');
         await _start(token);
       }
     } finally {
@@ -127,7 +133,47 @@ class Session extends ChangeNotifier {
       notifyListeners();
     });
     unawaited(syncNow());
+    unawaited(refreshMe());
   }
+
+  /// Re-reads /api/me: role, permissions and profile picture. Called on start and live when an admin
+  /// changes this user's permissions (SSE `change` {type:'perms'}).
+  Future<void> refreshMe() async {
+    final api = _api; if (api == null) return;
+    try {
+      final j = await api.send('GET', '/api/me') as Map<String, dynamic>;
+      final m = (j['data'] is Map ? j['data'] : j) as Map<String, dynamic>;
+      userId = m['id']?.toString();
+      if (m['role'] is String) role = Role.fromCode(m['role'] as String);
+      if (m['name'] is String && (m['name'] as String).isNotEmpty) displayName = m['name'] as String;
+      avatarUrl = m['avatarUrl'] as String?;
+      if (m['permissions'] is List) granted = (m['permissions'] as List).map((e) => '$e').toSet();
+      _rebuildRepo();
+      await _secure.write(key: 'perms', value: granted?.join(',') ?? '');
+      await _secure.write(key: 'role', value: role.code);
+      if (userId != null) await _secure.write(key: 'userId', value: userId);
+      notifyListeners();
+    } catch (_) {/* offline: keep cached */}
+  }
+
+  /// Live change from the server stream; refreshes /api/me when it is about this user's permissions.
+  void onServerChange(Map<String, dynamic> c) {
+    if (c['type'] == 'perms' && (c['id'] == null || c['id'] == userId)) unawaited(refreshMe());
+  }
+
+  Future<void> changePassword(String current, String next) async {
+    final j = await _api!.send('POST', '/api/me/password', body: {'currentPassword': current, 'newPassword': next}) as Map<String, dynamic>;
+    final t = j['token'] as String?;
+    if (t != null) { _api!.token = t; await _secure.write(key: 'token', value: t); }
+  }
+
+  Future<void> setAvatar(String? path) async {
+    if (path == null) { await _api!.send('DELETE', '/api/me/avatar'); } else { await _api!.upload('/api/me/avatar', [path], field: 'file'); }
+    await refreshMe();
+  }
+
+  /// Authenticated bytes of a server path (e.g. the avatar URL).
+  Future<List<int>> bytes(String path) => _api!.getBytes(path);
 
   void _rebuildRepo() {
     _repo = SourceEasyRepository(api: _api!, store: _store!, perms: perms);
@@ -148,7 +194,8 @@ class Session extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    for (final k in ['token', 'email', 'name', 'role']) {
+    granted = null; userId = null; avatarUrl = null;
+    for (final k in ['token', 'email', 'name', 'role', 'perms', 'userId']) {
       await _secure.delete(key: k);
     }
     _repo = null;

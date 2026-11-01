@@ -157,7 +157,10 @@ class SourceEasyRepository {
   Future<LeadQuote> saveCustomerQuote(String id, Map<String, dynamic> b) async => LeadQuote.fromJson(_d(await api.send('PUT', '/api/quotes/${Uri.encodeComponent(id)}/customer', body: b)));
   Future<LeadQuote> quotePdf(String id) async => LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/pdf', body: <String, dynamic>{})));
   Future<LeadQuote> setQuoteStatus(String id, String status, [String? reason]) async =>
-      LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/status', body: {'status': status, if (reason != null) 'reason': reason})));
+      setQuoteStatusCode(id, status, reason: reason);
+  Future<LeadQuote> setQuoteStatusCode(String id, String status, {String? reason, String? reasonCode}) async =>
+      LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/status',
+          body: {'status': status, if (reason != null && reason.isNotEmpty) 'reason': reason, if (reasonCode != null) 'reasonCode': reasonCode})));
   Future<SeOrder> createOrder(String quoteId, Map<String, dynamic> b) async => SeOrder(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(quoteId)}/order', body: b)));
   Future<List<SeOrder>> orders() async {
     final j = await api.send('GET', '/api/orders') as Map<String, dynamic>;
@@ -194,10 +197,11 @@ class SourceEasyRepository {
   }
 
   /// Live notification events: ('hello', unread) on connect, then ('notification', item + unread).
-  Stream<({AppNotification? item, int unread})> notificationStream() =>
-      api.sse('/api/notifications/stream').where((e) => e.event == 'hello' || e.event == 'notification').map((e) => (
+  Stream<({AppNotification? item, int? unread, Map<String, dynamic>? change})> notificationStream() =>
+      api.sse('/api/notifications/stream').where((e) => e.event == 'hello' || e.event == 'notification' || e.event == 'change').map((e) => (
             item: e.event == 'notification' ? AppNotification.fromJson((e.data['notification'] as Map).cast<String, dynamic>()) : null,
-            unread: (e.data['unread'] as num?)?.toInt() ?? 0));
+            unread: e.event == 'change' ? null : (e.data['unread'] as num?)?.toInt() ?? 0,
+            change: e.event == 'change' ? e.data : null));
 
   Future<({List<AppNotification> items, int unread})> notifications() async {
     final j = await api.send('GET', '/api/notifications') as Map<String, dynamic>;
@@ -324,6 +328,21 @@ class SourceEasyRepository {
     assert(perms.canEditShipping);
     return _write('shippingOrder', data, id: id);
   }
+
+  // ---------- Workflow (server timeline, SLA, priority, lost leads, rejections) ----------
+  Future<Map<String, dynamic>> leadTimeline(String id) async => _d(await api.send('GET', '/api/leads/${Uri.encodeComponent(id)}/timeline'));
+  Future<Map<String, dynamic>> setPriority(String id, bool on) async =>
+      _d(await api.send('POST', '/api/leads/${Uri.encodeComponent(id)}/priority', body: {'priority': on}));
+  Future<Lead> _leadPost(String id, String action, [Map<String, dynamic>? body]) async =>
+      Lead.fromJson(_d(await api.send('POST', '/api/leads/${Uri.encodeComponent(id)}/$action', body: body ?? {})));
+  Future<Lead> reopenLead(String id, String office) => _leadPost(id, 'reopen', {'office': office});
+  Future<Lead> copyLead(String id) => _leadPost(id, 'copy');
+  Future<Lead> closeLeadPermanently(String id, {String? followUp, String? reason}) =>
+      _leadPost(id, 'close-permanent', {if (followUp != null) 'followUp': followUp, if (reason != null) 'reason': reason});
+  Future<Lead> setFollowUp(String id, String? date) => _leadPost(id, 'follow-up', {'date': date});
+  Future<Lead> reviseRejected(String id, {double? targetPrice, String? targetCurrency, String? notes}) => _leadPost(id, 'rejection/revise',
+      {if (targetPrice != null) 'targetPrice': targetPrice, if (targetCurrency != null) 'targetCurrency': targetCurrency, if (notes != null && notes.isNotEmpty) 'notes': notes});
+  Future<Lead> closeRejected(String id) => _leadPost(id, 'rejection/close');
 
   // ---------- Timeline ----------
   Future<List<TimelineEvent>> timeline(Lead lead) async {

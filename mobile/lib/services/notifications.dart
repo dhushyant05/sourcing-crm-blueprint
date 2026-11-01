@@ -26,6 +26,8 @@ class NotificationCenter extends ChangeNotifier {
   /// Builds the system-notification text (localised by the caller).
   String Function(AppNotification)? describe;
   String title = 'Source Easy';
+  /// Live data changes from the stream (e.g. {type:'perms', id}).
+  void Function(Map<String, dynamic>)? onChange;
 
   void start() {
     _t?.cancel();
@@ -41,7 +43,8 @@ class NotificationCenter extends ChangeNotifier {
     final opened = DateTime.now();
     _sub = _repo.notificationStream().listen((e) {
       _backoff = 2;
-      unread = e.unread;
+      if (e.change != null) { onChange?.call(e.change!); return; }
+      unread = e.unread ?? unread;
       final n = e.item;
       if (n != null && !(_seen?.contains(n.id) ?? false)) {
         (_seen ??= {}).add(n.id);

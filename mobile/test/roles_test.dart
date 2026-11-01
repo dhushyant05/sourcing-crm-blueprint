@@ -31,4 +31,14 @@ void main() {
     expect(Role.fromCode('NOPE'), Role.indiaStaff);
     expect(Role.fromCode('SUPER_ADMIN'), Role.superAdmin);
   });
+
+  test('Per-user grants from /api/me narrow the role defaults', () {
+    const none = Permissions(Role.chinaStaff, {});
+    expect(none.canCreateQuotation || none.canSeeSupplierDetails || none.canViewQuotes || none.canEditShipping, isFalse);
+    const ship = Permissions(Role.indiaStaff, {'orders.production', 'quotes.view'});
+    expect(ship.canEditShipping && ship.canViewQuotes, isTrue);
+    expect(ship.canEditPayment || ship.canSeeClientPricing || ship.canGenerateClientQuote, isFalse);
+    expect(const Permissions(Role.superAdmin, {}).canCreateQuotation, isTrue);
+    expect(const Permissions(Role.indiaStaff).canEditPayment, isTrue); // offline before /api/me: role defaults
+  });
 }

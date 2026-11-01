@@ -35,7 +35,15 @@ class Lead {
     this.attachmentCount,
     this.summary,
     this.raisedBy, this.raisedByName, this.assignedTo, this.assignedToName, this.ownerOffice,
+    this.raw = const {},
   });
+  /// Full server record (priority, sla, followUp, rejection, createdFromRef, closedAt…).
+  final Map<String, dynamic> raw;
+  bool get priority => raw['priority'] == true;
+  String? get followUp => raw['followUp'] as String?;
+  String? get createdFromRef => raw['createdFromRef'] as String?;
+  Map<String, dynamic>? get rejection => (raw['rejection'] as Map?)?.cast<String, dynamic>();
+  Map<String, dynamic>? get sla => (raw['sla'] as Map?)?.cast<String, dynamic>();
   final String? raisedBy, raisedByName, assignedTo, assignedToName, ownerOffice;
   String get owner => ownerOffice ?? (assignedOffice == 'CHINA' ? 'CHINA' : 'INDIA');
   final String id;
@@ -93,6 +101,7 @@ class Lead {
         raisedBy: j['raisedBy'] as String?, raisedByName: j['raisedByName'] as String?,
         assignedTo: j['assignedTo'] as String?, assignedToName: j['assignedToName'] as String?,
         ownerOffice: j['ownerOffice'] as String?,
+        raw: j,
       );
 }
 

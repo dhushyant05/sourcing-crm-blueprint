@@ -30,9 +30,15 @@ enum Role {
       };
 }
 
+/// Role defaults, narrowed by the per-user grants the server returns from /api/me (`permissions`).
+/// When [granted] is null (offline before the first /api/me) only the role-based rules apply.
 class Permissions {
-  const Permissions(this.role);
+  const Permissions(this.role, [this.granted]);
   final Role role;
+  final Set<String>? granted;
+
+  /// Per-user feature permission (e.g. 'quotes.create'); true when unknown so offline mode keeps working.
+  bool can(String key) => granted == null || role == Role.superAdmin || granted!.contains(key);
 
   bool get _india => role.office == null || role.office == Office.india;
   bool get _china => role.office == null || role.office == Office.china;
@@ -40,22 +46,27 @@ class Permissions {
   // Customer side (India)
   bool get canSeeCustomerDetails => _india;
   bool get canCreateLead => _india;
-  bool get canRecordApproval => _india;
-  bool get canGenerateClientQuote => _india;
-  bool get canSeeClientPricing => _india;
+  bool get canRecordApproval => _india && can('quotes.customer');
+  bool get canGenerateClientQuote => _india && can('quotes.customer');
+  bool get canSeeClientPricing => _india && can('prices.inr');
+  bool get canCreateOrder => _india && can('orders.create');
+  bool get canEditPayment => _india && can('orders.payment');
+  bool get canSetPriority => _india;
 
   // Supplier side (China)
-  bool get canSeeSupplierDetails => _china;
+  bool get canSeeSupplierDetails => _china && can('suppliers.view');
   bool get canSeeRawSupplierCost => _china;
   bool get canCreateSourcingRequest => _china;
-  bool get canCreateQuotation => _china;
-  bool get canEditShipping => _china;
+  bool get canCreateQuotation => _china && can('quotes.create');
+  bool get canEditShipping => can('orders.production');
 
   // Shared
+  bool get canViewQuotes => can('quotes.view');
   bool get canViewShipping => true;
   bool get canChat => true;
+  bool get canViewReports => can('reports.view');
 
   // Admin
-  bool get canManageUsers => role.isAdmin;
+  bool get canManageUsers => role.isAdmin && can('staff.manage');
   bool get canDownloadBackups => role == Role.superAdmin;
 }

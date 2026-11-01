@@ -62,11 +62,11 @@ class ServerClient {
   }
 
   /// Streams files to a multipart endpoint (videos up to 100 MB are not loaded into memory).
-  Future<dynamic> upload(String path, List<String> filePaths, {void Function(double)? onProgress}) async {
+  Future<dynamic> upload(String path, List<String> filePaths, {void Function(double)? onProgress, String field = 'files'}) async {
     final req = http.MultipartRequest('POST', _uri(path))
       ..headers.addAll({'Accept': 'application/json', if (token != null) 'Authorization': 'Bearer $token'});
     for (final f in filePaths) {
-      req.files.add(await http.MultipartFile.fromPath('files', f, filename: f.split('/').last));
+      req.files.add(await http.MultipartFile.fromPath(field, f, filename: f.split('/').last));
     }
     http.Response res;
     try {

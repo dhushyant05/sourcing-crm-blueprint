@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../l10n/web_strings.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/models/models.dart';
@@ -76,12 +78,23 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
     await _run(() async { final nq = await repo.setQuoteStatus(q.id, s, reason); setState(() => q = nq); });
   }
 
+  /// Rejection needs a reason code (same list as the web app); "Other" needs text.
   Future<void> _reject() async {
     final l = context.l10n, c = TextEditingController();
-    final r = await showDialog<String>(context: context, builder: (d) => AlertDialog(title: Text(l.cqReject),
-        content: TextField(key: const Key('cq-reason'), controller: c, decoration: InputDecoration(labelText: l.cqReason)),
-        actions: [TextButton(onPressed: () => Navigator.pop(d), child: Text(l.cancel)), FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: Text(l.save))]));
-    if (r != null && r.isNotEmpty) await _status('REJECTED', r);
+    const codes = ['PRICE', 'LEAD_TIME', 'MOQ', 'QUALITY', 'SHIPPING', 'OTHER_SUPPLIER', 'NO_RESPONSE', 'OTHER'];
+    String? code;
+    final r = await showDialog<(String, String)>(context: context, builder: (d) => StatefulBuilder(builder: (d, set) => AlertDialog(title: Text(l.cqReject),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          DropdownButtonFormField<String>(key: const Key('cq-reason-code'), initialValue: code, isExpanded: true, hint: Text(tw(context, 'rej.pick')),
+              items: [for (final k in codes) DropdownMenuItem(value: k, child: Text(tw(context, 'rej.r.$k')))], onChanged: (v) => set(() => code = v)),
+          TextField(key: const Key('cq-reason'), controller: c, onChanged: (_) => set(() {}),
+              decoration: InputDecoration(labelText: code == 'OTHER' ? tw(context, 'rej.otherText') : tw(context, 'rej.optText'))),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(d), child: Text(l.cancel)),
+          FilledButton(key: const Key('cq-reject-ok'), onPressed: code == null || (code == 'OTHER' && c.text.trim().isEmpty) ? null : () => Navigator.pop(d, (code!, c.text.trim())), child: Text(l.save))])));
+    if (r == null || !mounted) return;
+    final repo = context.read<Session>().repo;
+    await _run(() async { final nq = await repo.setQuoteStatusCode(q.id, 'REJECTED', reason: r.$2, reasonCode: r.$1); setState(() => q = nq); });
   }
 
   Future<void> _order() async {

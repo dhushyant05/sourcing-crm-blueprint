@@ -1220,4 +1220,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tagline => 'Sourcing made easy';
+
+  @override
+  String get camera => 'Take photo';
+
+  @override
+  String get gallery => 'Choose from gallery';
 }

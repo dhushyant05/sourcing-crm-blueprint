@@ -1206,4 +1206,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get tagline => '轻松采购';
+
+  @override
+  String get camera => '拍照';
+
+  @override
+  String get gallery => '从相册选择';
 }

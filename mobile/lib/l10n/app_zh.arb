@@ -375,5 +375,7 @@
   "modeSea": "海运",
   "modeExpress": "快递",
   "modeRoad": "陆运",
-  "tagline": "轻松采购"
+  "tagline": "轻松采购",
+  "camera": "拍照",
+  "gallery": "从相册选择"
 }
