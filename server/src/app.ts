@@ -724,7 +724,9 @@ export async function buildApp(o: AppOptions) {
       const diff = (ks: string[]) => Object.fromEntries(ks.filter((k) => k in b && String((n as any)[k] ?? '') !== String((ord as any)[k] ?? '')).map((k) => [k, (n as any)[k]]));
       if (newlyShipped) { ev(n.leadId, 'SHIPPED', u, { tracking: n.tracking, container: n.container, etd: n.etd, eta: n.eta }); stopClock(n.leadId, 'CHINA'); }
       else { const pub = diff([...CHINA_KEYS, 'expectedShip']); if (Object.keys(pub).length) ev(n.leadId, 'ORDER_UPDATE', u, { fields: pub }); }
-      if (nsh.status !== sh.status && !newlyShipped) ev(n.leadId, 'SHIPMENT_UPDATE', u, { status: nsh.status });
+      const indChanged = n.indiaStatus !== ord.indiaStatus && !!n.indiaStatus && n.indiaStatus !== 'NONE';
+      const shipSt = indChanged ? n.indiaStatus : nsh.status, shipMoved = !newlyShipped && (nsh.status !== sh.status || indChanged);
+      if (shipMoved) ev(n.leadId, 'SHIPMENT_UPDATE', u, { status: shipSt });
       const priv = diff(['qty', 'agreedPrice', 'advance', 'paymentStatus']); if (Object.keys(priv).length) ev(n.leadId, 'ORDER_UPDATE', u, { fields: priv }, 'INDIA');
       if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') stopClock(n.leadId);
       if (newlyShipped) await setLeadStatus(n.leadId, lead, 'SHIPPING');
@@ -740,9 +742,9 @@ export async function buildApp(o: AppOptions) {
       };
       if (newlyShipped) notifyAll([...india, ...china, ...supers], 'ORDER_SHIPPED', 'SHIPPED');
       else if (n.production !== ord.production) notifyAll([...india, ...china, ...supers], 'ORDER_UPDATE', `production:${n.production}`);
-      if (!newlyShipped && nsh.status !== sh.status) notifyAll([...india, ...china, ...supers], 'SHIPMENT_UPDATE', `ship:${nsh.status}`);
+      if (shipMoved) notifyAll([...india, ...china, ...supers], 'SHIPMENT_UPDATE', `ship:${shipSt}`);
       if (n.paymentStatus !== ord.paymentStatus) notifyAll([...india, ...supers], 'ORDER_UPDATE', `payment:${n.paymentStatus}`);
-      else if (!newlyShipped && n.production === ord.production && nsh.status === sh.status) {
+      else if (!newlyShipped && n.production === ord.production && !shipMoved) {
         if (changed([...CHINA_KEYS, ...SHIP_CHINA_KEYS]) && officeOf(u.role) !== 'INDIA') tell(india, l, 'ORDER_UPDATE', 'INDIA', u);
         if (changed(['qty', 'agreedPrice', 'advance'])) notifyAll([...india, ...supers], 'ORDER_UPDATE', 'details');
       }
