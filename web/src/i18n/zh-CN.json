@@ -541,7 +541,7 @@
     "createOrder": "创建订单",
     "viewOrder": "订单已创建 — 在订单中查看",
     "noCustomerSide": "对中国隐藏：客户价格和信息。",
-    "msg": "您好 {{name}}，这是我们关于 {{product}} 的报价单 {{ref}}：{{url}}\n— Source Easy (Fortune Engineering), +91 72995 41489",
+    "msg": "您好 {{name}}，这是我们关于 {{product}} 的报价单 {{ref}}：{{url}}\n— Source Easy · sourceeasy.in",
     "subject": "报价单 {{ref}} – {{product}}",
     "noPhone": "此线索没有客户电话 — WhatsApp 将不带号码打开。",
     "errQty": "请输入数量。",

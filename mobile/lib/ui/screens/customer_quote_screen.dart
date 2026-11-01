@@ -60,7 +60,7 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
   String get _url => context.read<Session>().repo.absoluteUrl(q.pdfUrl!);
   String get _msg {
     final ref = q.label ?? q.leadRef ?? '';
-    return 'Hello ${widget.lead?.contactName ?? widget.lead?.clientName ?? ''}, here is the Source Easy quotation $ref for ${q.product}: $_url\n— Source Easy / Fortune Engineering, +91 72995 41489';
+    return 'Hello ${widget.lead?.contactName ?? widget.lead?.clientName ?? ''}, here is the Source Easy quotation $ref for ${q.product}: $_url\n— Source Easy · sourceeasy.in';
   }
 
   Future<void> _share(String how) async {

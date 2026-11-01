@@ -77,6 +77,7 @@ describe('customer quote, PDF and orders', () => {
     expect(pdf.headers['content-type']).toBe('application/pdf');
     expect(pdf.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.rawPayload.toString('latin1')).not.toContain('Secret Factory');
+    expect(pdf.rawPayload.toString('latin1')).not.toMatch(/Fortune|72995/);
     expect((await app.inject({ method: 'GET', url: '/api/public/cq/abc.pdf' })).statusCode).toBe(404);
 
     expect((await call('is', 'POST', `/api/quotes/${q.id}/order`, {})).statusCode).toBe(400); // not accepted

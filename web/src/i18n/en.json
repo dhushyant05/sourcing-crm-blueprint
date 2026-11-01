@@ -541,7 +541,7 @@
     "createOrder": "Create order",
     "viewOrder": "Order created — view in Orders",
     "noCustomerSide": "Hidden from China: customer price and details.",
-    "msg": "Hello {{name}}, please find our quotation {{ref}} for {{product}}: {{url}}\n— Source Easy (Fortune Engineering), +91 72995 41489",
+    "msg": "Hello {{name}}, please find our quotation {{ref}} for {{product}}: {{url}}\n— Source Easy · sourceeasy.in",
     "subject": "Quotation {{ref}} – {{product}}",
     "noPhone": "No customer phone on this lead — WhatsApp opens without a number.",
     "errQty": "Enter the quantity.",
