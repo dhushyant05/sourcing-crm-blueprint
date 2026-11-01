@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-import '../api/twenty_client.dart';
+import '../api/server_client.dart';
 
 /// A queued write, replayed in FIFO order when connectivity returns.
 class PendingOp {

@@ -16,7 +16,7 @@ export function Quotations({ search }: { search: string }) {
   const rows = data?.[0].filter((q) => !search || `${q.name} ${q.productName} ${q.supplierName}`.toLowerCase().includes(search.toLowerCase()));
 
   const unit = (q: Quotation): number =>
-    ccy === 'INR' ? q.clientUnitPriceInr ?? q.unitCost * (q.exchangeRateUsed ?? rates!.CNY_INR) : convert(q.unitCost, q.currency, ccy, rates!);
+    ccy === 'INR' ? q.clientUnitPriceInr ?? q.unitCostInr ?? (q.unitCost ?? 0) * (q.exchangeRateUsed ?? rates!.CNY_INR) : convert(q.unitCost ?? 0, q.currency, ccy, rates!);
 
   return (
     <>
@@ -56,7 +56,7 @@ export function Quotations({ search }: { search: string }) {
           <dl className="divide-y divide-ink-100 dark:divide-ink-800">
             <Field label="Status"><Chip value={sel.status} /></Field>
             <Field label="Quantity">{sel.quantity.toLocaleString()} pcs</Field>
-            {perms.rawCost && <><Field label="Supplier">{sel.supplierName}</Field><Field label="Supplier cost">{money(sel.unitCost, sel.currency)} / pc</Field><Field label="Rate snapshot">{sel.exchangeRateUsed} INR/{label(sel.currency)}</Field></>}
+            {perms.rawCost && <><Field label="Supplier">{sel.supplierName}</Field><Field label="Supplier cost">{money(sel.unitCost ?? 0, sel.currency)} / pc</Field><Field label="Rate snapshot">{sel.exchangeRateUsed} INR/{label(sel.currency)}</Field></>}
             {perms.clientPricing && <Field label="Client price">{sel.clientUnitPriceInr ? `${money(sel.clientUnitPriceInr, 'INR')} / pc` : 'Not set'}</Field>}
             <Field label={`Total (${label(ccy)})`}>{money(unit(sel) * sel.quantity, ccy)}</Field>
             <Field label="Valid until">{sel.validityDate && new Date(sel.validityDate).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</Field>

@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
-import 'twenty_client.dart' show OfflineException, ApiException;
+import 'server_client.dart' show OfflineException, ApiException;
 
 /// Chatwoot REST client (agent API). Each user stores their own Chatwoot
 /// personal access token (Profile settings -> Access token) in the app.

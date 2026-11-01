@@ -1,17 +1,17 @@
 # Source Easy — web dashboard
 
-React 19 + Vite + TypeScript + Tailwind (Inter, light/dark). Talks to Twenty's GraphQL API directly from the browser.
+React 19 + Vite + TypeScript + Tailwind (Inter, light/dark). Talks **only** to the Source Easy server (`/api`, same origin).
+No Twenty URL or API key is ever in the browser; the server filters data by role.
 
 ```bash
 cd web
 npm ci
-npm run dev          # http://localhost:5173
-npm run build        # static files in dist/ — serve behind the same reverse proxy as Twenty
-npm run screenshots  # rebuilds docs/screenshots (needs Chrome at /usr/bin/google-chrome)
+npm run dev          # http://localhost:5173, proxies /api to http://localhost:8080 (API_URL to override)
+npm run build        # dist/ is served by server/ (WEB_DIR) — see server/Dockerfile
+npm run screenshots  # demo-mode screenshots (needs Chrome at /usr/bin/google-chrome)
+node scripts/role-screenshots.mjs  # real-login role screenshots; first run `npx tsx scripts/demo-server.ts` in server/
 ```
 
-* **Demo mode** — "Explore with demo data" on the login screen loads in-memory seed data
-  (with a short artificial delay so skeletons show). The "View as" menu switches role.
-* **Live mode** — enter the Twenty URL and an API key (Twenty → Settings → APIs). The key lives in
-  `sessionStorage` only and is never written to disk. Twenty must allow CORS from the dashboard origin
-  (or serve `dist/` from the same host).
+* **Live mode** — email + password from your admin. The session JWT lives in `sessionStorage` only.
+  Navigation follows the role (Suppliers for China/super, Team for admins, backup links for super admin).
+* **Demo mode** — "Explore with demo data" loads in-memory seed data; the "View as" menu previews roles.

@@ -8,13 +8,14 @@ import { Shipping } from './pages/Shipping';
 import { Suppliers } from './pages/Suppliers';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
+import { Team } from './pages/Team';
 import type { Lead } from './lib/types';
 
-const routes: Route[] = ['dashboard', 'leads', 'quotations', 'shipping', 'suppliers', 'settings'];
+const routes: Route[] = ['dashboard', 'leads', 'quotations', 'shipping', 'suppliers', 'users', 'settings'];
 const fromHash = (): Route => (routes.find((r) => location.hash === `#/${r}`) ?? 'dashboard');
 
 function Shell() {
-  const { session } = useApp();
+  const { session, perms } = useApp();
   const [route, setRoute] = useState<Route>(fromHash);
   const [search, setSearch] = useState('');
   const [lead, setLead] = useState<Lead | null>(null);
@@ -27,7 +28,8 @@ function Shell() {
       {route === 'leads' && <Leads search={search} openLead={setLead} />}
       {route === 'quotations' && <Quotations search={search} />}
       {route === 'shipping' && <Shipping search={search} />}
-      {route === 'suppliers' && <Suppliers search={search} />}
+      {route === 'suppliers' && perms.suppliers && <Suppliers search={search} />}
+      {route === 'users' && perms.manageUsers && <Team />}
       {route === 'settings' && <Settings />}
       <LeadPanel lead={lead} onClose={() => setLead(null)} />
     </Layout>

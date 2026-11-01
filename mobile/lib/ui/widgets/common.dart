@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../data/api/twenty_client.dart';
+import '../../data/api/server_client.dart';
 import '../../data/repository.dart';
 
 final dateFmt = DateFormat('dd MMM yyyy');

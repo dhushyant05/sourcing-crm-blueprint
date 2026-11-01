@@ -1,28 +1,35 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { DemoApi, TwentyApi, type Api } from './api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { DemoApi, ServerApi, type Api, type Me } from './api';
 import { perms, type Role } from './roles';
 
 export interface Session { name: string; email: string; role: Role; demo: boolean }
-interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, url?: string, token?: string): void; signOut(): void; setRole(r: Role): void }
+interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, token?: string): void; signOut(): void; setRole(r: Role): void }
 
 const C = createContext<Ctx>(null!);
 export const useApp = () => useContext(C);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(() => JSON.parse(sessionStorage.getItem('se.session') ?? 'null'));
-  const [api, setApi] = useState<Api>(() => {
-    const url = sessionStorage.getItem('se.url'), tok = sessionStorage.getItem('se.token');
-    return url && tok ? new TwentyApi(url, tok) : new DemoApi();
-  });
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('se.jwt'));
   useEffect(() => { sessionStorage.setItem('se.session', JSON.stringify(session)); }, [session]);
-  const signIn = useCallback((s: Session, url?: string, token?: string) => {
-    // Token kept in sessionStorage only (cleared when the tab closes); never persisted to disk.
-    if (url && token) { sessionStorage.setItem('se.url', url); sessionStorage.setItem('se.token', token); setApi(new TwentyApi(url, token)); }
-    else setApi(new DemoApi());
+  const signOut = useCallback(() => { sessionStorage.clear(); setToken(null); setSession(null); }, []);
+  // Only a short-lived session JWT from our server is kept (sessionStorage, cleared with the tab). No Twenty credentials.
+  const signIn = useCallback((s: Session, t?: string) => {
+    if (t) { sessionStorage.setItem('se.jwt', t); setToken(t); } else { sessionStorage.removeItem('se.jwt'); setToken(null); }
     setSession(s);
   }, []);
-  const signOut = useCallback(() => { sessionStorage.clear(); setSession(null); }, []);
-  const setRole = useCallback((role: Role) => setSession((s) => (s ? { ...s, role } : s)), []);
+  const api = useMemo<Api>(() => (session && !session.demo && token ? new ServerApi(token, session.role, signOut) : new DemoApi()),
+    [session?.demo, session?.role, token, signOut]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Refresh role/name from the server on reload (role changes by an admin take effect without re-login).
+  useEffect(() => {
+    if (!token || session?.demo) return;
+    fetch('/api/me', { headers: { authorization: `Bearer ${token}` } })
+      .then((r) => (r.status === 401 ? (signOut(), null) : r.json()))
+      .then((me: Me | null) => me?.role && setSession((s) => (s ? { ...s, name: me.name, email: me.email, role: me.role } : s)))
+      .catch(() => {});
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Role switching is a demo-only preview; live roles come from the server.
+  const setRole = useCallback((role: Role) => setSession((s) => (s?.demo ? { ...s, role } : s)), []);
   return <C.Provider value={{ session, api, perms: perms(session?.role ?? 'INDIA_STAFF'), signIn, signOut, setRole }}>{children}</C.Provider>;
 }
 

@@ -13,7 +13,7 @@ A cross-border sourcing operation with an India office capturing leads and deliv
 - Chatwoot embedded as a native chat screen in the Flutter app via Chatwoot's REST API (not a webview), tied to each sourcing request by ID
 
 ## 3. Three-Server Architecture
-- **Server 1 — Source Easy App VPS** (4 cores, 8 GB RAM, ~$20-30/month): runs Twenty (Node.js, Postgres, Redis) in Docker. Serves the CRM web app and API on sourceec.in. India and China offices connect here.
+- **Server 1 — Source Easy App VPS** (4 cores, 8 GB RAM, ~$20-30/month): runs Twenty (Node.js, Postgres, Redis) in Docker, **internal only**, plus the Source Easy server (Fastify) that holds the Twenty API key, does role-based login and serves the web app and REST API on sourceec.in behind Caddy. India and China offices (web and Android) connect only to this server.
 - **Server 2 — Chatwoot VPS** (4 cores, 8 GB RAM, ~$15-20/month): runs Chatwoot (Rails, Postgres with pgvector, Redis, Sidekiq) in Docker on chat.sourceec.in. Internal-only communication between India and China offices — no customer-facing WhatsApp or website widget.
 - **Server 3 — Storage VPS** (1-2 cores, 2 GB RAM, ~$5/month): backup-only box in a different region/availability zone. No apps running. Receives nightly compressed pg_dump files from both app servers via SSH/rsync. Holds 7 daily + 4 weekly dumps. Serves a backup browser page showing timestamps and sizes to admins; download links visible to the super admin only. No restore button — restores stay CLI-only for safety.
 - Coupling between servers 1 and 2 is webhook URLs only, over public internet or a private tunnel.
@@ -45,8 +45,8 @@ A cross-border sourcing operation with an India office capturing leads and deliv
 - **India staff**: leads, customer details, quotations (INR view), approvals, shipping; not supplier details or raw supplier costs
 - **China staff**: sourcing requests, supplier details, quotations, shipping; not customer details, client pricing or margins
 - **Office admin (India or China)**: everything on their own office's side, plus user administration for that office
-- **Super admin**: everything across both offices, exchange rates, backup downloads
-- Approximate separation using custom office tags and filtered views (row-level security is a paid module at $19/user/month)
+- **Super admin**: everything across both offices, exchange rates (super admin only), backup links
+- Enforced server-side by the Source Easy server (record + field filtering per role, per-field write checks); Twenty is never exposed, so no paid row-level security is needed
 
 ## 7. Chatwoot Integration (Internal Only)
 - Runs on its own VPS (Server 2), domain chat.sourceec.in

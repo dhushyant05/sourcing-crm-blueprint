@@ -1,4 +1,4 @@
-import type { ExchangeRate, Lead, LeadStatus, Quotation, Shipment, Supplier } from './types';
+import type { ExchangeRate, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
 
 const day = (n: number) => new Date(Date.UTC(2026, 9, 31) - n * 864e5).toISOString();
 const clients = ['Arora Home Store', 'Mehta Kitchenware', 'Sri Balaji Traders', 'Kapoor Retail', 'Nair Hospitality',
@@ -26,7 +26,7 @@ const quotations: Quotation[] = leads.filter((l) => ['QUOTED', 'APPROVED', 'SHIP
 
 const shipments: Shipment[] = [
   { id: 'S1', name: 'SO-2611', clientName: 'Sri Balaji Traders', stage: 'IN_TRANSIT', carrier: 'Maersk', trackingNumber: 'MAEU7731902', origin: 'Ningbo', destination: 'Nhava Sheva', eta: day(-9), updatedAt: day(0) },
-  { id: 'S2', name: 'SO-2609', clientName: 'Mehta Kitchenware', stage: 'CUSTOMS', carrier: 'COSCO', trackingNumber: 'COSU6210457', origin: 'Shenzhen', destination: 'Chennai', eta: day(-2), updatedAt: day(1) },
+  { id: 'S2', name: 'SO-2609', clientName: 'Mehta Kitchenware', stage: 'AT_PORT', carrier: 'COSCO', trackingNumber: 'COSU6210457', origin: 'Shenzhen', destination: 'Chennai', eta: day(-2), updatedAt: day(1) },
   { id: 'S3', name: 'SO-2604', clientName: 'Desai Electricals', stage: 'DELIVERED', carrier: 'DHL Express', trackingNumber: '4021 8833 10', origin: 'Shenzhen', destination: 'Mumbai', eta: day(5), updatedAt: day(5) },
   { id: 'S4', name: 'SO-2613', clientName: 'Urban Nest Decor', stage: 'BOOKED', carrier: 'ONE', trackingNumber: '—', origin: 'Yiwu', destination: 'Mundra', eta: day(-24), updatedAt: day(0) },
 ];
@@ -46,4 +46,12 @@ const rates: ExchangeRate[] = [
   { id: 'R4', pair: 'CNY_INR', rate: 11.85, manual: false, setBy: 'auto', effectiveDate: '2026-10-22' },
 ];
 
-export const demo = { leads, quotations, shipments, suppliers, rates };
+const users: User[] = [
+  { id: 'U1', email: 'dhushyanth@sourceec.in', name: 'Dhushyanth Kumar', role: 'SUPER_ADMIN', active: true, createdAt: day(60) },
+  { id: 'U2', email: 'priya@sourceec.in', name: 'Priya Nair', role: 'INDIA_ADMIN', active: true, createdAt: day(50) },
+  { id: 'U3', email: 'rahul@sourceec.in', name: 'Rahul Mehta', role: 'INDIA_STAFF', active: true, createdAt: day(40) },
+  { id: 'U4', email: 'liwei@sourceec.in', name: 'Li Wei', role: 'CHINA_ADMIN', active: true, createdAt: day(45) },
+  { id: 'U5', email: 'chenjing@sourceec.in', name: 'Chen Jing', role: 'CHINA_STAFF', active: true, createdAt: day(30) },
+];
+
+export const demo = { leads, quotations, shipments, suppliers, rates, users };

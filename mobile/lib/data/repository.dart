@@ -2,7 +2,7 @@ import 'dart:math';
 
 import '../core/currency.dart';
 import '../core/roles.dart';
-import 'api/twenty_client.dart';
+import 'api/server_client.dart';
 import 'models/models.dart';
 import 'offline/offline_queue.dart';
 
@@ -23,7 +23,7 @@ String newClientRef() {
 /// when offline; writes fall back to the offline queue.
 class SourceEasyRepository {
   SourceEasyRepository({required this.api, required this.store, required this.perms});
-  final TwentyClient api;
+  final ServerClient api;
   final LocalStore store;
   final Permissions perms;
 
@@ -71,12 +71,6 @@ class SourceEasyRepository {
     } else {
       await api.update(op.object, op.recordId!, op.payload, 'id');
     }
-  }
-
-  // ---------- Role ----------
-  Future<String?> roleCodeFor(String email) async {
-    final rows = await api.findMany('teamMembers', 'id email role', filter: {'email': {'eq': email}}, first: 1);
-    return rows.isEmpty ? null : rows.first['role'] as String?;
   }
 
   // ---------- Leads ----------
@@ -279,7 +273,7 @@ class SourceEasyRepository {
           .toList();
 
   Future<WriteResult> setRate(String pair, double rate, String setBy, {bool manual = true}) {
-    if (!perms.canSetExchangeRate) throw StateError('Only admins can set exchange rates');
+    if (!perms.canSetExchangeRate) throw StateError('Only the super admin can set exchange rates');
     return _write('exchangeRate', {
       'name': pair.replaceAll('_', '→'),
       'currencyPair': pair,

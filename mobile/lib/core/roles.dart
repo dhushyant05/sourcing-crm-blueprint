@@ -56,7 +56,7 @@ class Permissions {
   bool get canChat => true;
 
   // Admin
-  bool get canSetExchangeRate => role.isAdmin;
+  bool get canSetExchangeRate => role == Role.superAdmin; // server enforces the same
   bool get canManageUsers => role.isAdmin;
   bool get canDownloadBackups => role == Role.superAdmin;
 

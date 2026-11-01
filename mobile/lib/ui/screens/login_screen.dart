@@ -19,13 +19,13 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _url = TextEditingController(text: context.read<Session>().config.twentyUrl);
+    _url = TextEditingController(text: context.read<Session>().config.serverUrl);
   }
 
   Future<void> _submit() async {
     final s = context.read<Session>();
     setState(() { _busy = true; _error = null; });
-    s.config.twentyUrl = _url.text.trim();
+    s.config.serverUrl = _url.text.trim();
     try {
       await s.signIn(_email.text.trim(), _pw.text);
     } catch (e) {

@@ -8,15 +8,18 @@ export interface Lead {
 }
 export interface Quotation {
   id: string; name: string; leadId?: string; productName?: string; supplierName?: string;
-  unitCost: number; currency: Currency; quantity: number; exchangeRateUsed?: number;
+  unitCost?: number; unitCostInr?: number; currency: Currency; quantity: number; exchangeRateUsed?: number;
   clientUnitPriceInr?: number; status: string; validityDate?: string; createdAt: string;
 }
 export interface Shipment {
   id: string; name: string; clientName?: string; stage: string; carrier?: string; trackingNumber?: string;
   origin?: string; destination?: string; eta?: string; updatedAt: string;
 }
-export interface Supplier { id: string; name: string; city?: string; category?: string; rating?: number; contactName?: string; wechat?: string; }
+export interface Supplier { id: string; name: string; phone?: string; wechat?: string; notes?: string; city?: string; category?: string; rating?: number; contactName?: string; }
+export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string }
+export interface BackupLink { label: string; url: string }
 export interface ExchangeRate { id: string; pair: string; rate: number; manual: boolean; setBy?: string; effectiveDate: string; }
 
 export const PIPELINE: LeadStatus[] = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'WON'];
-export const SHIP_STAGES = ['BOOKED', 'PICKED_UP', 'IN_TRANSIT', 'CUSTOMS', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+// shippingOrder.shipmentStatus options in twenty-setup/schema.json
+export const SHIP_STAGES = ['BOOKED', 'IN_TRANSIT', 'AT_PORT', 'OUT_FOR_DELIVERY', 'DELIVERED'];

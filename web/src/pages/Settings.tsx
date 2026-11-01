@@ -13,6 +13,7 @@ export function Settings() {
   const { data, reload } = useLoad(() => api.rates(), [api]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const current = data ? ratesFrom(data) : null;
+  const backups = useLoad(() => (perms.backups ? api.backups() : Promise.resolve([])), [api, perms.backups]);
 
   const save = async (p: string) => {
     const v = Number(draft[p]);
@@ -37,7 +38,7 @@ export function Settings() {
 
         <section className="card p-6 lg:col-span-2">
           <h2 className="font-semibold text-ink-900 dark:text-white">Exchange rates</h2>
-          <p className="text-sm text-ink-500">Prices stay in the quoted currency; India views convert with the latest rate. Manual entries override automatic ones for the same day.</p>
+          <p className="text-sm text-ink-500">Prices stay in the quoted currency; the server converts India views to INR with the latest rate. Only the super admin can set rates.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             {PAIRS.map((p) => (
               <div key={p} className="rounded-xl border border-ink-200 p-4 dark:border-ink-800">
@@ -65,7 +66,8 @@ export function Settings() {
             <div className="flex items-start gap-4">
               <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"><HardDriveDownload size={20} /></div>
               <div><h2 className="font-semibold text-ink-900 dark:text-white">Backups</h2>
-                <p className="text-sm text-ink-500">Nightly dumps of Twenty and Chatwoot are kept on the storage server (7 daily, 4 weekly). Downloads are available to the super admin in the backup browser; restores run from the command line with <code className="rounded bg-ink-100 px-1 dark:bg-ink-800">restore.sh</code>.</p></div>
+                <p className="text-sm text-ink-500">Nightly dumps of Twenty and Chatwoot are kept on the storage server (7 daily, 4 weekly). Downloads are available to the super admin in the backup browser; restores run from the command line with <code className="rounded bg-ink-100 px-1 dark:bg-ink-800">restore.sh</code>.</p>
+                <div className="mt-3 flex flex-wrap gap-2">{backups.data?.map((b) => <a key={b.url} href={b.url} target="_blank" rel="noreferrer" className="btn-outline">{b.label}</a>)}</div></div>
             </div>
           </section>
         )}

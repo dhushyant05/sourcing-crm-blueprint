@@ -1,11 +1,11 @@
 import { clsx } from 'clsx';
-import { Bell, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Factory } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Factory, UserCog } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../lib/store';
 import { roleLabel, type Role } from '../lib/roles';
 import { Avatar } from './ui';
 
-export type Route = 'dashboard' | 'leads' | 'quotations' | 'shipping' | 'suppliers' | 'settings';
+export type Route = 'dashboard' | 'leads' | 'quotations' | 'shipping' | 'suppliers' | 'users' | 'settings';
 
 export function Layout({ route, go, search, setSearch, children }: {
   route: Route; go: (r: Route) => void; search: string; setSearch: (s: string) => void; children: ReactNode;
@@ -26,6 +26,7 @@ export function Layout({ route, go, search, setSearch, children }: {
     { id: 'quotations', label: 'Quotations', icon: FileText, show: true },
     { id: 'shipping', label: 'Shipping', icon: Ship, show: true },
     { id: 'suppliers', label: 'Suppliers', icon: Factory, show: perms.suppliers },
+    { id: 'users', label: 'Team', icon: UserCog, show: perms.manageUsers },
     { id: 'settings', label: 'Settings', icon: Settings, show: true },
   ];
 

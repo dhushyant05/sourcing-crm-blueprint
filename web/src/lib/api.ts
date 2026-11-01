@@ -1,6 +1,8 @@
-import type { ExchangeRate, Lead, LeadStatus, Quotation, Shipment, Supplier } from './types';
+import type { BackupLink, Currency, ExchangeRate, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { Role } from './roles';
 import { demo } from './demo';
 
+export interface Me { id: string; email: string; name: string; role: Role }
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
@@ -9,71 +11,98 @@ export interface Api {
   suppliers(): Promise<Supplier[]>;
   rates(): Promise<ExchangeRate[]>;
   setRate(pair: string, rate: number, by: string): Promise<void>;
+  users(): Promise<User[]>;
+  createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
+  resetPassword(id: string, password: string): Promise<void>;
+  setUserActive(id: string, active: boolean): Promise<void>;
+  backups(): Promise<BackupLink[]>;
 }
 
-const nodes = <T>(d: Record<string, { edges: { node: T }[] }>, k: string) => d[k].edges.map((e) => e.node);
-const amount = (c?: { amountMicros?: number }) => (c?.amountMicros ?? 0) / 1e6;
+type Raw = Record<string, any>;
+const amount = (c?: { amountMicros?: number }) => (c?.amountMicros != null ? c.amountMicros / 1e6 : undefined);
+const today = () => new Date().toISOString().slice(0, 10);
 
-/** Thin client for Twenty's /graphql data API (same field names as twenty-setup/schema.json). */
-export class TwentyApi implements Api {
-  private url: string;
-  private token: string;
-  constructor(url: string, token: string) { this.url = url; this.token = token; }
+export class HttpError extends Error { status: number; constructor(m: string, s: number) { super(m); this.status = s; } }
 
-  private async q<T = Record<string, never>>(query: string, variables?: object): Promise<T> {
-    const res = await fetch(`${this.url.replace(/\/$/, '')}/graphql`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.token}` },
-      body: JSON.stringify({ query, variables }),
+/** Sign in against the Source Easy server (same origin). Returns a JWT; no Twenty key ever reaches the browser. */
+export async function login(email: string, password: string): Promise<{ token: string; user: Me }> {
+  const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new HttpError(j.error ?? 'Sign-in failed', res.status);
+  return j;
+}
+
+/**
+ * Client for the Source Easy server's REST API. The server already removed every record/field the
+ * signed-in role may not see; this class only reshapes Twenty field names into the dashboard's view models.
+ */
+export class ServerApi implements Api {
+  private token: string; private role: Role; private onAuthError: () => void;
+  constructor(token: string, role: Role, onAuthError: () => void) { this.token = token; this.role = role; this.onAuthError = onAuthError; }
+  private async req<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`/api${path}`, {
+      method, body: body ? JSON.stringify(body) : undefined,
+      headers: { authorization: `Bearer ${this.token}`, ...(body ? { 'content-type': 'application/json' } : {}) },
     });
-    const j = await res.json();
-    if (j.errors?.length) throw new Error(j.errors[0].message);
-    return j.data;
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
+    return j.data as T;
   }
+  private list = (plural: string) => this.req<Raw[]>('GET', `/records/${plural}`);
+  private get india() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('INDIA'); }
+  private get china() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('CHINA'); }
 
   async leads() {
-    const d = await this.q<never>(`{ leads(first: 200, orderBy: {createdAt: DescNullsLast}) { edges { node {
-      id name createdAt clientName productInterest quantity status assignedOffice assignedChinaAgent sourceChannel
-      contactPhone { primaryPhoneNumber } contactEmail { primaryEmail } targetPrice { amountMicros currencyCode } } } } }`);
-    return nodes<Record<string, any>>(d, 'leads').map((n) => ({
+    return (await this.list('leads')).map((n) => ({
       ...n, contactPhone: n.contactPhone?.primaryPhoneNumber, contactEmail: n.contactEmail?.primaryEmail,
       targetPrice: amount(n.targetPrice), targetCurrency: n.targetPrice?.currencyCode,
     })) as Lead[];
   }
-  async updateLeadStatus(id: string, status: LeadStatus) {
-    await this.q(`mutation($id: ID!, $data: LeadUpdateInput!) { updateLead(id: $id, data: $data) { id } }`, { id, data: { status } });
-  }
+  async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); }
   async quotations() {
-    const d = await this.q<never>(`{ quotations(first: 200) { edges { node { id name createdAt status currency quantity
-      exchangeRateUsed validityDate unitCost { amountMicros } clientUnitPriceInr { amountMicros }
-      supplier { name } sourcingRequest { leadId productName } } } } }`);
-    return nodes<Record<string, any>>(d, 'quotations').map((n) => ({
-      ...n, unitCost: amount(n.unitCost), clientUnitPriceInr: amount(n.clientUnitPriceInr) || undefined,
-      supplierName: n.supplier?.name, leadId: n.sourcingRequest?.leadId, productName: n.sourcingRequest?.productName,
-    })) as Quotation[];
-  }
-  async shipments() {
-    const d = await this.q<never>(`{ shippingOrders(first: 200) { edges { node { id name stage carrier trackingNumber
-      origin destination eta updatedAt clientName } } } }`);
-    return nodes<Shipment>(d, 'shippingOrders');
-  }
-  async suppliers() {
-    const d = await this.q<never>(`{ suppliers(first: 200) { edges { node { id name city category rating contactName wechat } } } }`);
-    return nodes<Supplier>(d, 'suppliers');
-  }
-  async rates() {
-    const d = await this.q<never>(`{ exchangeRates(first: 100, orderBy: {effectiveDate: DescNullsLast}) { edges { node {
-      id pair rate manual setBy effectiveDate } } } }`);
-    return nodes<ExchangeRate>(d, 'exchangeRates');
-  }
-  async setRate(pair: string, rate: number, setBy: string) {
-    await this.q(`mutation($data: ExchangeRateCreateInput!) { createExchangeRate(data: $data) { id } }`, {
-      data: { name: `${pair} ${rate}`, pair, rate, manual: true, setBy, source: 'MANUAL', effectiveDate: new Date().toISOString().slice(0, 10) },
+    const [qs, srs, aps, sups] = await Promise.all([this.list('quotations'), this.list('sourcingRequests'), this.list('clientApprovals'),
+      this.china ? this.list('suppliers') : Promise.resolve([] as Raw[])]);
+    const sr = new Map(srs.map((s) => [s.id, s])), sup = new Map(sups.map((s) => [s.id, s.name]));
+    return qs.map((q): Quotation => {
+      const s = sr.get(q.sourcingRequestId);
+      const ap = aps.filter((a) => a.quotationId === q.id).sort((a, b) => String(b.decidedAt).localeCompare(String(a.decidedAt)))[0];
+      const quantity = s?.quantity ?? (q.unitCost ? Math.round(q.totalCost / q.unitCost) : 1);
+      return {
+        id: q.id, name: q.name, leadId: s?.leadId, productName: s?.productDescription ?? s?.name, supplierName: sup.get(q.supplierId),
+        unitCost: q.unitCost, unitCostInr: q.unitCostInr, currency: (q.currency ?? 'INR') as Currency, quantity,
+        exchangeRateUsed: q.exchangeRateUsed, clientUnitPriceInr: q.clientUnitPriceInr ?? undefined,
+        status: ap?.status ?? (q.clientUnitPriceInr ? 'SENT' : 'DRAFT'), validityDate: q.validityDate, createdAt: q.createdAt,
+      };
     });
   }
+  async shipments() {
+    const [ss, leads] = await Promise.all([this.list('shippingOrders'), this.india ? this.list('leads') : Promise.resolve([] as Raw[])]);
+    const client = new Map(leads.map((l) => [l.id, l.clientName]));
+    return ss.map((s): Shipment => ({
+      id: s.id, name: s.name, clientName: client.get(s.leadId), stage: s.shipmentStatus ?? 'BOOKED', carrier: s.forwarder,
+      trackingNumber: s.trackingNumber, origin: s.currentLocation ?? 'China', destination: 'India', eta: s.eta, updatedAt: s.updatedAt ?? s.createdAt,
+    }));
+  }
+  async suppliers() {
+    return (await this.list('suppliers')).map((s): Supplier => ({ id: s.id, name: s.name, phone: s.phone?.primaryPhoneNumber, wechat: s.wechatId, notes: s.notes }));
+  }
+  async rates() {
+    return (await this.list('exchangeRates')).map((r): ExchangeRate => ({
+      id: r.id, pair: r.currencyPair, rate: r.rate, manual: !!r.isManualOverride, setBy: r.setBy, effectiveDate: r.effectiveDate ?? r.createdAt?.slice(0, 10),
+    }));
+  }
+  async setRate(pair: string, rate: number) {
+    await this.req('POST', '/records/exchangeRates', { name: `${pair} ${rate}`, currencyPair: pair, rate, isManualOverride: true, source: 'MANUAL', effectiveDate: today() });
+  }
+  users() { return this.req<User[]>('GET', '/users'); }
+  async createUser(u: { email: string; name: string; role: Role; password: string }) { await this.req('POST', '/users', u); }
+  async resetPassword(id: string, password: string) { await this.req('POST', `/users/${id}/password`, { password }); }
+  async setUserActive(id: string, active: boolean) { await this.req('PATCH', `/users/${id}`, { active }); }
+  backups() { return this.req<BackupLink[]>('GET', '/backups'); }
 }
 
-/** In-browser demo data (used for screenshots and when no server is configured). */
+/** In-browser demo data (used for screenshots and the "Explore with demo data" button). No server needed. */
 export class DemoApi implements Api {
   private wait = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 450));
   leads() { return this.wait(demo.leads); }
@@ -83,6 +112,13 @@ export class DemoApi implements Api {
   suppliers() { return this.wait(demo.suppliers); }
   rates() { return this.wait(demo.rates); }
   async setRate(pair: string, rate: number, setBy: string) {
-    demo.rates.unshift({ id: crypto.randomUUID(), pair, rate, manual: true, setBy, effectiveDate: new Date().toISOString().slice(0, 10) });
+    demo.rates.unshift({ id: crypto.randomUUID(), pair, rate, manual: true, setBy, effectiveDate: today() });
   }
+  users() { return this.wait(demo.users); }
+  async createUser(u: { email: string; name: string; role: Role }) {
+    demo.users.push({ id: crypto.randomUUID(), email: u.email, name: u.name, role: u.role, active: true, createdAt: new Date().toISOString() });
+  }
+  async resetPassword() {}
+  async setUserActive(id: string, active: boolean) { const u = demo.users.find((x) => x.id === id); if (u) u.active = active; }
+  backups() { return this.wait([{ label: 'Backup browser (demo)', url: 'https://backups.example.com' }]); }
 }

@@ -1,3 +1,11 @@
+# Only the Source Easy server is public. Twenty stays on the internal docker network.
 {$DOMAIN} {
-	reverse_proxy server:3000
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	reverse_proxy api:8080
 }

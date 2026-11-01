@@ -8,17 +8,16 @@ import 'package:sqflite/sqflite.dart';
 
 import '../core/roles.dart';
 import '../data/api/chatwoot_client.dart';
-import '../data/api/twenty_auth.dart';
-import '../data/api/twenty_client.dart';
+import '../data/api/server_client.dart';
 import '../data/offline/offline_queue.dart';
 import '../data/repository.dart';
 
 /// Server settings entered on the login screen. Tokens are kept in the
 /// Android Keystore-backed secure storage, never in source.
 class AppConfig {
-  AppConfig({this.twentyUrl = 'https://sourceec.in', this.chatwootUrl = 'https://chat.sourceec.in',
+  AppConfig({this.serverUrl = 'https://sourceec.in', this.chatwootUrl = 'https://chat.sourceec.in',
       this.chatwootAccountId = 1, this.chatwootInboxId = 1, this.chatwootToken = ''});
-  String twentyUrl, chatwootUrl, chatwootToken;
+  String serverUrl, chatwootUrl, chatwootToken;
   int chatwootAccountId, chatwootInboxId;
 }
 
@@ -35,7 +34,7 @@ class Session extends ChangeNotifier {
   int pendingOps = 0;
   bool restoring = true;
 
-  TwentyClient? _api;
+  ServerClient? _api;
   SourceEasyRepository? _repo;
   LocalStore? _store;
   SyncEngine? _sync;
@@ -50,7 +49,7 @@ class Session extends ChangeNotifier {
   Future<void> _loadConfig() async {
     final m = await _secure.readAll();
     config = AppConfig(
-      twentyUrl: m['twentyUrl'] ?? config.twentyUrl,
+      serverUrl: m['serverUrl'] ?? config.serverUrl,
       chatwootUrl: m['chatwootUrl'] ?? config.chatwootUrl,
       chatwootAccountId: int.tryParse(m['chatwootAccountId'] ?? '') ?? 1,
       chatwootInboxId: int.tryParse(m['chatwootInboxId'] ?? '') ?? 1,
@@ -59,7 +58,7 @@ class Session extends ChangeNotifier {
   }
 
   Future<void> saveConfig() async {
-    await _secure.write(key: 'twentyUrl', value: config.twentyUrl);
+    await _secure.write(key: 'serverUrl', value: config.serverUrl);
     await _secure.write(key: 'chatwootUrl', value: config.chatwootUrl);
     await _secure.write(key: 'chatwootAccountId', value: '${config.chatwootAccountId}');
     await _secure.write(key: 'chatwootInboxId', value: '${config.chatwootInboxId}');
@@ -84,24 +83,16 @@ class Session extends ChangeNotifier {
     }
   }
 
+  /// Signs in against the Source Easy server; the role comes from the server's user record.
   Future<void> signIn(String email, String password) async {
     await saveConfig();
-    final api = TwentyClient(baseUrl: config.twentyUrl);
-    final auth = TwentyAuth(api);
-    final token = await auth.signIn(email, password);
-    api.token = token;
-    final me = await auth.currentUser();
+    final me = await ServerClient(baseUrl: config.serverUrl).login(email, password);
     this.email = me.email;
     displayName = me.name.isEmpty ? me.email : me.name;
-    await _start(token);
-    final code = await repo.roleCodeFor(me.email);
-    if (code == null) {
-      await signOut();
-      throw ApiException('No Source Easy role is set for ${me.email}. Ask your office admin to add you under Team Members.');
-    }
-    role = Role.fromCode(code);
+    role = Role.fromCode(me.role);
+    await _start(me.token);
     _rebuildRepo();
-    await _secure.write(key: 'token', value: token);
+    await _secure.write(key: 'token', value: me.token);
     await _secure.write(key: 'email', value: me.email);
     await _secure.write(key: 'name', value: displayName);
     await _secure.write(key: 'role', value: role.code);
@@ -109,7 +100,7 @@ class Session extends ChangeNotifier {
   }
 
   Future<void> _start(String token) async {
-    _api = TwentyClient(baseUrl: config.twentyUrl, token: token);
+    _api = ServerClient(baseUrl: config.serverUrl, token: token);
     _store ??= await LocalStore.open(p.join(await getDatabasesPath(), 'source_easy.db'));
     _rebuildRepo();
     _conn ??= Connectivity().onConnectivityChanged.listen((r) {

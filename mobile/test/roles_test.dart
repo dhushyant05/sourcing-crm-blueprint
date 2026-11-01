@@ -22,7 +22,8 @@ void main() {
   test('Office admins are scoped to their side', () {
     expect(const Permissions(Role.indiaAdmin).canSeeSupplierDetails, isFalse);
     expect(const Permissions(Role.chinaAdmin).canSeeCustomerDetails, isFalse);
-    expect(const Permissions(Role.chinaAdmin).canSetExchangeRate, isTrue);
+    expect(const Permissions(Role.chinaAdmin).canSetExchangeRate, isFalse);
+    expect(const Permissions(Role.superAdmin).canSetExchangeRate, isTrue);
     expect(const Permissions(Role.indiaAdmin).canDownloadBackups, isFalse);
   });
 

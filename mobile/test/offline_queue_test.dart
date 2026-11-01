@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:source_easy/core/roles.dart';
-import 'package:source_easy/data/api/twenty_client.dart';
+import 'package:source_easy/data/api/server_client.dart';
 import 'package:source_easy/data/offline/offline_queue.dart';
 import 'package:source_easy/data/repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -29,50 +29,25 @@ void main() {
   var existingRef = false;
   final calls = <Map<String, dynamic>>[];
 
+  // Mocks the Source Easy server REST API (/api/records/...).
   final mock = MockClient((req) async {
     if (!online) throw http.ClientException('no network');
-    final body = jsonDecode(req.body) as Map<String, dynamic>;
-    calls.add(body);
-    final q = body['query'] as String;
-    if (q.contains('createLead')) {
-      return http.Response(
-        jsonEncode({
-          'data': {
-            'createLead': {'id': 'L1'},
-          },
-        }),
-        200,
-      );
+    calls.add({'method': req.method, 'url': req.url.toString(), 'body': req.body});
+    if (req.method == 'POST' && req.url.path == '/api/records/leads') {
+      return http.Response(jsonEncode({'data': {'id': 'L1'}}), 201);
     }
-    if (q.contains('leads(')) {
-      final isRefCheck = jsonEncode(body['variables']).contains('clientRef');
-      final edges = isRefCheck
-          ? (existingRef
-                ? [
-                    {
-                      'node': {'id': 'L9'},
-                    },
-                  ]
-                : [])
-          : [
-              {
-                'node': {'id': 'L0', 'name': 'Cached', 'status': 'NEW'},
-              },
-            ];
-      return http.Response(
-        jsonEncode({
-          'data': {
-            'leads': {'edges': edges},
-          },
-        }),
-        200,
-      );
+    if (req.method == 'GET' && req.url.path == '/api/records/leads') {
+      final isRefCheck = req.url.queryParameters.containsKey('clientRef');
+      final rows = isRefCheck
+          ? (existingRef ? [{'id': 'L9'}] : [])
+          : [{'id': 'L0', 'name': 'Cached', 'status': 'NEW'}];
+      return http.Response(jsonEncode({'data': rows}), 200);
     }
-    return http.Response(jsonEncode({'data': {}}), 200);
+    return http.Response(jsonEncode({'data': []}), 200);
   });
 
   SourceEasyRepository repo() => SourceEasyRepository(
-    api: TwentyClient(baseUrl: 'https://x', token: 't', httpClient: mock),
+    api: ServerClient(baseUrl: 'https://x', token: 't', httpClient: mock),
     store: store,
     perms: const Permissions(Role.indiaStaff),
   );
@@ -107,11 +82,10 @@ void main() {
       final result = await SyncEngine(store, r.replay).run();
       expect(result.synced, 1);
       expect(await store.pendingCount(), 0);
-      final create = calls.lastWhere(
-        (c) => (c['query'] as String).contains('createLead'),
-      );
-      expect(jsonEncode(create['variables']), contains('Acme'));
-      expect(jsonEncode(create['variables']), contains('clientRef'));
+      final create = calls.lastWhere((c) => c['method'] == 'POST');
+      expect(create['url'], endsWith('/api/records/leads'));
+      expect(create['body'], contains('Acme'));
+      expect(create['body'], contains('clientRef'));
     },
   );
 
@@ -142,7 +116,7 @@ void main() {
       final res = await SyncEngine(store, r.replay).run();
       expect(res.synced, 1);
       expect(
-        calls.where((c) => (c['query'] as String).contains('createLead')),
+        calls.where((c) => c['method'] == 'POST'),
         isEmpty,
       );
     },

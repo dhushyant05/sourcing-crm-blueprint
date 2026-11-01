@@ -6,8 +6,9 @@ The spec is in [BLUEPRINT.md](BLUEPRINT.md) and the decisions are in [QUESTIONS.
 
 ```
              ┌──────────── Server 1 ────────────┐   ┌──────── Server 2 ────────┐
-Android app ─┤ Caddy → Twenty (GraphQL CRM)      │   │ Caddy → Chatwoot (chat)  │
- (Flutter)   │         Postgres 16 · Redis       │   │  Postgres(pgvector)·Redis│
+Web + app ───┤ Caddy → Source Easy server (REST) │
+ (Flutter)   │   └→ Twenty (internal only)       │   │ Caddy → Chatwoot (chat)  │
+             │         Postgres 16 · Redis       │   │  Postgres(pgvector)·Redis│
              └───────────────┬──────────────────┘   └────────────┬─────────────┘
                              │ nightly pg_dump + rsync            │
                              ▼                                    ▼
@@ -19,7 +20,8 @@ Android app ─┤ Caddy → Twenty (GraphQL CRM)      │   │ Caddy → Chatw
 
 | Folder | What's in it |
 |---|---|
-| `infra/server1-twenty/` | Docker Compose for Twenty (server and worker), Postgres, Redis and Caddy (TLS) |
+| `server/` | Source Easy server (Fastify/TypeScript): login, roles, filtered REST API, serves `web/` |
+| `infra/server1-twenty/` | Docker Compose for Caddy (TLS, the only public entry), the Source Easy server, and internal Twenty (server and worker), Postgres and Redis |
 | `infra/server2-chatwoot/` | Docker Compose for Chatwoot (rails and sidekiq), pgvector Postgres, Redis and Caddy |
 | `infra/app-servers/` | `nightly-dump.sh`, which runs on servers 1 and 2 |
 | `infra/server3-storage/` | `rotate.sh`, `restore.sh`, `healthcheck.sh`, a crontab, and the `backup-browser/` web page |
@@ -30,72 +32,91 @@ No secrets are in git. Every `*.example` file has to be copied and filled in on 
 
 ---
 
-## 1. Server 1: Twenty
+## 1. Server 1: Source Easy + Twenty (VPS)
+
+Only Caddy is public (80/443). It proxies everything to the **Source Easy server** (`api` service, :8080), which serves
+the web app and the REST API used by web and Android. Twenty, Postgres and Redis have no public ports; the server
+talks to Twenty on the docker network (`http://server:3000`) with an API key that never leaves the VPS.
 
 ```bash
 cd infra/server1-twenty
 cp .env.example .env
-# Set the domain, then generate the secrets:
 #   openssl rand -base64 32   → APP_SECRET, PG_DATABASE_PASSWORD
-docker compose up -d
+#   openssl rand -base64 48   → JWT_SECRET
+#   set SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD (min 10 chars)
+docker compose up -d server worker db redis
 docker compose logs -f server      # wait for "Nest application successfully started"
 ```
 
-Point DNS for `TWENTY_DOMAIN` at the server first, so Caddy can get a certificate. Then open `https://<domain>`, create the workspace and the first (super admin) user, and create an API key under **Settings → APIs & Webhooks**.
-
-Postgres listens on `127.0.0.1` only. It is reached for dumps through `docker compose exec`.
-
-## 2. Server 2: Chatwoot
+Twenty admin (one-time setup and object maintenance) goes through an SSH tunnel, never the internet:
 
 ```bash
-cd infra/server2-chatwoot
-cp .env.example .env               # SECRET_KEY_BASE (openssl rand -hex 64), passwords, domain, SMTP
-docker compose run --rm rails bundle exec rails db:chatwoot_prepare
-docker compose up -d
+ssh -L 3000:localhost:3000 root@<vps>     # then open http://localhost:3000
 ```
 
-1. Create the admin account. Signup is off (`ENABLE_ACCOUNT_SIGNUP=false`), so invite every staff member as an agent.
-2. Create an **API** inbox called "Source Easy internal". Note its **inbox ID** and the **account ID**, which is in the URL.
-3. Each user copies their **access token** from *Profile settings* into the app (*Settings → Chatwoot*).
-
-Each sourcing request gets one conversation, tagged with the custom attribute `sourcing_request_id`.
-
-## 3. Create the Twenty objects
+Create the workspace and first Twenty user, run the object setup (section 3), then create an API key under
+**Settings → APIs & Webhooks**, put it in `.env` as `TWENTY_API_KEY`, and start the rest:
 
 ```bash
-cd twenty-setup
-python3 setup_twenty.py --dry-run                                  # prints the plan
-TWENTY_URL=https://crm.example.com TWENTY_API_KEY=... python3 setup_twenty.py
-python3 -m unittest test_setup.py
+docker compose up -d --build api caddy    # DNS for DOMAIN must point at the VPS for the TLS certificate
+curl https://sourceec.in/api/health       # {"ok":true}
 ```
 
-The script is idempotent, so you can re-run it safely. It creates:
+The super admin from `.env` is created on first boot (only if missing). Sign in at `https://sourceec.in`, change the password
+(`POST /api/me/password`), then add staff under **Team**. Updating: `git pull && docker compose up -d --build api`.
 
-- **Lead**, **Sourcing Request**, **Supplier**, **Quotation**, **Client Approval**, **Shipping Order** and **Exchange Rate**
-- **Team Member**, which maps a login email to an app role
+Postgres listens on `127.0.0.1` only. It is reached for dumps through `docker compose exec`. App users live in SQLite in the
+`api-data` volume (`/data/users.db`); include it in backups (`docker compose cp api:/data/users.db .`).
 
-Every object gets an `office` select (INDIA / CHINA / BOTH) and a `clientRef` text field, which is used for offline idempotency. Relations are MANY_TO_ONE (for example, Quotation → Sourcing Request and Supplier). The full schema is in `schema.json`.
+### Local development
+
+```bash
+# 1. Twenty on http://localhost:3000 (e.g. this compose file with only server/worker/db/redis, or Twenty's own docker setup)
+# 2. Server
+cd server && npm ci
+TWENTY_URL=http://localhost:3000 TWENTY_API_KEY=... JWT_SECRET=$(openssl rand -hex 32) \
+SUPER_ADMIN_EMAIL=me@example.com SUPER_ADMIN_PASSWORD=change-me-now npm run dev    # :8080
+# 3. Web (proxies /api to :8080)
+cd web && npm ci && npm run dev    # http://localhost:5173
+# No Twenty? Run the server against mocked Twenty data:
+cd server && npx tsx scripts/demo-server.ts   # :8099, users china@/india@/indiaadmin@/super@sourceec.in, password demo-password-1
+# Tests
+cd server && npm test
+```
+
+Android against a local server: set the server URL on the sign-in screen to `http://<your-lan-ip>:8080`.
 
 ### Roles
 
-Add one **Team Member** record per user in Twenty. Its `email` must match the user's Twenty login. Set `role` to one of the values below.
+Users are created in the Source Easy server (super admin from env, then **Team** page or `POST /api/users`), stored in SQLite
+with bcrypt hashes; sessions are JWTs (default 12 h, revoked on password reset or disable). Creating a user also creates/updates
+the matching Twenty **Team Member** (same email) so records can be assigned to them.
 
 | Role | Sees |
 |---|---|
-| `INDIA_STAFF` | Customers and leads, and quotes in INR only. No supplier names or costs. |
-| `CHINA_STAFF` | Suppliers and raw RMB/USD costs. Customer contact details are hidden. |
-| `INDIA_ADMIN` / `CHINA_ADMIN` | Their own side, plus exchange rates. |
-| `SUPER_ADMIN` | Everything, including backup downloads. |
+| `INDIA_STAFF` | Customers and leads, and quotes in INR only (admin-set rate). No supplier identity or raw costs. |
+| `CHINA_STAFF` | Suppliers and RMB/USD costs. Only leads assigned to China, with customer name/contact removed. |
+| `INDIA_ADMIN` / `CHINA_ADMIN` | Their own side, plus creating users / resetting passwords for their side. |
+| `SUPER_ADMIN` | Everything, including exchange rates and backup links. |
 
-A user with no Team Member record cannot sign in to the app.
+**This separation is enforced in the server**: records and fields a role may not see are removed before the response leaves
+the VPS, and writes are checked per role and field (`server/src/policy.ts`, tested in `server/test/roles.test.ts`). Because
+Twenty is not exposed, staff have no other way to reach the data. Keep the number of people with SSH/Twenty admin access small.
 
-> **Important:** this visibility is enforced in the app, which only queries the allowed fields. Twenty does not yet have field-level permissions. Anyone with Twenty web access and broad permissions can still see everything. To limit that, give staff the app only, or set up Twenty roles/views filtered on `office`.
+| Endpoint | |
+|---|---|
+| `POST /api/auth/login` `{email,password}` | → `{token,user}` (5 failures → 10 min lockout per email+IP) |
+| `GET /api/me`, `POST /api/me/password` | current user / change own password |
+| `GET /api/records/:plural?field=value` | `leads, sourcingRequests, suppliers, quotations, clientApprovals, shippingOrders, exchangeRates, teamMembers` (filtered) |
+| `GET/PATCH /api/records/:plural/:id`, `POST /api/records/:plural` | role-checked read/write |
+| `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password` | admins, own side only |
+| `GET /api/backups` | super admin only (`BACKUP_LINKS`) |
 
 ### Exchange rates
 
 Prices are stored **as quoted** (RMB or USD). India views are converted to INR.
 
-- An admin sets the rate in the app (*Settings → Exchange rates*). Each change is saved as a new `Exchange Rate` row with `manual = true`.
+- The super admin sets the rate (web or app *Settings → Exchange rates*). Each change is saved as a new `Exchange Rate` row with `isManualOverride = true`. The server converts India's views to INR.
 - The newest rate wins. On the same day, a manual override beats an automatic rate.
 - Each quotation snapshots the rate it used (`exchangeRateUsed`), so old quotes don't change when the rate does.
 - Until a rate exists, the app falls back to 11.8 INR/RMB and 84 INR/USD.
@@ -182,7 +203,7 @@ keyPassword=...
 P
 ```
 
-**First run.** On the sign-in screen, enter the Twenty URL, email and password. Then enter the Chatwoot details under *Settings → Chatwoot*. The tokens are kept in Android encrypted storage.
+**First run.** On the sign-in screen, the server URL defaults to `https://sourceec.in`; enter the email and password your admin created. Then enter the Chatwoot details under *Settings → Chatwoot*. The tokens are kept in Android encrypted storage.
 
 ### Screens
 
@@ -223,18 +244,17 @@ lib/ui/         home_shell.dart, screens/, widgets/
 
 ## 6. Web dashboard
 
-`web/` is a React/Tailwind dashboard with a collapsible sidebar, ⌘K search, KPI cards with sparklines, a drag-and-drop lead pipeline, data tables with sticky headers and slide-over details, and light/dark mode. It uses the same roles and currency rules as the mobile app. Setup is in [web/README.md](web/README.md), and screenshots are in [docs/screenshots](docs/screenshots).
+`web/` is a React/Tailwind dashboard with a collapsible sidebar, ⌘K search, KPI cards with sparklines, a drag-and-drop lead pipeline, data tables with sticky headers and slide-over details, and light/dark mode. It talks only to the Source Easy server (same origin), and its navigation follows the signed-in role. Role views: [China quotations](docs/screenshots/role-china-quotations.png) vs [India quotations](docs/screenshots/role-india-quotations.png), [login](docs/screenshots/login-server.png). Setup is in [web/README.md](web/README.md), and screenshots are in [docs/screenshots](docs/screenshots).
 
 ![Dashboard](docs/screenshots/dashboard-light.png)
 
 ## Known limitations / TODO
 
-* Web live mode: the GraphQL field names follow `twenty-setup/schema.json` and have not been tested against a live Twenty yet. The role is not read from Team Member yet; live sign-in defaults to India staff.
-
-- Role visibility is enforced in the app only (see Roles above).
+- The server's Twenty REST calls follow `twenty-setup/schema.json` and Twenty's REST conventions, but are only tested against a mocked Twenty.
+- `SOURCE_EASY_WEBHOOK_URL` (Chatwoot → `/webhooks/chatwoot`) has no handler in the server yet.
+- Chat in the mobile app still talks to Chatwoot directly with the user's Chatwoot token.
 - A sourcing request created offline can't have suppliers attached until it has synced.
 - Push notifications (FCM) and the business-card scanner are not built yet.
-- The names of Twenty's login mutations have changed between versions. `twenty_auth.dart` targets current releases, so adjust it if your Twenty version differs.
 - Chat polls every 10 s instead of using websockets. "My" messages are matched by sender name.
 - The quote PDF uses the built-in Helvetica font, which has no ₹ glyph, so amounts are printed as "INR 1,234.00". To show ₹, bundle a TTF such as Noto Sans.
 - Nothing has been tested against live Twenty or Chatwoot servers yet. The automated tests use mocked HTTP.

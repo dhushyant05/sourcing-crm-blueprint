@@ -1,4 +1,4 @@
-// Mirrors mobile/lib/core/roles.dart. Presentation-level only (see README).
+// Mirrors server/src/roles.ts capabilities(). Navigation only: the server strips fields/records per role.
 export type Role = 'INDIA_STAFF' | 'CHINA_STAFF' | 'INDIA_ADMIN' | 'CHINA_ADMIN' | 'SUPER_ADMIN';
 export const roleLabel: Record<Role, string> = {
   INDIA_STAFF: 'India staff', CHINA_STAFF: 'China staff', INDIA_ADMIN: 'India admin', CHINA_ADMIN: 'China admin', SUPER_ADMIN: 'Super admin',
@@ -8,7 +8,7 @@ export function perms(role: Role) {
   const china = role === 'SUPER_ADMIN' || role.startsWith('CHINA');
   return {
     customers: india, suppliers: china, rawCost: china, clientPricing: india,
-    rates: role.endsWith('ADMIN'), backups: role === 'SUPER_ADMIN',
+    rates: role === 'SUPER_ADMIN', backups: role === 'SUPER_ADMIN', manageUsers: role.endsWith('ADMIN'),
     currencies: [...(china ? (['CNY', 'USD'] as const) : []), ...(india ? (['INR'] as const) : [])],
   };
 }
