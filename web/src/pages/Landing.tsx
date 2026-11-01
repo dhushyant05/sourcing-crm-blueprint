@@ -16,31 +16,32 @@ export function Landing() {
       <header className="fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-ink-950/70 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           <a href="/" className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-cyan-400 font-bold text-white shadow-lg shadow-brand-500/30">S</span>
-            <span className="text-[17px] font-semibold tracking-tight text-white">Source Easy</span>
+            <img src="/brand/mark.png" alt="" className="h-9 w-9 object-contain" />
+            <span className="hidden text-[17px] font-semibold tracking-tight text-white sm:inline">Source Easy</span>
           </a>
           <nav className="ml-8 hidden gap-6 text-sm text-white/70 lg:flex">
             {(['how', 'services', 'categories', 'contact'] as const).map((k) => <a key={k} href={`#${k}`} className="transition hover:text-white">{l(`nav.${k}`)}</a>)}
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitch />
-            <a href="/app" data-testid="staff-login" className="inline-flex min-h-[36px] items-center rounded-lg bg-white px-3 text-sm font-medium text-ink-900 transition hover:bg-brand-50">{l('staffLogin')}</a>
+            <a href="/app" data-testid="staff-login" className="whitespace-nowrap inline-flex min-h-[36px] whitespace-nowrap items-center rounded-lg bg-white px-3 text-sm font-medium text-ink-900 transition hover:bg-brand-50">{l('staffLogin')}</a>
           </div>
         </div>
       </header>
 
       <section className="relative overflow-hidden bg-ink-950 pb-24 pt-32 text-white sm:pb-32 sm:pt-40">
         <div className="pointer-events-none absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-brand-600/40 blur-3xl animate-[pulse_8s_ease-in-out_infinite]" />
-        <div className="pointer-events-none absolute -right-32 top-20 h-[28rem] w-[28rem] rounded-full bg-cyan-500/25 blur-3xl animate-[pulse_10s_ease-in-out_infinite]" />
+        <div className="pointer-events-none absolute -right-32 top-20 h-[28rem] w-[28rem] rounded-full bg-accent-500/25 blur-3xl animate-[pulse_10s_ease-in-out_infinite]" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 animate-fade-in">
+          <img src="/brand/lockup.png" alt="Source Easy" data-testid="hero-logo" className="mb-8 h-28 w-auto object-contain sm:h-36" />
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-white/80"><Globe2 size={14} />{l('hero.badge')}</span>
           <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
-            {l('hero.title')}<br /><span className="bg-gradient-to-r from-brand-200 via-cyan-300 to-emerald-300 bg-clip-text text-transparent">{l('hero.titleAccent')}</span>
+            {l('hero.title')}<br /><span className="bg-gradient-to-r from-brand-200 via-brand-300 to-accent-300 bg-clip-text text-transparent">{l('hero.titleAccent')}</span>
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-white/70 sm:text-lg">{l('hero.sub')}</p>
           <div className="mt-9 flex flex-wrap gap-3">
-            <a href="#contact" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-cyan-500 px-6 font-medium shadow-lg shadow-brand-600/30 transition hover:brightness-110">{l('hero.cta')}<ArrowRight size={18} /></a>
+            <a href="#contact" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-6 font-medium shadow-lg shadow-brand-600/30 transition hover:brightness-110">{l('hero.cta')}<ArrowRight size={18} /></a>
             <a href={WA} target="_blank" rel="noreferrer" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-6 font-medium transition hover:bg-white/10"><MessageCircle size={18} />{l('hero.whatsapp')}</a>
           </div>
         </div>
@@ -50,7 +51,7 @@ export function Landing() {
         <ol className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {[ClipboardList, Factory, FileText, Ship].map((I, i) => (
             <li key={i} className="group relative rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lift">
-              <div className="flex items-center justify-between"><span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-cyan-500 text-white"><I size={20} /></span><span className="text-4xl font-semibold text-ink-100">0{i + 1}</span></div>
+              <div className="flex items-center justify-between"><span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 text-white"><I size={20} /></span><span className="text-4xl font-semibold text-ink-100">0{i + 1}</span></div>
               <h3 className="mt-5 font-semibold text-ink-900">{l(`how.s${i + 1}`)}</h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-500">{l(`how.d${i + 1}`)}</p>
             </li>
@@ -77,7 +78,7 @@ export function Landing() {
         </div>
       </Section>
 
-      <section className="bg-gradient-to-r from-brand-700 via-brand-600 to-cyan-600 py-14 text-white">
+      <section className="bg-gradient-to-r from-brand-700 via-brand-600 to-accent-600 py-14 text-white">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <h2 className="text-center text-lg font-medium text-white/80">{l('stats.title')}</h2>
           <dl className="mt-8 grid grid-cols-2 gap-6 text-center lg:grid-cols-4">
@@ -92,10 +93,10 @@ export function Landing() {
             <div className="rounded-2xl bg-ink-950 p-6 text-white">
               <div className="text-lg font-semibold">{l('contact.company')}</div>
               <ul className="mt-5 space-y-4 text-sm text-white/80">
-                <li className="flex gap-3"><MapPin size={18} className="shrink-0 text-cyan-300" />{l('contact.city')}</li>
-                <li><a className="flex gap-3 hover:text-white" href={`tel:${TEL}`}><Phone size={18} className="shrink-0 text-cyan-300" />{PHONE}</a></li>
-                <li><a className="flex gap-3 break-all hover:text-white" href={`mailto:${EMAIL}`}><Mail size={18} className="shrink-0 text-cyan-300" />{EMAIL}</a></li>
-                <li><a className="flex gap-3 hover:text-white" href={WA} target="_blank" rel="noreferrer"><MessageCircle size={18} className="shrink-0 text-cyan-300" />{l('hero.whatsapp')}</a></li>
+                <li className="flex gap-3"><MapPin size={18} className="shrink-0 text-accent-300" />{l('contact.city')}</li>
+                <li><a className="flex gap-3 hover:text-white" href={`tel:${TEL}`}><Phone size={18} className="shrink-0 text-accent-300" />{PHONE}</a></li>
+                <li><a className="flex gap-3 break-all hover:text-white" href={`mailto:${EMAIL}`}><Mail size={18} className="shrink-0 text-accent-300" />{EMAIL}</a></li>
+                <li><a className="flex gap-3 hover:text-white" href={WA} target="_blank" rel="noreferrer"><MessageCircle size={18} className="shrink-0 text-accent-300" />{l('hero.whatsapp')}</a></li>
               </ul>
             </div>
           </div>
@@ -103,7 +104,7 @@ export function Landing() {
         </div>
       </Section>
 
-      <footer className="border-t border-ink-100 py-8 text-center text-sm text-ink-500">{t('landing.footer', { year: new Date().getFullYear() })}</footer>
+      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-4 h-16 w-auto object-contain" />{t('landing.footer', { year: new Date().getFullYear() })}</footer>
     </div>
   );
 }
@@ -146,8 +147,8 @@ function EnquiryForm() {
       <input name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
       <textarea name="message" rows={3} placeholder={l('msg')} aria-label={l('msg')} className={`${f} py-3 sm:col-span-2`} />
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-        <button disabled={st === 'busy'} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-cyan-600 px-6 font-medium text-white shadow-md transition hover:brightness-110 disabled:opacity-60"><Send size={16} />{st === 'busy' ? l('sending') : l('send')}</button>
-        {st === 'ok' && <p className="text-sm text-emerald-600">{l('ok')}</p>}
+        <button disabled={st === 'busy'} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 px-6 font-medium text-white shadow-md transition hover:brightness-110 disabled:opacity-60"><Send size={16} />{st === 'busy' ? l('sending') : l('send')}</button>
+        {st === 'ok' && <p className="text-sm text-accent-600">{l('ok')}</p>}
         {st === 'err' && <p className="text-sm text-rose-600">{l('err')}</p>}
         {st === 'need' && <p className="text-sm text-amber-600">{l('need')}</p>}
       </div>

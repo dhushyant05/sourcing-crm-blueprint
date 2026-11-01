@@ -21,14 +21,15 @@ export function Login() {
   };
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-ink-900 p-12 text-white lg:flex lg:flex-col">
-        <div className="flex items-center gap-2.5"><div className="grid h-9 w-9 place-items-center rounded-xl bg-white/15 font-bold backdrop-blur">S</div><span className="text-lg font-semibold">{t('app.name')}</span></div>
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-accent-600 p-12 text-white lg:flex lg:flex-col">
+        <div className="flex items-center gap-2.5"><div className="grid h-11 w-11 place-items-center rounded-xl bg-white p-1 shadow"><img src="/brand/mark.png" alt="" className="h-full w-full object-contain" /></div><span className="text-lg font-semibold">{t('app.name')}</span></div>
         <div className="mt-auto max-w-md"><h1 className="text-3xl font-semibold leading-tight tracking-tight">{t('login.tagline')}</h1><p className="mt-4 text-brand-100">{t('login.sub')}</p></div>
         <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
       </div>
       <div className="relative flex items-center justify-center p-8">
         <LanguageSwitch className="absolute right-6 top-6" />
         <form className="w-full max-w-sm animate-fade-in" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+          <img src="/brand/lockup.png" alt="Source Easy" data-testid="login-logo" className="mb-8 h-24 w-auto object-contain" />
           <h2 className="text-xl font-semibold tracking-tight text-ink-900 dark:text-white">{t('login.title')}</h2>
           <p className="mt-1 text-sm text-ink-500">{t('login.hint')}</p>
           <div className="mt-6 space-y-4">

@@ -20,7 +20,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const transit = ships?.filter((s) => s.stage !== 'DELIVERED').length ?? 0;
 
   const kpis = [
-    { label: t('dashboard.openLeads'), value: String(open), delta: 12.5, series: [4, 6, 5, 8, 7, 9, 11, open], color: '#6366f1' },
+    { label: t('dashboard.openLeads'), value: String(open), delta: 12.5, series: [4, 6, 5, 8, 7, 9, 11, open], color: '#2a9fd6' },
     perms.clientPricing
       ? { label: t('dashboard.quotedPipeline'), hint: t('dashboard.perCurrency'), value: pipeline.map(([c, v]) => money(v, c, true)).join(' · ') || '—', delta: 8.2, series: [3, 4, 4, 6, 5, 7, 8, 9], color: '#14b8a6' }
       : { label: t('dashboard.quotesSent'), value: String(quotes?.length ?? 0), delta: 8.2, series: [1, 2, 2, 3, 3, 4, 5, 6], color: '#14b8a6' },

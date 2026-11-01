@@ -35,6 +35,9 @@ class QuotePdf {
       // Chinese client/product names: Noto Sans SC subset to GB2312 (~6.8k common hanzi, 2.2 MB).
       fontFallback: [pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansSC-GB2312.ttf'))],
     );
+    final logo = pw.MemoryImage((await rootBundle.load('assets/brand/mark.png')).buffer.asUint8List());
+    const brandBlue = PdfColor.fromInt(0xFF2A9FD6);
+    const brandGreen = PdfColor.fromInt(0xFF56A33A);
     final doc = pw.Document(title: 'Quotation ${q.quoteNo}', author: 'Source Easy', theme: theme);
     // Shown exactly in the currency India entered — never converted.
     String money(double v) => formatMoneyCode(v, q.currency);
@@ -43,9 +46,13 @@ class QuotePdf {
       margin: const pw.EdgeInsets.all(40),
       build: (ctx) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            pw.Text('Source Easy', style: pw.TextStyle(fontSize: 26, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo)),
-            pw.Text('sourceeasy.in'),
+          pw.Row(children: [
+            pw.Image(logo, width: 56, height: 56),
+            pw.SizedBox(width: 10),
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('Source Easy', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: brandBlue)),
+              pw.Text('sourceeasy.in', style: const pw.TextStyle(color: brandGreen)),
+            ]),
           ]),
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
             pw.Text('QUOTATION', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
@@ -62,7 +69,7 @@ class QuotePdf {
           headers: ['Product', 'Qty', 'Unit price', 'Amount'],
           data: [[q.product, NumberFormat('#,##0').format(q.quantity), money(q.unitPrice), money(q.total)]],
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
+          headerDecoration: const pw.BoxDecoration(color: brandBlue),
           cellAlignments: {1: pw.Alignment.centerRight, 2: pw.Alignment.centerRight, 3: pw.Alignment.centerRight},
         ),
         pw.SizedBox(height: 10),

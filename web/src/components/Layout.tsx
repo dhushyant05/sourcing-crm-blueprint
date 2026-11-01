@@ -45,7 +45,7 @@ export function Layout({ route, go, search, setSearch, children }: {
           <div className="absolute inset-0 bg-ink-900/30 animate-fade-in" onClick={() => setDrawer(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-white shadow-lift animate-fade-in dark:bg-ink-900">
             <div className="flex h-14 items-center gap-2.5 px-4">
-              <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white">S</div>
+              <img src="/brand/mark.png" alt="" className="h-8 w-8 shrink-0 object-contain" />
               <span className="flex-1 font-semibold text-ink-900 dark:text-white">Source Easy</span>
               <button className="btn-ghost p-2" onClick={() => setDrawer(false)} aria-label={t('common.close')}><X size={20} /></button>
             </div>
@@ -67,7 +67,7 @@ export function Layout({ route, go, search, setSearch, children }: {
       )}
       <aside className={clsx('hidden shrink-0 md:flex flex-col border-r border-ink-200/70 bg-white/80 backdrop-blur transition-[width] duration-300 dark:border-ink-800 dark:bg-ink-900/60', collapsed ? 'w-[72px]' : 'w-60')}>
         <div className="flex h-16 items-center gap-2.5 px-5">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white shadow-sm">S</div>
+          <img src="/brand/mark.png" alt="" className="h-8 w-8 shrink-0 object-contain" />
           {!collapsed && <span className="truncate text-[15px] font-semibold tracking-tight text-ink-900 dark:text-white">Source Easy</span>}
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">

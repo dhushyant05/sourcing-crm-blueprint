@@ -30,6 +30,15 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   sqflite_common_ffi: ^2.3.7+1
   sqlite3: ^2.9.4
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/brand/launcher.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/brand/launcher_fg.png
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
@@ -38,6 +47,8 @@ flutter:
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/NotoSans-Bold.ttf
     - assets/fonts/NotoSansSC-GB2312.ttf
+    - assets/brand/mark.png
+    - assets/brand/lockup.png
   fonts:
     - family: Inter
       fonts:

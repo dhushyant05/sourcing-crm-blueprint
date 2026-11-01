@@ -15,9 +15,9 @@ void main() {
 class SourceEasyApp extends StatelessWidget {
   const SourceEasyApp({super.key});
 
-  /// Matches the web dashboard: indigo brand accent, slate neutrals, Inter,
+  /// Matches the web dashboard: Source Easy logo blue brand accent, slate neutrals, Inter,
   /// 12-16px radii and soft, low-elevation surfaces.
-  static const brand = Color(0xFF4F46E5);
+  static const brand = Color(0xFF2A9FD6); // logo blue (gradient to #6CC04A green)
 
   static ThemeData theme(Brightness b) {
     final dark = b == Brightness.dark;

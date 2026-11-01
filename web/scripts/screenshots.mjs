@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 
 const out = new URL('../../docs/screenshots/', import.meta.url).pathname;
-const srv = spawn('npx', ['vite', 'preview', '--port', '4319', '--strictPort'], { stdio: 'ignore' });
+const srv = spawn('npx', ['vite', 'preview', '--port', '4319', '--strictPort'], { stdio: 'ignore', detached: true });
 await new Promise((r) => setTimeout(r, 2500));
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome', args: ['--no-sandbox'] });
 try {
@@ -11,7 +11,7 @@ try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, colorScheme: theme });
     await page.goto('http://localhost:4319/app');
     await page.evaluate((t) => { localStorage.setItem('theme', t); localStorage.setItem('se.lang', 'en'); }, theme);
-    if (theme === 'light') { await page.reload(); await page.screenshot({ path: `${out}login.png` }); }
+    if (theme === 'light') { await page.reload(); await page.waitForTimeout(800); await page.screenshot({ path: `${out}login.png` }); }
     await page.reload();
     await page.getByText('Explore with demo data').click();
     const shot = async (hash, name, extra) => {
@@ -56,10 +56,10 @@ try {
       await shot('/leads', 'zh-leads-board');
       await shot('/settings', 'zh-settings');
       await page.getByRole('button', { name: '退出登录' }).click(); await page.waitForTimeout(500);
-      await page.screenshot({ path: `${out}zh-login.png` });
+      await page.waitForTimeout(800); await page.screenshot({ path: `${out}zh-login.png` });
       await page.evaluate(() => localStorage.setItem('se.lang', 'en'));
     }
     await page.close();
   }
-} finally { await browser.close(); srv.kill(); }
+} finally { await browser.close(); process.kill(-srv.pid); }
 console.log('screenshots written to', out);

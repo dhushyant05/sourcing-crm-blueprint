@@ -59,7 +59,7 @@ export function Empty({ title, hint, action }: { title: string; hint?: string; a
   );
 }
 
-export function Sparkline({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
+export function Sparkline({ data, color = '#2a9fd6' }: { data: number[]; color?: string }) {
   const w = 120, h = 36, max = Math.max(...data), min = Math.min(...data);
   const pts = data.map((v, i) => [(i / (data.length - 1)) * w, h - 4 - ((v - min) / (max - min || 1)) * (h - 8)]);
   const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');

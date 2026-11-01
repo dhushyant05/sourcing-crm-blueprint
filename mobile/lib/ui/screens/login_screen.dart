@@ -49,9 +49,8 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             child: AutofillGroup(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Icon(Icons.hub, size: 64, color: t.colorScheme.primary),
+                Image.asset('assets/brand/lockup.png', height: 150, semanticLabel: 'Source Easy'),
                 const SizedBox(height: 8),
-                Text('Source Easy', textAlign: TextAlign.center, style: t.textTheme.headlineMedium),
                 Text(context.l10n.indiaChinaSourcing, textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
                 const SizedBox(height: 32),
                 TextField(controller: _email, keyboardType: TextInputType.emailAddress,
