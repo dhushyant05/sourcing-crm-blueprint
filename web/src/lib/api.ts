@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -50,6 +50,15 @@ export interface Api {
   quoteFileUrl(id: string, a: Attachment): Promise<string>;
   deleteQuoteFile(id: string, fid: string): Promise<void>;
   quoteSuppliers(): Promise<QuoteSupplier[]>;
+  /** Every quote across the leads this user can read (role-filtered on the server). */
+  allQuotes(f?: { status?: string; office?: string; mine?: boolean }): Promise<LeadQuote[]>;
+  saveCustomerQuote(id: string, c: Partial<Record<keyof CustomerQuote, string | number | null>>): Promise<LeadQuote>;
+  quotePdf(id: string): Promise<LeadQuote>;
+  setQuoteStatus(id: string, status: string, reason?: string): Promise<LeadQuote>;
+  createOrder(quoteId: string, b: Record<string, unknown>): Promise<Order>;
+  orders(): Promise<Order[]>;
+  updateOrder(id: string, b: Record<string, unknown>): Promise<Order>;
+  setRaiser(leadId: string, userId: string | null): Promise<Lead>;
   /** Downloads one file with the staff token (never a public URL) and returns a blob: URL. */
   attachmentUrl(leadId: string, a: Attachment): Promise<string>;
 }
@@ -169,6 +178,17 @@ export class ServerApi implements Api {
   }
   async deleteQuoteFile(id: string, fid: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}/files/${encodeURIComponent(fid)}`); }
   quoteSuppliers() { return this.req<QuoteSupplier[]>('GET', '/suppliers'); }
+  allQuotes(f: { status?: string; office?: string; mine?: boolean } = {}) {
+    const p = new URLSearchParams(); if (f.status) p.set('status', f.status); if (f.office) p.set('office', f.office); if (f.mine) p.set('mine', '1');
+    return this.req<LeadQuote[]>('GET', `/quotes${p.size ? `?${p}` : ''}`);
+  }
+  saveCustomerQuote(id: string, c: object) { return this.req<LeadQuote>('PUT', `/quotes/${encodeURIComponent(id)}/customer`, c); }
+  quotePdf(id: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/pdf`); }
+  setQuoteStatus(id: string, status: string, reason?: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/status`, { status, reason }); }
+  createOrder(quoteId: string, b: Record<string, unknown>) { return this.req<Order>('POST', `/quotes/${encodeURIComponent(quoteId)}/order`, b); }
+  orders() { return this.req<Order[]>('GET', '/orders'); }
+  updateOrder(id: string, b: Record<string, unknown>) { return this.req<Order>('PATCH', `/orders/${encodeURIComponent(id)}`, b); }
+  setRaiser(leadId: string, userId: string | null) { return this.req<Lead>('POST', `/leads/${encodeURIComponent(leadId)}/assign`, { raisedBy: userId }); }
   uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void) { return this.xhrUpload<Attachment[]>(`/api/leads/${encodeURIComponent(leadId)}/attachments`, files, onProgress); }
   /** XHR (not fetch) so large videos show upload progress. */
   private xhrUpload<T>(url: string, files: File[], onProgress?: (pct: number) => void) {
@@ -215,6 +235,16 @@ export class DemoApi implements Api {
   async attachments(leadId: string) { return structuredClone(demo.attachments[leadId] ?? []); }
   private dq: LeadQuote[] = []; private ds: QuoteSupplier[] = [{ id: 'ds1', name: 'Yiwu Hardware Co.', contact: 'Ms Li', phone: '+86 139 0000 0000', wechat: 'yiwu_hw', city: 'Yiwu' }];
   async quotes(leadId: string) { return structuredClone(this.dq.filter((q) => q.leadId === leadId)); }
+  async allQuotes() { return structuredClone(this.dq.map((q) => ({ ...q, status: q.status ?? 'DRAFT', leadRef: demo.leads.find((l) => l.id === q.leadId)?.leadRef ?? null }))); }
+  async saveCustomerQuote(id: string, c: any) { const q = this.dq.find((x) => x.id === id)!; const n = (k: string) => Number(c[k] ?? 0); q.cq = { qty: n('qty'), unitPrice: n('unitPrice'), gstPct: n('gstPct'), shipCost: n('shipCost'), otherCharges: n('otherCharges'), shipTerm: c.shipTerm ?? null, shipMode: c.shipMode ?? null, port: c.port ?? null, transit: c.transit ?? null, otherLabel: c.otherLabel ?? null, validity: c.validity ?? null, terms: c.terms ?? null };
+    const sub = q.cq.qty * q.cq.unitPrice, tx = sub + q.cq.shipCost + q.cq.otherCharges; q.cqTotals = { subtotal: sub, taxable: tx, gst: tx * q.cq.gstPct / 100, total: tx * (1 + q.cq.gstPct / 100) }; q.clientPrice = q.cq.unitPrice; return structuredClone(q); }
+  async quotePdf(id: string) { const q = this.dq.find((x) => x.id === id)!; q.pdfUrl = '#demo'; return structuredClone(q); }
+  async setQuoteStatus(id: string, status: string, reason?: string) { const q = this.dq.find((x) => x.id === id)!; Object.assign(q, { status, rejectReason: reason ?? null, ...(status === 'SENT' ? { sentAt: new Date().toISOString() } : {}) }); return structuredClone(q); }
+  private dor: Order[] = [];
+  async createOrder(quoteId: string, b: any) { const q = this.dq.find((x) => x.id === quoteId)!; const o: Order = { id: `do${Date.now()}`, leadId: q.leadId, quoteId, leadRef: null, product: q.product, qty: Number(b.qty ?? q.cq?.qty ?? 0), agreedPrice: Number(b.agreedPrice ?? q.cq?.unitPrice ?? 0), advance: Number(b.advance ?? 0), paymentStatus: b.paymentStatus ?? 'PENDING', expectedShip: b.expectedShip ?? null, production: 'NEW', tracking: null, container: null, etd: null, eta: null, indiaStatus: 'NONE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), leadStatus: 'WON' }; this.dor.push(o); q.orderId = o.id; return structuredClone(o); }
+  async orders() { return structuredClone(this.dor); }
+  async updateOrder(id: string, b: any) { const o = this.dor.find((x) => x.id === id)!; Object.assign(o, b); return structuredClone(o); }
+  async setRaiser(leadId: string, userId: string | null) { const l = demo.leads.find((x) => x.id === leadId)!; Object.assign(l, { raisedBy: userId, raisedByName: demoStaff.find((s) => s.id === userId)?.name ?? null }); return structuredClone(l); }
   async createQuote(leadId: string, q: QuoteInput) {
     let supplierId = q.supplierId ?? null;
     if (q.newSupplier) { const s = { id: `ds${Date.now()}`, ...q.newSupplier }; this.ds.push(s); supplierId = s.id; }

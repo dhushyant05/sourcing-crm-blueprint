@@ -14,7 +14,7 @@ export interface Lead {
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -38,8 +38,27 @@ export interface LeadQuote {
   clientPrice?: number | null; clientCurrency?: string | null; clientNotes?: string | null;
   supplierId?: string | null; supplier?: QuoteSupplier | null; canEdit?: boolean; createdBy?: string; createdByName?: string | null;
   files: Attachment[]; createdAt: string; updatedAt?: string;
+  shipCost?: number | null; shipCurrency?: QuoteCurrency | null; shipTerm?: string | null; shipMode?: string | null; shipPort?: string | null; shipTransit?: string | null;
+  status?: QuoteStatus; sentAt?: string | null; decidedAt?: string | null; rejectReason?: string | null; orderId?: string | null;
+  cq?: CustomerQuote | null; cqTotals?: { subtotal: number; taxable: number; gst: number; total: number } | null; pdfUrl?: string | null;
+  // only on the all-quotes list
+  leadRef?: string | null; leadStatus?: string | null; ownerOffice?: Office; assignedTo?: string | null; assignedToName?: string | null;
 }
-export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId'>> & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
+export type QuoteStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED';
+export const INCOTERMS = ['EXW', 'FOB', 'CIF', 'CFR', 'DDP', 'DAP', 'DOOR'] as const;
+export const SHIP_MODES = ['AIR', 'SEA', 'EXPRESS', 'ROAD'] as const;
+export interface CustomerQuote {
+  qty: number; unitPrice: number; gstPct: number; shipCost: number; shipTerm: string | null; shipMode: string | null; port: string | null; transit: string | null;
+  otherCharges: number; otherLabel: string | null; validity: string | null; terms: string | null;
+}
+export interface Order {
+  id: string; leadId: string; quoteId: string; leadRef: string | null; product: string; qty: number; expectedShip: string | null;
+  production: string; tracking: string | null; container: string | null; etd: string | null; eta: string | null; indiaStatus: string;
+  createdAt: string; updatedAt: string; leadStatus: string | null;
+  agreedPrice?: number; advance?: number; paymentStatus?: string; total?: number; customer?: string | null; assignedToName?: string | null;
+  supplier?: QuoteSupplier | null; unitPrice?: number | null; currency?: string | null; shipCost?: number | null; shipCurrency?: string | null;
+}
+export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId' | 'shipTerm' | 'shipMode' | 'shipPort' | 'shipTransit' | 'shipCurrency'>> & { shipCost?: number | string | null } & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
 export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string }
 export interface BackupLink { label: string; url: string }
 

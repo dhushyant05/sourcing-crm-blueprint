@@ -4,6 +4,7 @@ import { Layout, type Route } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { LeadPanel, Leads } from './pages/Leads';
 import { Quotations } from './pages/Quotations';
+import { Orders } from './pages/Orders';
 import { Shipping } from './pages/Shipping';
 import { Suppliers } from './pages/Suppliers';
 import { Settings } from './pages/Settings';
@@ -13,7 +14,7 @@ import { Landing } from './pages/Landing';
 import { DownloadPage } from './pages/Download';
 import type { Lead } from './lib/types';
 
-const routes: Route[] = ['dashboard', 'leads', 'quotations', 'shipping', 'suppliers', 'users', 'settings'];
+const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'suppliers', 'users', 'settings'];
 const fromHash = (): Route => (routes.find((r) => location.hash === `#/${r}`) ?? 'dashboard');
 
 function Shell() {
@@ -28,7 +29,8 @@ function Shell() {
     <Layout openLeadId={(id) => { void api.lead(id).then((l) => l && setLead(l)); }} route={route} go={go} search={search} setSearch={(s) => { setSearch(s); if (s && route === 'dashboard') go('leads'); }}>
       {route === 'dashboard' && <Dashboard openLead={setLead} />}
       {route === 'leads' && <Leads search={search} openLead={setLead} />}
-      {route === 'quotations' && <Quotations search={search} />}
+      {route === 'quotations' && <Quotations search={search} openLead={setLead} />}
+      {route === 'orders' && <Orders search={search} openLead={setLead} />}
       {route === 'shipping' && <Shipping search={search} />}
       {route === 'suppliers' && perms.suppliers && <Suppliers search={search} />}
       {route === 'users' && perms.manageUsers && <Team />}

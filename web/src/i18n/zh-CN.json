@@ -17,7 +17,8 @@
     "settings": "设置",
     "collapse": "收起",
     "more": "更多",
-    "toggleSidebar": "切换侧栏"
+    "toggleSidebar": "切换侧栏",
+    "orders": "订单"
   },
   "header": {
     "search": "按参考编号、线索、产品搜索…",
@@ -430,7 +431,15 @@
     "RETURNED_nobody": "{{ref}} 已退回给您",
     "QUEUE": "{{ref}} 正在{{office}}队列中等待分配",
     "newEnquiry": "新的网站询盘 {{ref}} 已进入印度队列",
-    "unread": "{{n}} 条未读"
+    "unread": "{{n}} 条未读",
+    "QUOTE_ACCEPTED": "{{by}}：客户已接受 {{ref}} 的报价",
+    "QUOTE_REJECTED": "{{by}}：客户已拒绝 {{ref}} 的报价",
+    "ORDER_NEW": "{{by}} 为 {{ref}} 创建了订单",
+    "ORDER_UPDATE": "{{by}} 更新了 {{ref}} 的订单",
+    "QUOTE_ACCEPTED_nobody": "客户已接受 {{ref}} 的报价",
+    "QUOTE_REJECTED_nobody": "客户已拒绝 {{ref}} 的报价",
+    "ORDER_NEW_nobody": "为 {{ref}} 创建了订单",
+    "ORDER_UPDATE_nobody": "更新了 {{ref}} 的订单"
   },
   "lq": {
     "title": "供应商报价",
@@ -464,6 +473,144 @@
     "confirmDelete": "删除“{{p}}”的报价？",
     "errProduct": "请填写产品 / 型号。",
     "errPrice": "请填写有效单价。",
-    "errSupplier": "请填写新供应商名称。"
+    "errSupplier": "请填写新供应商名称。",
+    "shipFrom": "供应商运输"
+  },
+  "ship": {
+    "title": "运输",
+    "cost": "运费",
+    "costInr": "运费（₹ 印度卢比）",
+    "term": "贸易条款（Incoterm）",
+    "mode": "运输方式",
+    "port": "港口 / 目的地",
+    "transit": "运输时间",
+    "none": "— 请选择 —",
+    "terms": {
+      "EXW": "EXW（工厂交货）",
+      "FOB": "FOB（船上交货）",
+      "CIF": "CIF（成本、保险加运费）",
+      "CFR": "CFR（成本加运费）",
+      "DDP": "DDP（完税后交货）",
+      "DAP": "DAP（目的地交货）",
+      "DOOR": "门到门"
+    },
+    "modes": {
+      "AIR": "空运",
+      "SEA": "海运",
+      "EXPRESS": "快递",
+      "ROAD": "陆运"
+    }
+  },
+  "qs": {
+    "DRAFT": "草稿",
+    "SENT": "已发客户",
+    "ACCEPTED": "已接受",
+    "REJECTED": "已拒绝"
+  },
+  "cq": {
+    "prepare": "准备客户报价",
+    "editPrepared": "编辑客户报价",
+    "title": "客户报价",
+    "unitPrice": "单价售价（₹ 印度卢比）",
+    "qty": "数量",
+    "gst": "GST %",
+    "other": "其他费用（₹）",
+    "otherLabel": "其他费用名称",
+    "otherLabelPh": "例如：包装、保险",
+    "validity": "有效期",
+    "validityPh": "例如：15 天",
+    "terms": "给客户的条款 / 备注",
+    "preview": "预览",
+    "back": "返回编辑",
+    "subtotal": "产品小计",
+    "shipping": "运费",
+    "gstAmt": "GST @ {{p}}%",
+    "total": "合计（INR）",
+    "generate": "生成 PDF",
+    "regenerate": "更新 PDF",
+    "download": "下载 PDF",
+    "whatsapp": "WhatsApp",
+    "email": "邮件",
+    "markSent": "标记为已发送",
+    "sentOn": "已于 {{d}} 发给客户",
+    "accept": "客户已接受",
+    "reject": "客户已拒绝",
+    "rejectReason": "客户拒绝的原因？（必填）",
+    "decided": "{{d}} {{s}}",
+    "reopen": "重新设为草稿",
+    "createOrder": "创建订单",
+    "viewOrder": "订单已创建 — 在订单中查看",
+    "noCustomerSide": "对中国隐藏：客户价格和信息。",
+    "msg": "您好 {{name}}，这是我们关于 {{product}} 的报价单 {{ref}}：{{url}}\n— Source Easy (Fortune Engineering), +91 72995 41489",
+    "subject": "报价单 {{ref}} – {{product}}",
+    "noPhone": "此线索没有客户电话 — WhatsApp 将不带号码打开。",
+    "errQty": "请输入数量。",
+    "errPrice": "请输入单价售价。",
+    "pdfHint": "PDF 显示 Source Easy 品牌、产品、图片和卢比合计 — 不含供应商和中国成本。",
+    "wonLost": "线索已移至 {{s}}。"
+  },
+  "qlist": {
+    "title": "报价",
+    "subtitle": "所有线索的供应商报价",
+    "none": "暂无报价",
+    "noneHint": "中国团队在线索上添加供应商报价后会显示在这里。",
+    "allStatus": "全部状态",
+    "allOffices": "两个办公室",
+    "mine": "分配给我",
+    "quote": "报价",
+    "china": "中国价格",
+    "india": "售价（INR）",
+    "leadStatus": "线索",
+    "owner": "负责方"
+  },
+  "orders": {
+    "title": "订单",
+    "subtitle": "已接受的报价：生产与发货",
+    "none": "暂无订单",
+    "noneHint": "客户接受报价后，选择“创建订单”。",
+    "create": "创建订单",
+    "qty": "数量",
+    "agreed": "约定单价（₹ INR）",
+    "advance": "已收预付款（₹）",
+    "payment": "付款状态",
+    "expectedShip": "预计发货日期",
+    "total": "订单金额",
+    "production": "生产",
+    "tracking": "物流单号",
+    "container": "集装箱号",
+    "etd": "预计离港",
+    "eta": "预计到港",
+    "shipment": "货运（印度）",
+    "customer": "客户",
+    "supplier": "供应商",
+    "chinaCost": "中国成本",
+    "save": "保存",
+    "saved": "已保存",
+    "chinaPart": "中国更新",
+    "indiaPart": "印度更新",
+    "pay": {
+      "PENDING": "未付款",
+      "PARTIAL": "部分付款",
+      "PAID": "已付清"
+    },
+    "prod": {
+      "NEW": "新订单",
+      "DEPOSIT_PAID": "已付供应商定金",
+      "IN_PRODUCTION": "生产中",
+      "READY": "已备货",
+      "SHIPPED": "已发货"
+    },
+    "ind": {
+      "NONE": "尚未发货",
+      "IN_TRANSIT": "运输中",
+      "CUSTOMS": "清关中",
+      "DELIVERED": "已送达"
+    }
+  },
+  "raiser": {
+    "label": "提出人",
+    "none": "未设置",
+    "set": "设置提出人",
+    "hint": "报价或退回的线索会回到此人。"
   }
 }

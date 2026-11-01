@@ -175,6 +175,24 @@ export function FilePicker({ onPick, onError }: { onPick: (f: File[]) => void; o
   </>);
 }
 
+/** India admin / super admin: set who raised the lead (public enquiries, older leads). Quoted/returned leads go back to them. */
+function RaiserPicker({ lead, onChange }: { lead: Lead; onChange: (l: Lead) => void }) {
+  const { api, session } = useApp(); const { t } = useTranslation();
+  const [staff, setStaff] = useState<StaffLite[] | null>(null), [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api.staff('INDIA').then(setStaff).catch(() => setStaff([])); }, [api]);
+  const opts = [...(staff ?? [])];
+  if (session?.role === 'SUPER_ADMIN' && session.id && !opts.some((s) => s.id === session.id)) opts.unshift({ id: session.id, name: session.name ?? 'Super admin', role: 'SUPER_ADMIN' } as StaffLite);
+  if (lead.raisedBy && !opts.some((s) => s.id === lead.raisedBy)) opts.unshift({ id: lead.raisedBy, name: lead.raisedByName ?? '—', role: 'INDIA_STAFF' } as StaffLite);
+  return (<span className="block">
+    <select data-testid="raised-by" aria-label={t('raiser.label')} className="input !py-1 text-sm" value={lead.raisedBy ?? ''} title={t('raiser.hint')}
+      onChange={async (e) => { setErr(null); try { onChange(await api.setRaiser(lead.id, e.target.value || null)); } catch (x) { setErr((x as Error).message); } }}>
+      <option value="">{t('raiser.none')}</option>
+      {opts.map((s) => <option key={s.id} value={s.id}>{s.name} · {t(`role.${s.role}`)}</option>)}
+    </select>
+    {err && <span role="alert" className="text-xs text-rose-600">{err}</span>}
+  </span>);
+}
+
 export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClose: () => void }) {
   const { api, perms } = useApp();
   const { t } = useTranslation();
@@ -245,7 +263,9 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
             {perms.clientPricing && <Field label={t('leads.targetPrice')}><Money v={lead.targetPrice} c={lead.targetCurrency} /></Field>}
             <Field label={t('leads.channel')}>{lead.sourceChannel}</Field>
             <Field label={t('leads.office')}>{lead.assignedOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia')}</Field>
-            <Field label={t('assign.raisedBy')}><span data-testid="raised-by">{lead.raisedByName ?? '—'}</span></Field>
+            <Field label={t('assign.raisedBy')}>{(role === 'SUPER_ADMIN' || role === 'INDIA_ADMIN')
+              ? <RaiserPicker lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
+              : <span data-testid="raised-by">{lead.raisedByName ?? '—'}</span>}</Field>
             <Field label={t('assign.owner')}><span data-testid="assigned-to">{lead.assignedToName ?? t('assign.queue', { office: officeName(owner) })}</span></Field>
             {lead.assignedChinaAgent && <Field label={t('common.chinaAgent')}>{lead.assignedChinaAgent}</Field>}
             {lead.referenceUrl && <Field label={t('leads.refLink')}><a href={lead.referenceUrl} target="_blank" rel="noreferrer noopener" className="break-all text-brand-600 underline">{lead.referenceUrl}</a></Field>}
@@ -266,7 +286,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
             {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
           </>)}
           <Attachments leadId={lead.id} canEdit={perms.customers} />
-          <LeadQuotes leadId={lead.id} />
+          <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => setLead({ ...lead, status: st as Lead['status'] })} />
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
             {[[t('leads.createdEvt'), lead.createdAt], ...(lead.assignedOffice === 'CHINA' ? [[t('leads.assignedTo', { who: lead.assignedToName || lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d]) => (

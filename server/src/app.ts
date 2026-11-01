@@ -11,7 +11,9 @@ import { capabilities, isRole, manageableRoles, sides, type Role } from './roles
 import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { TwentyLike } from './twenty.js';
 import type { UserStore, User } from './users.js';
-import { QuoteStore, type Quote } from './quotes.js';
+import { QuoteStore, QUOTE_STATUSES, cqTotals, type Quote } from './quotes.js';
+import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
+import { customerQuotePdf } from './pdf.js';
 import { AssignStore, type Assignment, type Office } from './assign.js';
 
 export interface AppOptions {
@@ -55,6 +57,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.users.database);
   const quotes = new QuoteStore(o.users.database);
+  const orders = new OrderStore(o.users.database);
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
@@ -69,21 +72,31 @@ export async function buildApp(o: AppOptions) {
    * Hands a lead to an office. `to` = specific member, null = office queue, undefined = default
    * (China: queue; India: the India member who raised it, else queue). Notifies the new owner, or the office admins for a queue.
    */
+  /** India members + the super admin can own a returned lead; a raiser must be one of them and active. */
+  const indiaOwner = (u: User | null | undefined) => !!u && u.active && (officeOf(u.role) === 'INDIA' || u.role === 'SUPER_ADMIN');
+  /** Who hears about an unowned India/China lead: that office's admins, plus the super admin(s). */
+  const queueWatchers = (office: Office) => o.users.list().filter((u) => u.active && (u.role === 'SUPER_ADMIN' || (officeOf(u.role) === office && u.role.endsWith('ADMIN')))).map((u) => u.id);
   const handoff = (lead: Rec, actor: User | null, office: Office, to: string | null | undefined) => {
     const leadId = String(lead.id), prev = assign.get(leadId);
     if (to) {
       const u = o.users.byId(to);
-      if (!u || !u.active || officeOf(u.role) !== office) throw bad(`Assignee must be an active ${office} staff member`);
+      if (!u || !u.active || (officeOf(u.role) !== office && !(office === 'INDIA' && u.role === 'SUPER_ADMIN'))) throw bad(`Assignee must be an active ${office} staff member`);
+    }
+    // Remember who raised the lead when nobody was recorded (public enquiries, older leads):
+    // the India member/super admin who sends it to China, or the India member it gets assigned to.
+    if (!prev?.raisedBy) {
+      const by = office === 'CHINA' && indiaOwner(actor) ? actor!.id : office === 'INDIA' && to ? to : null;
+      if (by) assign.set(leadId, { raisedBy: by });
     }
     if (to === undefined) {
       const r = prev?.raisedBy ? o.users.byId(prev.raisedBy) : null;
-      to = office === 'INDIA' && r?.active && officeOf(r.role) === 'INDIA' ? r.id : null;
+      to = office === 'INDIA' && indiaOwner(r) ? r!.id : null;
     }
     const returned = office === 'INDIA' && prev?.ownerOffice === 'CHINA';
     const changed = prev?.ownerOffice !== office || (prev?.assignedTo ?? null) !== to;
     assign.set(leadId, { ownerOffice: office, assignedTo: to });
     if (changed) {
-      const recips = (to ? [to] : staffOf(office).filter((u) => u.role.endsWith('ADMIN')).map((u) => u.id)).filter((id) => id !== actor?.id);
+      const recips = (to ? [to] : queueWatchers(office)).filter((id) => id !== actor?.id);
       assign.notify(recips, { leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null,
         kind: !to ? 'QUEUE' : returned ? 'RETURNED' : 'ASSIGNED', office, byName: actor?.name ?? null });
     }
@@ -291,8 +304,11 @@ export async function buildApp(o: AppOptions) {
       const s = sides(role), names = userNames();
       const files = uploads.list(qKey(q.id));
       const base = { id: q.id, leadId: q.leadId, product: q.product, unitPrice: q.unitPrice, currency: q.currency, moq: q.moq, leadTime: q.leadTime,
-        validity: q.validity, notes: q.notes, createdAt: q.createdAt, updatedAt: q.updatedAt };
-      const client = { clientPrice: q.clientPrice, clientCurrency: q.clientCurrency, clientNotes: q.clientNotes };
+        validity: q.validity, notes: q.notes, createdAt: q.createdAt, updatedAt: q.updatedAt,
+        shipCost: q.shipCost, shipCurrency: q.shipCurrency, shipTerm: q.shipTerm, shipMode: q.shipMode, shipPort: q.shipPort, shipTransit: q.shipTransit,
+        status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt, rejectReason: q.rejectReason, orderId: orders.byQuote(q.id)?.id ?? null };
+      const client = { clientPrice: q.clientPrice, clientCurrency: q.clientCurrency, clientNotes: q.clientNotes, cq: q.cq, cqTotals: q.cq ? cqTotals(q.cq) : null,
+        pdfUrl: q.pdfToken ? `/api/public/cq/${q.pdfToken}.pdf` : null };
       if (s.china) {
         const sup = q.supplierId ? quotes.supplier(q.supplierId) : null;
         return { ...base, ...(s.india ? client : {}), supplierId: q.supplierId, supplier: sup, createdBy: q.createdBy, createdByName: names.get(q.createdBy) ?? null, canEdit: canEditQuote(role, u.id, q), files };
@@ -337,7 +353,7 @@ export async function buildApp(o: AppOptions) {
     api.delete<{ Params: { qid: string } }>('/api/quotes/:qid', async (req, reply) => {
       const q = await quoteOf(req);
       if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can delete it');
-      quotes.remove(q.id); uploads.removeAll(qKey(q.id));
+      quotes.remove(q.id); uploads.removeAll(qKey(q.id)); orders.removeQuote(q.id);
       return reply.code(204).send();
     });
     api.post<{ Params: { qid: string } }>('/api/quotes/:qid/files', async (req, reply) => {
@@ -366,12 +382,133 @@ export async function buildApp(o: AppOptions) {
       if (!uploads.remove(qKey(q.id), req.params.fid)) return reply.code(404).send({ error: 'Not found' });
       return reply.code(204).send();
     });
+    // ---- All quotes across leads (role-filtered) ----
+    const readableLeads = async (role: Role) => {
+      const [rows, ctx] = await Promise.all([o.twenty.list(OBJECTS.lead, {}), ctxOf(role)]);
+      const all = assign.all(), names = userNames(), m = new Map<string, Rec>();
+      for (const r of rows) { const f = readFilter('lead', r, ctx); if (f) m.set(String(f.id), decorate(f, all.get(String(f.id)), names)); }
+      return m;
+    };
+    const quoteRow = (u: { role: Role; id: string }, q: Quote, lead: Rec) => {
+      const i = quotes.list(q.leadId).findIndex((x) => x.id === q.id);
+      const v: any = viewQuote(u, q, i, (lead.leadRef as string) ?? null);
+      delete v.files;
+      return { ...v, label: `${lead.leadRef ?? 'Quote'}-Q${i + 1}`, leadRef: lead.leadRef ?? null, leadStatus: lead.status ?? null, ownerOffice: lead.ownerOffice,
+        assignedTo: lead.assignedTo ?? null, assignedToName: lead.assignedToName ?? null, raisedBy: lead.raisedBy ?? null };
+    };
+    api.get<{ Querystring: { status?: string; office?: string; mine?: string } }>('/api/quotes', async (req) => {
+      const u = req.user!, leads = await readableLeads(u.role), q = req.query ?? {};
+      let rows = quotes.all().filter((x) => leads.has(x.leadId)).map((x) => quoteRow(u, x, leads.get(x.leadId)!));
+      if (q.status) rows = rows.filter((r) => r.status === String(q.status).toUpperCase());
+      if (q.office) rows = rows.filter((r) => r.ownerOffice === String(q.office).toUpperCase());
+      if (q.mine === '1' || q.mine === 'true') rows = rows.filter((r) => r.assignedTo === u.id || r.raisedBy === u.id || (r as any).createdBy === u.id);
+      return { data: rows };
+    });
+    const indiaOnly = (role: Role) => { if (!sides(role).india) throw new Forbidden('Only the India office can do this'); };
+    const leadOf = async (id: string) => (await o.twenty.get(OBJECTS.lead, id)) as Rec;
+    const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, quotes.get(q.id)!, decorate(l, assign.get(q.leadId), userNames())); };
+    /** Notify about a lead-level event (quote decided, order created/updated). */
+    const tell = (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE', office: Office, actor: User) => {
+      const ids = [...new Set(recips.filter((x): x is string => !!x && x !== actor.id && !!o.users.byId(x)?.active))];
+      if (ids.length) assign.notify(ids, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office, byName: actor.name });
+    };
+    /** India side of a lead: its raiser/assignee, else India admins + super admin. China side: who quoted, else China assignee, else China admins. */
+    const indiaPeople = (leadId: string) => { const a = assign.get(leadId); const p = [a?.ownerOffice === 'INDIA' ? a?.assignedTo : null, a?.raisedBy].filter(Boolean) as string[]; return p.length ? p : queueWatchers('INDIA'); };
+    const chinaPeople = (q: Quote) => { const a = assign.get(q.leadId); const p = [q.createdBy, a?.ownerOffice === 'CHINA' ? a?.assignedTo : null].filter((x) => x && officeOf(o.users.byId(x)?.role as Role) === 'CHINA') as string[]; return p.length ? p : queueWatchers('CHINA'); };
+    api.put<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/customer', async (req) => {
+      indiaOnly(req.user!.role); const q = await quoteOf(req);
+      return { data: await refresh(req.user!, quotes.setCustomer(q.id, req.body ?? {})) };
+    });
+    api.post<{ Params: { qid: string } }>('/api/quotes/:qid/pdf', async (req) => {
+      indiaOnly(req.user!.role); const q = await quoteOf(req);
+      if (!q.cq) throw bad('Prepare the customer quote first');
+      if (!q.pdfToken) quotes.setToken(q.id, randomBytes(32).toString('base64url'));
+      return { data: await refresh(req.user!, q) };
+    });
+    api.post<{ Params: { qid: string }; Body: { status?: string; reason?: string } }>('/api/quotes/:qid/status', async (req) => {
+      const u = req.user!; indiaOnly(u.role); const q = await quoteOf(req), b = req.body ?? {};
+      const st = String(b.status ?? '').toUpperCase() as Quote['status'];
+      if (!QUOTE_STATUSES.includes(st)) throw bad('status must be DRAFT, SENT, ACCEPTED or REJECTED');
+      if (st !== 'DRAFT' && !q.cq) throw bad('Prepare the customer quote first');
+      if (st === 'REJECTED' && !String(b.reason ?? '').trim()) throw bad('A reason is required when the customer rejects');
+      if (st === 'DRAFT' && orders.byQuote(q.id)) throw bad('This quote already has an order');
+      quotes.setStatus(q.id, st, b.reason);
+      const lead = await leadOf(q.leadId);
+      if (st === 'ACCEPTED' || st === 'REJECTED') {
+        const patch: Rec = st === 'ACCEPTED' ? { status: 'WON' } : { status: 'LOST', winLossReason: String(b.reason).trim().slice(0, 500) };
+        await o.twenty.update(OBJECTS.lead, q.leadId, patch); Object.assign(lead, patch);
+        tell(chinaPeople(q), lead, st === 'ACCEPTED' ? 'QUOTE_ACCEPTED' : 'QUOTE_REJECTED', 'CHINA', u);
+      }
+      return { data: await refresh(u, q) };
+    });
+    // Public, unguessable link (32 random bytes) so the customer can open the PDF from WhatsApp/email.
+    app.get<{ Params: { token: string } }>('/api/public/cq/:token', async (req, reply) => {
+      const q = quotes.byToken(req.params.token.replace(/\.pdf$/, ''));
+      if (!q?.cq) return reply.code(404).send({ error: 'Not found' });
+      const lead = (await o.twenty.get(OBJECTS.lead, q.leadId)) as any;
+      const i = quotes.list(q.leadId).findIndex((x) => x.id === q.id), ref = lead?.leadRef ?? 'SE', label = `${ref}-Q${i + 1}`;
+      const photos = uploads.list(qKey(q.id)).filter((f) => /^image\/(png|jpe?g)$/.test(f.mime)).map((f) => uploads.file(qKey(q.id), f.id)?.path).filter((p): p is string => !!p);
+      const pdf = await customerQuotePdf({ ref, label, product: q.product, customer: lead?.clientName ?? null, cq: q.cq, moq: q.moq, leadTime: q.leadTime,
+        date: new Date(q.sentAt ?? q.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }), photos });
+      return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `inline; filename="Quotation-${label}.pdf"`)
+        .header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(pdf);
+    });
+
+    // ---- Orders (v1) ----
+    const viewOrder = (u: User, ord: Order, lead: Rec | null) => {
+      const s = sides(u.role), q = quotes.get(ord.quoteId);
+      const base = { id: ord.id, leadId: ord.leadId, quoteId: ord.quoteId, leadRef: ord.leadRef, product: ord.product, qty: ord.qty, expectedShip: ord.expectedShip,
+        production: ord.production, tracking: ord.tracking, container: ord.container, etd: ord.etd, eta: ord.eta, indiaStatus: ord.indiaStatus,
+        createdAt: ord.createdAt, updatedAt: ord.updatedAt, leadStatus: lead?.status ?? null };
+      const india = { agreedPrice: ord.agreedPrice, advance: ord.advance, paymentStatus: ord.paymentStatus, total: ord.qty * ord.agreedPrice,
+        customer: lead?.clientName ?? null, assignedToName: (lead as any)?.assignedToName ?? null };
+      const china = { supplier: q?.supplierId ? quotes.supplier(q.supplierId) : null, unitPrice: q?.unitPrice ?? null, currency: q?.currency ?? null,
+        shipCost: q?.shipCost ?? null, shipCurrency: q?.shipCurrency ?? null };
+      if (s.superAdmin) return { ...base, ...india, ...china };
+      return s.india ? { ...base, ...india } : { ...base, ...china };
+    };
+    const orderOf = async (u: User, id: string) => {
+      const ord = orders.get(id); if (!ord) throw Object.assign(new Error('Not found'), { status: 404 });
+      const lead = (await readableLeads(u.role)).get(ord.leadId);
+      if (!lead && !sides(u.role).china) throw Object.assign(new Error('Not found'), { status: 404 });
+      return { ord, lead: lead ?? null };
+    };
+    api.post<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/order', async (req, reply) => {
+      const u = req.user!; indiaOnly(u.role); const q = await quoteOf(req);
+      if (q.status !== 'ACCEPTED') throw bad('Only an accepted quote can become an order');
+      if (orders.byQuote(q.id)) throw bad('This quote already has an order', 409);
+      const lead = await leadOf(q.leadId), b = req.body ?? {};
+      const ord = orders.create({ leadId: q.leadId, quoteId: q.id, leadRef: (lead.leadRef as string) ?? null, product: q.product },
+        { qty: q.cq?.qty, agreedPrice: q.cq?.unitPrice, ...b }, u.id);
+      tell(chinaPeople(q), lead, 'ORDER_NEW', 'CHINA', u);
+      return reply.code(201).send({ data: viewOrder(u, ord, decorate(lead, assign.get(q.leadId), userNames())) });
+    });
+    api.get('/api/orders', async (req) => {
+      const u = req.user!, leads = await readableLeads(u.role), china = sides(u.role).china;
+      return { data: orders.all().filter((x) => china || leads.has(x.leadId)).map((x) => viewOrder(u, x, leads.get(x.leadId) ?? null)) };
+    });
+    api.get<{ Params: { id: string } }>('/api/orders/:id', async (req) => { const { ord, lead } = await orderOf(req.user!, req.params.id); return { data: viewOrder(req.user!, ord, lead) }; });
+    api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/orders/:id', async (req) => {
+      const u = req.user!, s = sides(u.role), b = req.body ?? {}, { ord, lead } = await orderOf(u, req.params.id);
+      const keys = Object.keys(b);
+      const bad1 = keys.find((k) => !(INDIA_KEYS.includes(k) && s.india) && !(CHINA_KEYS.includes(k) && s.china));
+      if (bad1) throw new Forbidden(INDIA_KEYS.includes(bad1) ? 'Only the India office updates this' : CHINA_KEYS.includes(bad1) ? 'Only the China office updates production and tracking' : `Unknown field ${bad1}`);
+      const n = orders.update(ord.id, b);
+      const q = quotes.get(ord.quoteId), l = lead ?? (await leadOf(ord.leadId));
+      const chinaChanged = keys.some((k) => CHINA_KEYS.includes(k) && (b as any)[k] !== (ord as any)[k]);
+      const indiaChanged = keys.some((k) => INDIA_KEYS.includes(k) && (b as any)[k] !== (ord as any)[k]);
+      if (chinaChanged && officeOf(u.role) !== 'INDIA') tell(indiaPeople(ord.leadId), l, 'ORDER_UPDATE', 'INDIA', u);
+      if (indiaChanged && officeOf(u.role) !== 'CHINA' && q) tell(chinaPeople(q), l, 'ORDER_UPDATE', 'CHINA', u);
+      const ls = n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED' ? 'DELIVERED' : n.production === 'SHIPPED' && ord.production !== 'SHIPPED' ? 'SHIPPING' : null;
+      if (ls) { await o.twenty.update(OBJECTS.lead, ord.leadId, { status: ls }).catch(() => {}); if (lead) lead.status = ls; }
+      return { data: viewOrder(u, n, lead) };
+    });
     // Super admin only: permanently remove a lead with its quotes, files, assignment and notifications (e.g. test data).
     api.delete<{ Params: { id: string } }>('/api/records/leads/:id', async (req, reply) => {
       if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can delete leads');
       const id = await attLead(req);
       for (const q of quotes.list(id)) uploads.removeAll(qKey(q.id));
-      quotes.removeLead(id); uploads.removeAll(id); assign.forgetLead(id);
+      quotes.removeLead(id); orders.removeLead(id); uploads.removeAll(id); assign.forgetLead(id);
       if (!o.twenty.remove) return reply.code(501).send({ error: 'Not supported' });
       await o.twenty.remove(OBJECTS.lead, id);
       return reply.code(204).send();
@@ -486,7 +623,7 @@ export async function buildApp(o: AppOptions) {
       if ('raisedBy' in b) {
         if (!(actor.role === 'SUPER_ADMIN' || actor.role === 'INDIA_ADMIN')) throw new Forbidden('Only India admins can set who raised a lead');
         const u = b.raisedBy ? o.users.byId(String(b.raisedBy)) : null;
-        if (b.raisedBy && (!u || officeOf(u.role) !== 'INDIA')) return reply.code(400).send({ error: 'raisedBy must be an India staff member' });
+        if (b.raisedBy && !indiaOwner(u)) return reply.code(400).send({ error: 'raisedBy must be an active India staff member' });
         assign.set(String(lead.id), { raisedBy: u?.id ?? null });
       }
       if (office === 'CHINA' && lead.assignedOffice !== 'CHINA') {

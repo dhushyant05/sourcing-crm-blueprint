@@ -1,104 +1,48 @@
 import { RefTag } from './Leads';
-import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useLoad } from '../lib/store';
-import type { Currency, Quotation } from '../lib/types';
+import type { Lead } from '../lib/types';
 import { fmtDate } from '../i18n';
-import { Chip, Empty, Field, PageHeader, SlideOver, TableSkeleton } from '../components/ui';
-import { Money, MoneyInput } from '../components/MoneyInput';
+import { Chip, Empty, PageHeader, TableSkeleton } from '../components/ui';
+import { inr, QuoteStatusChip } from '../components/CustomerQuote';
 
-/** Every amount is shown in the currency it was entered in. Supplier cost (China) and client price (India) are independent. */
-export function Quotations({ search }: { search: string }) {
-  const { api, perms } = useApp();
-  const { t } = useTranslation();
-  const { data, setData } = useLoad(() => api.quotations(), [api]);
-  const [selId, setSelId] = useState<string | null>(null);
-  const sel = data?.find((q) => q.id === selId) ?? null;
-  const rows = data?.filter((q) => !search || `${q.leadRef ?? ''} ${q.name} ${q.productName} ${q.supplierName ?? ''}`.toLowerCase().includes(search.toLowerCase()));
-  const patch = (id: string, p: Partial<Quotation>) => setData((d) => d && d.map((q) => (q.id === id ? { ...q, ...p } : q)));
+const money = (n: number | null | undefined, c?: string | null) => (n == null ? '—' : `${({ CNY: '¥', USD: '$', INR: '₹' } as Record<string, string>)[c ?? ''] ?? ''} ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })} ${c ?? ''}`.trim());
 
-  return (
-    <>
-      <PageHeader title={t('quotes.title')} subtitle={t('quotes.subtitle')} />
-      <div className="card overflow-hidden">
-        {!data ? <TableSkeleton /> : !rows?.length ? <Empty title={t('quotes.none')} hint={t('quotes.noneHint')} /> : (
-          <div className="md:max-h-[calc(100vh-220px)] md:overflow-auto">
-            <table className="rtable w-full text-sm">
-              <thead><tr>
-                <th className="th">{t('quotes.quote')}</th><th className="th">{t('common.product')}</th>{perms.suppliers && <th className="th">{t('common.supplier')}</th>}
-                <th className="th text-right">{t('common.qty')}</th>
-                {perms.rawCost && <th className="th text-right">{t('quotes.supplierCost')}</th>}
-                {perms.clientPricing && <th className="th text-right">{t('quotes.clientPrice')}</th>}
-                {perms.clientPricing && <th className="th text-right">{t('quotes.clientTotal')}</th>}
-                {!perms.clientPricing && <th className="th text-right">{t('quotes.supplierTotal')}</th>}
-                <th className="th">{t('common.status')}</th>
-              </tr></thead>
-              <tbody>
-                {rows.map((q) => (
-                  <tr key={q.id} onClick={() => setSelId(q.id)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
-                    <td className="td"><div className="font-medium text-ink-900 dark:text-white">{q.name}</div><div className="mt-1"><RefTag v={q.leadRef} /></div></td>
-                    <td className="td text-ink-600 dark:text-ink-300">{q.productName}</td>
-                    {perms.suppliers && <td className="td text-ink-600 dark:text-ink-300">{q.supplierName}</td>}
-                    <td className="td text-right tabular-nums">{q.quantity.toLocaleString()}</td>
-                    {perms.rawCost && <td className="td text-right"><Money v={q.unitCost} c={q.currency} /></td>}
-                    {perms.clientPricing && <td className="td text-right"><Money v={q.clientUnitPrice} c={q.clientCurrency} /></td>}
-                    {perms.clientPricing && <td className="td text-right font-medium text-ink-900 dark:text-white"><Money v={q.clientUnitPrice != null ? q.clientUnitPrice * q.quantity : undefined} c={q.clientCurrency} /></td>}
-                    {!perms.clientPricing && <td className="td text-right font-medium text-ink-900 dark:text-white"><Money v={q.totalCost ?? (q.unitCost != null ? q.unitCost * q.quantity : undefined)} c={q.currency} /></td>}
-                    <td className="td"><Chip value={q.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      <SlideOver open={!!sel} onClose={() => setSelId(null)} title={sel?.name} subtitle={sel && <div className="flex flex-wrap items-center gap-2"><RefTag v={sel.leadRef} /><span>{sel.productName}</span></div>}
-        footer={<><button className="btn-outline" onClick={() => setSelId(null)}>{t('common.close')}</button>{perms.clientPricing && <button className="btn-primary"><Download size={16} />{t('quotes.pdf')}</button>}</>}>
-        {sel && (
-          <>
-            <dl className="divide-y divide-ink-100 dark:divide-ink-800">
-              <Field label={t('leads.reference')}><span className="font-mono">{sel.leadRef ?? '—'}</span></Field>
-              <Field label={t('common.status')}><Chip value={sel.status} /></Field>
-              <Field label={t('common.quantity')}>{t('common.pcs', { n: sel.quantity.toLocaleString() })}</Field>
-              {perms.rawCost && <Field label={t('common.supplier')}>{sel.supplierName}</Field>}
-              <Field label={t('quotes.validUntil')}>{fmtDate(sel.validityDate, { dateStyle: 'medium' })}</Field>
-            </dl>
-            {perms.rawCost && (
-              <PriceForm key={`c-${sel.id}`} title={t('quotes.setCost')} id="supplier-price" qty={sel.quantity} amount={sel.unitCost} currency={sel.currency ?? 'CNY'}
-                onSave={async (v, c) => { const p = { unitCost: v, totalCost: v * sel.quantity, currency: c }; await api.updateQuotePrice(sel.id, p); patch(sel.id, p); }} />
-            )}
-            {perms.clientPricing && (
-              <PriceForm key={`p-${sel.id}`} title={t('quotes.setClient')} id="client-price" qty={sel.quantity} amount={sel.clientUnitPrice} currency={sel.clientCurrency ?? 'INR'}
-                onSave={async (v, c) => { const p = { clientUnitPrice: v, clientCurrency: c }; await api.updateQuotePrice(sel.id, p); patch(sel.id, p); }} />
-            )}
-          </>
-        )}
-      </SlideOver>
-    </>
-  );
-}
-
-function PriceForm({ title, id, qty, amount, currency, onSave }: {
-  title: string; id: string; qty: number; amount?: number; currency: Currency; onSave: (v: number, c: Currency) => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [v, setV] = useState(amount != null ? String(amount) : ''), [c, setC] = useState<Currency>(currency);
-  const [msg, setMsg] = useState<string | null>(null), [busy, setBusy] = useState(false);
-  const n = Number(v);
-  const save = async () => {
-    if (!(n > 0)) return setMsg(t('quotes.invalid'));
-    setBusy(true);
-    try { await onSave(n, c); setMsg(t('common.saved')); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
-  };
-  return (
-    <form className="mt-6 rounded-xl border border-ink-200 p-4 dark:border-ink-800" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <MoneyInput id={id} label={title} value={v} currency={c} onValue={(x) => { setV(x); setMsg(null); }} onCurrency={(x) => { setC(x); setMsg(null); }} />
-      <div className="mt-3 flex items-center justify-between text-sm">
-        <span className="text-ink-500">{t('quotes.total')}: <span className="font-medium text-ink-800 dark:text-ink-100"><Money v={n > 0 ? n * qty : undefined} c={c} /></span></span>
-        <button disabled={busy} className="btn-primary px-3 py-1.5 disabled:opacity-60">{t('common.save')}</button>
-      </div>
-      {msg && <p className="mt-2 text-xs text-ink-500">{msg}</p>}
-    </form>
-  );
+/** Every quote across all leads. China never sees customer/INR, India never sees the supplier (server-enforced). Row → opens the lead. */
+export function Quotations({ search, openLead }: { search: string; openLead: (l: Lead) => void }) {
+  const { api, session } = useApp(); const { t } = useTranslation();
+  const [status, setStatus] = useState(''), [office, setOffice] = useState(''), [mine, setMine] = useState(false);
+  const { data } = useLoad(() => api.allQuotes({ status: status || undefined, office: office || undefined, mine }), [api, status, office, mine]);
+  const role = session?.role ?? '', china = role.startsWith('CHINA'), india = role.startsWith('INDIA');
+  const rows = data?.filter((q) => !search || `${q.leadRef ?? ''} ${q.label ?? ''} ${q.product} ${q.supplier?.name ?? ''}`.toLowerCase().includes(search.toLowerCase()));
+  const open = (id: string) => { void api.lead(id).then((l) => l && openLead(l)); };
+  return (<>
+    <PageHeader title={t('qlist.title')} subtitle={t('qlist.subtitle')} />
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <select data-testid="ql-status" aria-label={t('qlist.allStatus')} className="input !w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <option value="">{t('qlist.allStatus')}</option>{['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED'].map((s) => <option key={s} value={s}>{t(`qs.${s}`)}</option>)}</select>
+      <select data-testid="ql-office" aria-label={t('qlist.allOffices')} className="input !w-auto" value={office} onChange={(e) => setOffice(e.target.value)}>
+        <option value="">{t('qlist.allOffices')}</option><option value="INDIA">India</option><option value="CHINA">China</option></select>
+      <label className="flex items-center gap-1.5 text-sm"><input data-testid="ql-mine" type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t('qlist.mine')}</label>
+    </div>
+    <div className="card overflow-hidden">
+      {!data ? <TableSkeleton /> : !rows?.length ? <Empty title={t('qlist.none')} hint={t('qlist.noneHint')} /> : (
+        <div className="md:max-h-[calc(100vh-260px)] md:overflow-auto"><table data-testid="quotes-table" className="rtable w-full text-sm">
+          <thead><tr><th className="th">{t('qlist.quote')}</th><th className="th">{t('common.product')}</th>{!india && <th className="th">{t('common.supplier')}</th>}
+            <th className="th text-right">{t('qlist.china')}</th>{!china && <th className="th text-right">{t('qlist.india')}</th>}
+            <th className="th">MOQ</th><th className="th">{t('lq.leadTime')}</th><th className="th">{t('lq.validity')}</th><th className="th">{t('common.status')}</th><th className="th">{t('qlist.leadStatus')}</th><th className="th">{t('qlist.owner')}</th></tr></thead>
+          <tbody>{rows.map((q) => (<tr key={q.id} data-testid="quote-row" onClick={() => open(q.leadId)} className="cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-800/50">
+            <td className="td" data-label={t('qlist.quote')}>{q.leadRef && <RefTag v={q.leadRef} />}<div className="font-mono text-[11px] text-ink-400">{q.label}</div></td>
+            <td className="td font-medium" data-label={t('common.product')}>{q.product}</td>
+            {!india && <td className="td" data-label={t('common.supplier')}>{q.supplier?.name ?? '—'}</td>}
+            <td className="td text-right" data-label={t('qlist.china')}>{money(q.unitPrice, q.currency)}</td>
+            {!china && <td className="td text-right font-medium" data-label={t('qlist.india')}>{q.clientPrice != null ? inr(q.clientPrice) : '—'}</td>}
+            <td className="td" data-label="MOQ">{q.moq ?? '—'}</td><td className="td" data-label={t('lq.leadTime')}>{q.leadTime ?? '—'}</td><td className="td" data-label={t('lq.validity')}>{q.validity ?? '—'}</td>
+            <td className="td" data-label={t('common.status')}><QuoteStatusChip s={q.status} />{q.sentAt && <div className="text-[10px] text-ink-400">{fmtDate(q.sentAt)}</div>}</td>
+            <td className="td" data-label={t('qlist.leadStatus')}>{q.leadStatus ? <Chip value={q.leadStatus} /> : '—'}</td>
+            <td className="td text-xs" data-label={t('qlist.owner')}>{q.assignedToName ?? (q.ownerOffice ?? '—')}</td>
+          </tr>))}</tbody></table></div>)}
+    </div>
+  </>);
 }

@@ -17,7 +17,8 @@
     "settings": "Settings",
     "collapse": "Collapse",
     "more": "More",
-    "toggleSidebar": "Toggle sidebar"
+    "toggleSidebar": "Toggle sidebar",
+    "orders": "Orders"
   },
   "header": {
     "search": "Search by reference, lead, product…",
@@ -430,7 +431,15 @@
     "RETURNED_nobody": "{{ref}} was returned to you",
     "QUEUE": "{{ref}} is waiting in the {{office}} queue",
     "newEnquiry": "New website enquiry {{ref}} in the India queue",
-    "unread": "{{n}} unread"
+    "unread": "{{n}} unread",
+    "QUOTE_ACCEPTED": "{{by}}: customer accepted the quote on {{ref}}",
+    "QUOTE_REJECTED": "{{by}}: customer rejected the quote on {{ref}}",
+    "ORDER_NEW": "{{by}} created an order for {{ref}}",
+    "ORDER_UPDATE": "{{by}} updated the order for {{ref}}",
+    "QUOTE_ACCEPTED_nobody": "customer accepted the quote on {{ref}}",
+    "QUOTE_REJECTED_nobody": "customer rejected the quote on {{ref}}",
+    "ORDER_NEW_nobody": "created an order for {{ref}}",
+    "ORDER_UPDATE_nobody": "updated the order for {{ref}}"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -464,6 +473,144 @@
     "confirmDelete": "Delete the quote for “{{p}}”?",
     "errProduct": "Enter the product / model.",
     "errPrice": "Enter a valid unit price.",
-    "errSupplier": "Enter the new supplier's name."
+    "errSupplier": "Enter the new supplier's name.",
+    "shipFrom": "Supplier shipping"
+  },
+  "ship": {
+    "title": "Shipping",
+    "cost": "Shipping cost",
+    "costInr": "Shipping cost (₹ INR)",
+    "term": "Shipping term (Incoterm)",
+    "mode": "Shipping mode",
+    "port": "Port / destination",
+    "transit": "Transit time",
+    "none": "— Select —",
+    "terms": {
+      "EXW": "EXW (Ex Works)",
+      "FOB": "FOB (Free On Board)",
+      "CIF": "CIF (Cost, Insurance & Freight)",
+      "CFR": "CFR (Cost & Freight)",
+      "DDP": "DDP (Delivered Duty Paid)",
+      "DAP": "DAP (Delivered At Place)",
+      "DOOR": "Door to door"
+    },
+    "modes": {
+      "AIR": "Air",
+      "SEA": "Sea",
+      "EXPRESS": "Express / Courier",
+      "ROAD": "Road"
+    }
+  },
+  "qs": {
+    "DRAFT": "Draft",
+    "SENT": "Sent to customer",
+    "ACCEPTED": "Accepted",
+    "REJECTED": "Rejected"
+  },
+  "cq": {
+    "prepare": "Prepare customer quote",
+    "editPrepared": "Edit customer quote",
+    "title": "Customer quote",
+    "unitPrice": "Selling price per unit (₹ INR)",
+    "qty": "Quantity",
+    "gst": "GST %",
+    "other": "Other charges (₹)",
+    "otherLabel": "Other charges label",
+    "otherLabelPh": "e.g. Packing, insurance",
+    "validity": "Validity",
+    "validityPh": "e.g. 15 days",
+    "terms": "Terms / notes for the customer",
+    "preview": "Preview",
+    "back": "Back to edit",
+    "subtotal": "Product subtotal",
+    "shipping": "Shipping",
+    "gstAmt": "GST @ {{p}}%",
+    "total": "Total (INR)",
+    "generate": "Generate PDF",
+    "regenerate": "Update PDF",
+    "download": "Download PDF",
+    "whatsapp": "WhatsApp",
+    "email": "Email",
+    "markSent": "Mark as sent",
+    "sentOn": "Sent to customer on {{d}}",
+    "accept": "Customer accepted",
+    "reject": "Customer rejected",
+    "rejectReason": "Why did the customer reject? (required)",
+    "decided": "{{s}} on {{d}}",
+    "reopen": "Reopen as draft",
+    "createOrder": "Create order",
+    "viewOrder": "Order created — view in Orders",
+    "noCustomerSide": "Hidden from China: customer price and details.",
+    "msg": "Hello {{name}}, please find our quotation {{ref}} for {{product}}: {{url}}\n— Source Easy (Fortune Engineering), +91 72995 41489",
+    "subject": "Quotation {{ref}} – {{product}}",
+    "noPhone": "No customer phone on this lead — WhatsApp opens without a number.",
+    "errQty": "Enter the quantity.",
+    "errPrice": "Enter the selling price per unit.",
+    "pdfHint": "The PDF shows the Source Easy brand, product, photos and INR totals — never the supplier or China cost.",
+    "wonLost": "Lead moved to {{s}}."
+  },
+  "qlist": {
+    "title": "Quotes",
+    "subtitle": "Every supplier quote across all leads",
+    "none": "No quotes yet",
+    "noneHint": "China adds supplier quotes on a lead; they show up here.",
+    "allStatus": "All statuses",
+    "allOffices": "Both offices",
+    "mine": "Assigned to me",
+    "quote": "Quote",
+    "china": "China price",
+    "india": "Selling price (INR)",
+    "leadStatus": "Lead",
+    "owner": "With"
+  },
+  "orders": {
+    "title": "Orders",
+    "subtitle": "Accepted quotes being produced and shipped",
+    "none": "No orders yet",
+    "noneHint": "Accept a customer quote and choose “Create order”.",
+    "create": "Create order",
+    "qty": "Quantity",
+    "agreed": "Agreed price per unit (₹ INR)",
+    "advance": "Advance received (₹)",
+    "payment": "Payment status",
+    "expectedShip": "Expected ship date",
+    "total": "Order value",
+    "production": "Production",
+    "tracking": "Tracking no.",
+    "container": "Container no.",
+    "etd": "ETD",
+    "eta": "ETA",
+    "shipment": "Shipment (India)",
+    "customer": "Customer",
+    "supplier": "Supplier",
+    "chinaCost": "China cost",
+    "save": "Save",
+    "saved": "Saved",
+    "chinaPart": "China updates",
+    "indiaPart": "India updates",
+    "pay": {
+      "PENDING": "Pending",
+      "PARTIAL": "Partly paid",
+      "PAID": "Paid"
+    },
+    "prod": {
+      "NEW": "New",
+      "DEPOSIT_PAID": "Deposit paid to supplier",
+      "IN_PRODUCTION": "In production",
+      "READY": "Ready",
+      "SHIPPED": "Shipped"
+    },
+    "ind": {
+      "NONE": "Not shipped yet",
+      "IN_TRANSIT": "In transit",
+      "CUSTOMS": "At customs",
+      "DELIVERED": "Delivered"
+    }
+  },
+  "raiser": {
+    "label": "Raised by",
+    "none": "Not set",
+    "set": "Set raiser",
+    "hint": "Quoted or returned leads go back to this person."
   }
 }

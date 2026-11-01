@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, CornerDownLeft, Inbox, UserCheck } from 'lucide-react';
+import { Bell, CheckCheck, CornerDownLeft, Inbox, UserCheck, CheckCircle2, XCircle, Package } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -36,7 +36,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     openLead(n.leadId);
   };
   const unread = data?.unread ?? 0;
-  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : UserCheck);
+  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' ? XCircle : n.kind.startsWith('ORDER') ? Package : UserCheck);
   return (
     <div className="relative" ref={box}>
       <button data-testid="notif-bell" className="btn-ghost relative p-2" aria-label={t('header.notifications')} onClick={() => { setOpen(!open); if (!open) load(); }}>

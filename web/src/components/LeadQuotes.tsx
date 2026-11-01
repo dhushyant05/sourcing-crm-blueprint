@@ -2,7 +2,8 @@ import { Download, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
-import type { Attachment, LeadQuote, QuoteCurrency, QuoteInput, QuoteSupplier } from '../lib/types';
+import { INCOTERMS, SHIP_MODES, type Attachment, type Lead, type LeadQuote, type QuoteCurrency, type QuoteInput, type QuoteSupplier } from '../lib/types';
+import { CustomerQuote, QuoteStatusChip } from './CustomerQuote';
 import { FileIcon, fmtSize, isVideoName } from './EnquiryForm';
 import { FilePicker } from '../pages/Leads';
 
@@ -10,14 +11,14 @@ const CUR: { v: QuoteCurrency; label: string; sym: string }[] = [{ v: 'USD', lab
 const money = (n: number | null | undefined, c?: string | null) => n == null ? '—' : `${CUR.find((x) => x.v === c)?.sym ?? ''}${n.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${CUR.find((x) => x.v === c)?.label ?? c ?? ''}`;
 
 /** Supplier quotes on a lead. China adds/edits (with supplier + media); India sees product/price/media only and adds its INR selling price. */
-export function LeadQuotes({ leadId }: { leadId: string }) {
+export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lead?: Lead | null; onLeadStatus?: (s: string) => void }) {
   const { api, perms } = useApp();
   const { t } = useTranslation();
   const china = perms.suppliers, india = perms.customers;
   const [list, setList] = useState<LeadQuote[] | null>(null), [err, setErr] = useState<string | null>(null);
-  const [form, setForm] = useState<LeadQuote | 'new' | null>(null), [sell, setSell] = useState<string | null>(null);
+  const [form, setForm] = useState<LeadQuote | 'new' | null>(null);
   const load = () => api.quotes(leadId).then(setList).catch((e) => { setList([]); setErr((e as Error).message); });
-  useEffect(() => { setList(null); setForm(null); setSell(null); setErr(null); void load(); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setList(null); setForm(null); setErr(null); void load(); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
   const canEdit = (q: LeadQuote) => !!q.canEdit;
   const replace = (q: LeadQuote) => setList((l) => l && (l.some((x) => x.id === q.id) ? l.map((x) => (x.id === q.id ? q : x)) : [...l, q]));
   const del = async (q: LeadQuote) => {
@@ -37,7 +38,7 @@ export function LeadQuotes({ leadId }: { leadId: string }) {
           <li key={q.id} data-testid="quote-card" className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-mono text-ink-400">{q.label ?? `Q${i + 1}`}</div>
+                <div className="flex items-center gap-2 text-[11px] font-mono text-ink-400">{q.label ?? `Q${i + 1}`}<QuoteStatusChip s={q.status} /></div>
                 <div className="font-medium text-ink-900 dark:text-white">{q.product}</div>
                 <div className="mt-0.5 text-lg font-semibold text-brand-700 dark:text-brand-300">{money(q.unitPrice, q.currency)} <span className="text-xs font-normal text-ink-400">/ {t('lq.unit')}</span></div>
               </div>
@@ -47,18 +48,15 @@ export function LeadQuotes({ leadId }: { leadId: string }) {
             <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
               {([['lq.moq', q.moq], ['lq.leadTime', q.leadTime], ['lq.validity', q.validity]] as const).map(([k, v]) => <div key={k}><dt className="text-ink-400">{t(k)}</dt><dd className="text-ink-800 dark:text-ink-100">{v || '—'}</dd></div>)}
             </dl>
+            {(q.shipCost != null || q.shipTerm || q.shipMode || q.shipPort || q.shipTransit) && <div data-testid="quote-ship" className="mt-2 rounded-lg bg-ink-50 p-2 text-xs text-ink-700 dark:bg-ink-800 dark:text-ink-200">
+              <b>{t('lq.shipFrom')}:</b> {[q.shipCost != null && `${money(q.shipCost, q.shipCurrency ?? q.currency)}`, q.shipTerm && t(`ship.terms.${q.shipTerm}`), q.shipMode && t(`ship.modes.${q.shipMode}`), q.shipPort, q.shipTransit].filter(Boolean).join(' · ')}</div>}
             {q.notes && <p className="mt-2 whitespace-pre-wrap text-xs text-ink-600 dark:text-ink-300">{q.notes}</p>}
             {china && q.supplier && <div data-testid="quote-supplier" className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
               <b>{t('lq.supplier')}:</b> {q.supplier.name}{q.supplier.contact && ` · ${q.supplier.contact}`}{q.supplier.phone && ` · ${q.supplier.phone}`}{q.supplier.wechat && ` · WeChat ${q.supplier.wechat}`}{q.supplier.city && ` · ${q.supplier.city}`}
               <span className="ml-1 text-amber-700/70">({t('lq.chinaOnly')})</span></div>}
             {china && q.createdByName && <div className="mt-1 text-[11px] text-ink-400">{t('lq.by', { who: q.createdByName })}</div>}
             <QuoteFiles quote={q} canEdit={canEdit(q)} onChange={replace} />
-            {india && (sell === q.id ? <SellForm q={q} onDone={(n) => { if (n) replace(n); setSell(null); }} /> : (
-              <div className="mt-2 flex items-center gap-2 rounded-lg bg-brand-50/60 p-2 text-xs dark:bg-brand-500/10">
-                <span className="text-ink-500">{t('lq.sellPrice')}:</span><b data-testid="quote-sell" className="text-ink-900 dark:text-white">{q.clientPrice != null ? money(q.clientPrice, q.clientCurrency ?? 'INR') : '—'}</b>
-                {q.clientNotes && <span className="truncate text-ink-500">· {q.clientNotes}</span>}
-                <button data-testid="quote-sell-edit" className="ml-auto text-brand-600 hover:underline" onClick={() => setSell(q.id)}>{q.clientPrice != null ? t('common.edit') : t('lq.addSell')}</button>
-              </div>))}
+            {india && <CustomerQuote q={q} lead={lead} onChange={replace} onLeadStatus={onLeadStatus} />}
           </li>
         ))}
       </ul>
@@ -67,25 +65,12 @@ export function LeadQuotes({ leadId }: { leadId: string }) {
   </section>);
 }
 
-function SellForm({ q, onDone }: { q: LeadQuote; onDone: (q: LeadQuote | null) => void }) {
-  const { api } = useApp(); const { t } = useTranslation();
-  const [price, setPrice] = useState(q.clientPrice?.toString() ?? ''), [notes, setNotes] = useState(q.clientNotes ?? ''), [err, setErr] = useState<string | null>(null);
-  const save = async () => { try { onDone(await api.updateQuote(q.id, { clientPrice: price.trim() === '' ? null : price, clientCurrency: 'INR', clientNotes: notes })); } catch (e) { setErr((e as Error).message); } };
-  return (<div className="mt-2 rounded-lg border border-brand-200 p-2 dark:border-brand-500/30">
-    <label className="label" htmlFor={`sp-${q.id}`}>{t('lq.sellPrice')} (₹ INR)</label>
-    <input id={`sp-${q.id}`} data-testid="quote-sell-input" className="input" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
-    <label className="label mt-2" htmlFor={`sn-${q.id}`}>{t('lq.sellNotes')}</label>
-    <input id={`sn-${q.id}`} className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
-    {err && <p role="alert" className="mt-1 text-xs text-rose-600">{err}</p>}
-    <div className="mt-2 flex gap-2"><button className="btn-primary" data-testid="quote-sell-save" onClick={() => void save()}>{t('common.save')}</button><button className="btn-outline" onClick={() => onDone(null)}>{t('common.cancel')}</button></div>
-  </div>);
-}
-
 function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote | null; onDone: (q: LeadQuote | null) => void }) {
   const { api } = useApp(); const { t } = useTranslation();
   const [sups, setSups] = useState<QuoteSupplier[]>([]);
   const [supId, setSupId] = useState(quote?.supplierId ?? ''), [ns, setNs] = useState({ name: '', contact: '', phone: '', wechat: '', city: '' });
-  const [f, setF] = useState({ product: quote?.product ?? '', unitPrice: quote?.unitPrice?.toString() ?? '', currency: (quote?.currency ?? 'USD') as QuoteCurrency, moq: quote?.moq ?? '', leadTime: quote?.leadTime ?? '', validity: quote?.validity ?? '', notes: quote?.notes ?? '' });
+  const [f, setF] = useState({ product: quote?.product ?? '', unitPrice: quote?.unitPrice?.toString() ?? '', currency: (quote?.currency ?? 'USD') as QuoteCurrency, moq: quote?.moq ?? '', leadTime: quote?.leadTime ?? '', validity: quote?.validity ?? '', notes: quote?.notes ?? '',
+    shipCost: quote?.shipCost?.toString() ?? '', shipCurrency: (quote?.shipCurrency ?? quote?.currency ?? 'USD') as QuoteCurrency, shipTerm: quote?.shipTerm ?? '', shipMode: quote?.shipMode ?? '', shipPort: quote?.shipPort ?? '', shipTransit: quote?.shipTransit ?? '' });
   const [files, setFiles] = useState<File[]>([]), [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false), [pct, setPct] = useState<number | null>(null);
   useEffect(() => { api.quoteSuppliers().then(setSups).catch(() => setSups([])); }, [api]);
   const isNew = supId === '__new';
@@ -94,7 +79,8 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
     if (!f.product.trim()) return setErr(t('lq.errProduct'));
     if (f.unitPrice.trim() === '' || !(Number(f.unitPrice) >= 0)) return setErr(t('lq.errPrice'));
     if (isNew && !ns.name.trim()) return setErr(t('lq.errSupplier'));
-    const body: QuoteInput = { ...f, unitPrice: f.unitPrice.trim(), ...(isNew ? { newSupplier: ns } : { supplierId: supId || null }) };
+    if (f.shipCost.trim() !== '' && !(Number(f.shipCost) >= 0)) return setErr(t('lq.errPrice'));
+    const body: QuoteInput = { ...f, unitPrice: f.unitPrice.trim(), shipCost: f.shipCost.trim() === '' ? null : f.shipCost.trim(), shipCurrency: f.shipCost.trim() === '' ? null : f.shipCurrency, shipTerm: f.shipTerm || null, shipMode: f.shipMode || null, ...(isNew ? { newSupplier: ns } : { supplierId: supId || null }) };
     setBusy(true);
     try {
       let q = quote ? await api.updateQuote(quote.id, body) : await api.createQuote(leadId, body);
@@ -119,6 +105,13 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
     <div className="grid grid-cols-[1fr_auto] gap-2">{inp('unitPrice', t('lq.unitPrice'))}
       <div><label className="label" htmlFor="qf-cur">{t('lq.currency')}</label><select id="qf-cur" data-testid="qf-currency" className="input" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value as QuoteCurrency })}>{CUR.map((c) => <option key={c.v} value={c.v}>{c.sym} {c.label}</option>)}</select></div></div>
     <div className="grid grid-cols-3 gap-2">{inp('moq', t('lq.moq'), '1000 pcs')}{inp('leadTime', t('lq.leadTime'), '15 days')}{inp('validity', t('lq.validity'), '30 days')}</div>
+    <div className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('ship.title')}</div>
+    <div className="grid grid-cols-[1fr_auto] gap-2">{inp('shipCost', t('ship.cost'), '800')}
+      <div><label className="label" htmlFor="qf-shipcur">{t('lq.currency')}</label><select id="qf-shipcur" data-testid="qf-shipCurrency" className="input" value={f.shipCurrency} onChange={(e) => setF({ ...f, shipCurrency: e.target.value as QuoteCurrency })}>{CUR.map((c) => <option key={c.v} value={c.v}>{c.sym} {c.label}</option>)}</select></div></div>
+    <div className="grid grid-cols-2 gap-2">
+      <div><label className="label" htmlFor="qf-term">{t('ship.term')}</label><select id="qf-term" data-testid="qf-shipTerm" className="input" value={f.shipTerm} onChange={(e) => setF({ ...f, shipTerm: e.target.value })}><option value="">{t('ship.none')}</option>{INCOTERMS.map((o) => <option key={o} value={o}>{t(`ship.terms.${o}`)}</option>)}</select></div>
+      <div><label className="label" htmlFor="qf-mode">{t('ship.mode')}</label><select id="qf-mode" data-testid="qf-shipMode" className="input" value={f.shipMode} onChange={(e) => setF({ ...f, shipMode: e.target.value })}><option value="">{t('ship.none')}</option>{SHIP_MODES.map((o) => <option key={o} value={o}>{t(`ship.modes.${o}`)}</option>)}</select></div>
+      {inp('shipPort', t('ship.port'), 'Ningbo')}{inp('shipTransit', t('ship.transit'), '20 days')}</div>
     <div><label className="label" htmlFor="qf-notes">{t('lq.notes')}</label><textarea id="qf-notes" className="input min-h-[60px]" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></div>
     <div><div className="label">{t('lq.media')}</div><FilePicker onPick={(fs) => setFiles((x) => [...x, ...fs])} onError={setErr} />
       {files.length > 0 && <ul className="mt-1 text-xs text-ink-600 dark:text-ink-300">{files.map((x, i) => <li key={i}>{x.name} · {fmtSize(x.size)} <button className="text-rose-600" onClick={() => setFiles(files.filter((_, j) => j !== i))}>×</button></li>)}</ul>}</div>

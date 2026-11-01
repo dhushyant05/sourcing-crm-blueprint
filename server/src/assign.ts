@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 
 export type Office = 'INDIA' | 'CHINA';
 export interface Assignment { leadId: string; raisedBy: string | null; assignedTo: string | null; ownerOffice: Office | null; updatedAt: string }
-export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE';
+export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE';
 export interface Notification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: NotifKind; office: Office; byName: string | null; createdAt: string; read: boolean }
 
 export class AssignStore {
