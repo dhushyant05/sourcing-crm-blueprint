@@ -20,7 +20,7 @@
     "toggleSidebar": "切换侧栏"
   },
   "header": {
-    "search": "搜索线索、客户、产品…",
+    "search": "按参考编号、线索、产品搜索…",
     "viewAs": "以{{role}}身份查看",
     "demoPreview": "演示：按角色预览",
     "theme": "切换主题",

@@ -22,6 +22,7 @@ class ShippingScreen extends StatefulWidget {
 
 class _ShippingScreenState extends State<ShippingScreen> {
   late Future<List<ShippingOrder>> _f;
+  String _q = '';
   @override
   void initState() {
     super.initState();
@@ -39,16 +40,25 @@ class _ShippingScreenState extends State<ShippingScreen> {
         child: AsyncView<List<ShippingOrder>>(
           future: _f,
           onRetry: _reload,
-          builder: (c, list) => list.isEmpty
+          builder: (c, all) {
+            final list = all.where((o) => _q.isEmpty || [o.leadRef, o.trackingNumber, o.name].whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
+            final search = Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: TextField(
+                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: context.l10n.searchRef, isDense: true, border: const OutlineInputBorder()),
+                onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+              ),
+            );
+            return all.isEmpty
               ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noShipmentsYet))])
               : ListView(
-                  children: list
+                  children: [search, ...list
                       .map((o) => Card(
                             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             child: ListTile(
                               leading: const Icon(Icons.directions_boat_outlined),
                               title: Text(o.trackingNumber ?? o.name),
-                              subtitle: Text('${o.forwarder ?? context.l10n.forwarderTbd} · ${context.l10n.eta} ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
+                              subtitle: Text('${o.leadRef != null ? '${o.leadRef} · ' : ''}${o.forwarder ?? context.l10n.forwarderTbd} · ${context.l10n.eta} ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
                               trailing: StatusChip(o.shipmentStatus ?? 'BOOKED'),
                               onTap: () async {
                                 await Navigator.push(c, MaterialPageRoute(builder: (_) => ShipmentDetailScreen(order: o)));
@@ -56,8 +66,9 @@ class _ShippingScreenState extends State<ShippingScreen> {
                               },
                             ),
                           ))
-                      .toList(),
-                ),
+                      ],
+                );
+          },
         ),
       ),
     );
@@ -77,7 +88,7 @@ class ShipmentDetailScreen extends StatelessWidget {
     final step = shipmentSteps.indexOf(o.shipmentStatus ?? 'BOOKED');
     final hasPos = o.latitude != null && o.longitude != null;
     return Scaffold(
-      appBar: AppBar(title: Text(o.trackingNumber ?? context.l10n.shipment), actions: [
+      appBar: AppBar(title: Text([o.leadRef, o.trackingNumber ?? context.l10n.shipment].whereType<String>().join(' · ')), actions: [
         if (p.canEditShipping)
           IconButton(
             icon: const Icon(Icons.edit),

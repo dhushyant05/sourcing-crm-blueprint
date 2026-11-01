@@ -15,12 +15,14 @@ export type ObjectName = keyof typeof OBJECTS;
 export const PLURAL_TO_OBJECT = Object.fromEntries(Object.entries(OBJECTS).map(([k, v]) => [v, k])) as Record<string, ObjectName>;
 
 const STD = ['id', 'name', 'createdAt', 'updatedAt', 'office', 'clientRef'];
+/** Shared lead reference (SE-YYMM-NNNN): on leads and carried to sourcing requests, quotations and shipments. Server-assigned only. */
+export const REF_OBJECTS = ['lead', 'sourcingRequest', 'quotation', 'shippingOrder'];
 
 /** Every custom field per object (schema.json) + relation ids. Anything not listed is never returned. */
-export const FIELDS: Record<ObjectName, string[]> = {
+const F: Record<ObjectName, string[]> = {
   lead: [...STD, 'clientName', 'contactPhone', 'contactEmail', 'productInterest', 'quantity', 'targetPrice', 'sourceChannel',
     'status', 'assignedOffice', 'assignedChinaAgent', 'chatwootConversationUrl', 'winLossReason',
-    'unit', 'deliveryCity', 'referenceUrl', 'enquiryMessage', 'enquiryRef', 'contactName', 'attachmentCount'],
+    'unit', 'deliveryCity', 'referenceUrl', 'enquiryMessage', 'contactName', 'attachmentCount'],
   sourcingRequest: [...STD, 'productDescription', 'quantity', 'targetPrice', 'deadline', 'assignedChinaAgent', 'sampleStatus',
     'status', 'chatwootThreadUrl', 'chatwootConversationId', 'leadId'],
   supplier: [...STD, 'phone', 'wechatId', 'notes', 'sourcingRequestId'],
@@ -31,11 +33,12 @@ export const FIELDS: Record<ObjectName, string[]> = {
     'currentLocation', 'latitude', 'longitude', 'leadId', 'quotationId'],
   teamMember: [...STD, 'email', 'role', 'chatwootAgentId'],
 };
+export const FIELDS = Object.fromEntries(Object.entries(F).map(([k, v]) => [k, REF_OBJECTS.includes(k) ? [...v, 'leadRef'] : v])) as Record<ObjectName, string[]>;
 
 /** Customer-identifying lead fields. China never sees them. */
-const LEAD_CHINA = ['id', 'createdAt', 'updatedAt', 'office', 'productInterest', 'quantity', 'unit', 'referenceUrl', 'status', 'assignedOffice', 'assignedChinaAgent'];
+const LEAD_CHINA = ['id', 'leadRef', 'attachmentCount', 'createdAt', 'updatedAt', 'office', 'productInterest', 'quantity', 'unit', 'referenceUrl', 'status', 'assignedOffice', 'assignedChinaAgent'];
 /** Supplier identity / raw cost on a quotation. India never sees them. */
-const QUOTE_INDIA = ['id', 'name', 'createdAt', 'updatedAt', 'office', 'clientUnitPrice', 'clientCurrency', 'validityDate', 'pdfAttachment', 'sourcingRequestId'];
+const QUOTE_INDIA = ['id', 'leadRef', 'name', 'createdAt', 'updatedAt', 'office', 'clientUnitPrice', 'clientCurrency', 'validityDate', 'pdfAttachment', 'sourcingRequestId'];
 const QUOTE_CHINA = FIELDS.quotation.filter((f) => !['clientUnitPrice', 'clientCurrency', 'pdfAttachment'].includes(f));
 const APPROVAL_CHINA = ['id', 'createdAt', 'updatedAt', 'status', 'decidedAt', 'quotationId'];
 
@@ -68,7 +71,7 @@ export function readFilter(obj: ObjectName, rec: Rec, ctx: Ctx): Rec | null {
       if (s.india) return base;
       // China works only on leads handed to China, and never sees the client.
       if (rec.assignedOffice !== 'CHINA') return null;
-      return { ...pick(base, LEAD_CHINA), name: `Lead ${String(rec.id).slice(0, 8)}` };
+      return { ...pick(base, LEAD_CHINA), name: rec.leadRef ? String(rec.leadRef) : `Lead ${String(rec.id).slice(0, 8)}` };
     case 'quotation':
       // India: client price only (in its own currency). Supplier cost/currency and supplier id are removed.
       return s.india ? pick(base, QUOTE_INDIA) : pick(base, QUOTE_CHINA);
@@ -115,7 +118,7 @@ export const CHINA_LEAD_STATUSES = ['ASSIGNED', 'SOURCING', 'QUOTED'];
 
 /** Throws Forbidden when the write is not allowed; returns the payload otherwise. `existing` is the current record on update. */
 export function writeCheck(role: Role, obj: ObjectName, op: 'create' | 'update', data: Rec, existing?: Rec): Rec {
-  const allowed = writable(role, obj, op);
+  const allowed = writable(role, obj, op)?.filter((f) => f !== 'leadRef') ?? null;
   if (!allowed) throw new Forbidden(`${role} may not ${op} ${obj}`);
   const bad = Object.keys(data).filter((k) => !allowed.includes(k));
   if (bad.length) throw new Forbidden(`${role} may not write ${obj}.${bad.join(', ')}`);
@@ -136,11 +139,11 @@ export function writeCheck(role: Role, obj: ObjectName, op: 'create' | 'update',
 
 /** Query-string filters the client may use (simple equality). */
 export const FILTERABLE: Partial<Record<ObjectName, string[]>> = {
-  lead: ['status', 'assignedOffice', 'clientRef'],
-  sourcingRequest: ['leadId', 'status', 'clientRef'],
+  lead: ['leadRef', 'status', 'assignedOffice', 'clientRef'],
+  sourcingRequest: ['leadRef', 'leadId', 'status', 'clientRef'],
   supplier: ['sourcingRequestId', 'clientRef'],
-  quotation: ['sourcingRequestId', 'clientRef'],
+  quotation: ['leadRef', 'sourcingRequestId', 'clientRef'],
   clientApproval: ['quotationId', 'clientRef'],
-  shippingOrder: ['leadId', 'quotationId', 'clientRef'],
+  shippingOrder: ['leadRef', 'leadId', 'quotationId', 'clientRef'],
   teamMember: ['email'],
 };

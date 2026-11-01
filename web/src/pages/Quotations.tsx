@@ -1,3 +1,4 @@
+import { RefTag } from './Leads';
 import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +15,7 @@ export function Quotations({ search }: { search: string }) {
   const { data, setData } = useLoad(() => api.quotations(), [api]);
   const [selId, setSelId] = useState<string | null>(null);
   const sel = data?.find((q) => q.id === selId) ?? null;
-  const rows = data?.filter((q) => !search || `${q.name} ${q.productName} ${q.supplierName ?? ''}`.toLowerCase().includes(search.toLowerCase()));
+  const rows = data?.filter((q) => !search || `${q.leadRef ?? ''} ${q.name} ${q.productName} ${q.supplierName ?? ''}`.toLowerCase().includes(search.toLowerCase()));
   const patch = (id: string, p: Partial<Quotation>) => setData((d) => d && d.map((q) => (q.id === id ? { ...q, ...p } : q)));
 
   return (
@@ -36,7 +37,7 @@ export function Quotations({ search }: { search: string }) {
               <tbody>
                 {rows.map((q) => (
                   <tr key={q.id} onClick={() => setSelId(q.id)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
-                    <td className="td font-medium text-ink-900 dark:text-white">{q.name}</td>
+                    <td className="td"><div className="font-medium text-ink-900 dark:text-white">{q.name}</div><div className="mt-1"><RefTag v={q.leadRef} /></div></td>
                     <td className="td text-ink-600 dark:text-ink-300">{q.productName}</td>
                     {perms.suppliers && <td className="td text-ink-600 dark:text-ink-300">{q.supplierName}</td>}
                     <td className="td text-right tabular-nums">{q.quantity.toLocaleString()}</td>
@@ -52,11 +53,12 @@ export function Quotations({ search }: { search: string }) {
           </div>
         )}
       </div>
-      <SlideOver open={!!sel} onClose={() => setSelId(null)} title={sel?.name} subtitle={sel?.productName}
+      <SlideOver open={!!sel} onClose={() => setSelId(null)} title={sel?.name} subtitle={sel && <div className="flex flex-wrap items-center gap-2"><RefTag v={sel.leadRef} /><span>{sel.productName}</span></div>}
         footer={<><button className="btn-outline" onClick={() => setSelId(null)}>{t('common.close')}</button>{perms.clientPricing && <button className="btn-primary"><Download size={16} />{t('quotes.pdf')}</button>}</>}>
         {sel && (
           <>
             <dl className="divide-y divide-ink-100 dark:divide-ink-800">
+              <Field label={t('leads.reference')}><span className="font-mono">{sel.leadRef ?? '—'}</span></Field>
               <Field label={t('common.status')}><Chip value={sel.status} /></Field>
               <Field label={t('common.quantity')}>{t('common.pcs', { n: sel.quantity.toLocaleString() })}</Field>
               {perms.rawCost && <Field label={t('common.supplier')}>{sel.supplierName}</Field>}

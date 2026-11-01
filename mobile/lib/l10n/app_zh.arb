@@ -192,8 +192,9 @@
   "noAttachments": "没有附件",
   "deliveryCity": "交货城市",
   "referenceLink": "参考链接",
-  "enquiryRef": "询盘编号",
+  "leadRef": "参考编号",
   "enquiryMessage": "留言",
   "contactPerson": "联系人",
-  "openFile": "打开 / 分享"
+  "openFile": "打开 / 分享",
+  "searchRef": "搜索参考编号、产品…"
 }

@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import multipart from '@fastify/multipart';
-import { sides } from './roles.js';
+import { RefCounter } from './refs.js';
 import { MAX_FILE_BYTES, MAX_FILES, UploadStore, validateFile } from './uploads.js';
 import { capabilities, isRole, manageableRoles, type Role } from './roles.js';
 import { canRead, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
@@ -21,12 +21,30 @@ export interface AppOptions {
   logger?: boolean;
   /** Private folder for enquiry attachments (default: in-memory temp dir for tests). */
   uploadsDir?: string;
+  /** Lead reference counter (SE-YYMM-NNNN). Default: in-memory (tests). */
+  refs?: RefCounter;
 }
 
 declare module 'fastify' { interface FastifyRequest { user?: User } }
 
 export async function buildApp(o: AppOptions) {
   const app = Fastify({ logger: o.logger ?? false, trustProxy: true, bodyLimit: 1 << 20 });
+  const refs = o.refs ?? new RefCounter();
+  let seeded: Promise<void> | null = null;
+  /** Next shared lead reference. First call also syncs the counter with refs already stored in Twenty. */
+  const nextRef = async () => {
+    seeded ??= o.twenty.list(OBJECTS.lead).then((ls) => ls.forEach((l) => refs.seen(l.leadRef)));
+    await seeded;
+    return refs.next();
+  };
+  /** Child records inherit the lead's reference: sourcing request & shipment via leadId, quotation via its sourcing request. */
+  const inheritRef = async (obj: ObjectName, data: Rec): Promise<string | undefined> => {
+    const ref = async (plural: string, id: unknown) => (id ? (await o.twenty.get(plural, String(id)))?.leadRef as string | undefined : undefined);
+    if (obj === 'sourcingRequest') return ref(OBJECTS.lead, data.leadId);
+    if (obj === 'quotation') return ref(OBJECTS.sourcingRequest, data.sourcingRequestId);
+    if (obj === 'shippingOrder') return (await ref(OBJECTS.lead, data.leadId)) ?? (await ref(OBJECTS.quotation, data.quotationId));
+    return undefined;
+  };
   const fails = new Map<string, { n: number; until: number }>();
 
   app.setErrorHandler((err: any, _req, reply) => {
@@ -112,7 +130,7 @@ export async function buildApp(o: AppOptions) {
     const unit = UNITS.includes(str('unit', 12)) ? str('unit', 12) : 'pcs';
     hits.push(now); enq.set(req.ip, hits);
 
-    const d = new Date(), enquiryRef = `SE-${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+    const leadRef = await nextRef();
     const company = str('company', 160), msg = str('message', 2000), city = str('deliveryCity', 120);
     const lead = await o.twenty.create('leads', {
       name: `${company || name} — ${product}`.slice(0, 200), clientName: company || name, productInterest: product,
@@ -121,11 +139,11 @@ export async function buildApp(o: AppOptions) {
       contactPhone: { primaryPhoneNumber: digits, primaryPhoneCallingCode: code },
       ...(email ? { contactEmail: { primaryEmail: email } } : {}),
       ...(city ? { deliveryCity: city } : {}), ...(ref ? { referenceUrl: { primaryLinkUrl: ref } } : {}),
-      ...(msg ? { enquiryMessage: msg } : {}), contactName: name, enquiryRef, attachmentCount: files.length,
+      ...(msg ? { enquiryMessage: msg } : {}), contactName: name, leadRef, attachmentCount: files.length,
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
     if (files.length && lead?.id) uploads.save(String(lead.id), files);
-    return reply.code(201).send({ ok: true, reference: enquiryRef, attachments: files.length });
+    return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
   });
 
   app.register(async (api) => {
@@ -142,10 +160,10 @@ export async function buildApp(o: AppOptions) {
       return { token: sign(o.users.byId(req.user!.id)!) };
     });
 
-    // ---- Enquiry attachments: India side + super admin only, and only for a lead they can read. Never a public URL. ----
+    // ---- Enquiry attachments: only for a lead the user can read. Never a public URL. ----
     const attLead = async (req: FastifyRequest<{ Params: { id: string } }>) => {
+      // Product photos/documents: any side that can read the lead (China only sees China-assigned leads).
       const role = req.user!.role;
-      if (!sides(role).india) throw new Forbidden('Attachments are India-side only');
       const r = await o.twenty.get(OBJECTS.lead, req.params.id);
       if (!r || !readFilter('lead', r, await ctxOf(role))) throw Object.assign(new Error('Not found'), { status: 404 });
       return String(r.id);
@@ -189,15 +207,22 @@ export async function buildApp(o: AppOptions) {
     });
     api.post<{ Params: { plural: string }; Body: Rec }>('/api/records/:plural', async (req, reply) => {
       const obj = objOf(req.params.plural);
-      const data = writeCheck(req.user!.role, obj, 'create', req.body ?? {});
+      const data = { ...writeCheck(req.user!.role, obj, 'create', req.body ?? {}) };
+      // The reference is always assigned here (incl. offline mobile leads when they sync), never by the client.
+      const leadRef = obj === 'lead' ? await nextRef() : await inheritRef(obj, data);
+      if (leadRef) data.leadRef = leadRef;
       const r = await o.twenty.create(OBJECTS[obj], data);
-      return reply.code(201).send({ data: { id: r.id } });
+      return reply.code(201).send({ data: { id: r.id, ...(leadRef ? { leadRef } : {}) } });
     });
     api.patch<{ Params: { plural: string; id: string }; Body: Rec }>('/api/records/:plural/:id', async (req, reply) => {
       const obj = objOf(req.params.plural), role = req.user!.role;
       const existing = await o.twenty.get(OBJECTS[obj], req.params.id);
       if (!existing || !readFilter(obj, existing, await ctxOf(role))) return reply.code(404).send({ error: 'Not found' });
-      const data = writeCheck(role, obj, 'update', req.body ?? {}, existing);
+      const data = { ...writeCheck(role, obj, 'update', req.body ?? {}, existing) };
+      if (('leadId' in data || 'sourcingRequestId' in data || 'quotationId' in data) && obj !== 'lead') {
+        const leadRef = await inheritRef(obj, { ...existing, ...data });
+        if (leadRef) data.leadRef = leadRef;
+      }
       const r = await o.twenty.update(OBJECTS[obj], req.params.id, data);
       return { data: { id: r.id ?? req.params.id } };
     });

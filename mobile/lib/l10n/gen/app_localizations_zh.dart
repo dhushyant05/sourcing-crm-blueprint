@@ -615,7 +615,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get referenceLink => '参考链接';
 
   @override
-  String get enquiryRef => '询盘编号';
+  String get leadRef => '参考编号';
 
   @override
   String get enquiryMessage => '留言';
@@ -625,4 +625,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get openFile => '打开 / 分享';
+
+  @override
+  String get searchRef => '搜索参考编号、产品…';
 }

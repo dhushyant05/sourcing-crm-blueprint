@@ -23,6 +23,13 @@ class T(unittest.TestCase):
         inp = s.build_field_input("obj", f, {})
         self.assertEqual([o["value"] for o in inp["options"]], ["CNY", "USD"])
 
+    def test_lead_ref_shared_and_unique(self):
+        objs = {o["nameSingular"]: o for o in self.schema["objects"]}
+        for name in ("lead", "sourcingRequest", "quotation", "shippingOrder"):
+            self.assertIn("leadRef", [f["name"] for f in objs[name]["fields"]])
+        f = next(f for f in objs["lead"]["fields"] if f["name"] == "leadRef")
+        self.assertTrue(s.build_field_input("x", f, {})["isUnique"])
+
     def test_relation_payload(self):
         f = {"name": "lead", "label": "Lead", "type": "RELATION", "target": "lead", "targetLabel": "X"}
         inp = s.build_field_input("obj", f, {"lead": "L1"})

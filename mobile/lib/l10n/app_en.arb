@@ -309,8 +309,9 @@
   "noAttachments": "No files attached",
   "deliveryCity": "Delivery city",
   "referenceLink": "Reference link",
-  "enquiryRef": "Enquiry ref.",
+  "leadRef": "Reference",
   "enquiryMessage": "Message",
   "contactPerson": "Contact person",
-  "openFile": "Open / share"
+  "openFile": "Open / share",
+  "searchRef": "Search reference, product…"
 }

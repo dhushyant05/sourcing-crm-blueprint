@@ -123,6 +123,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
       return;
     }
     await QuotePdf.share(QuoteData(
+      leadRef: q.leadRef ?? widget.lead.leadRef,
       quoteNo: '${widget.lead.id.substring(0, 6).toUpperCase()}-${q.id.substring(0, 4).toUpperCase()}',
       clientName: widget.lead.clientName ?? widget.lead.name,
       product: widget.request.productDescription ?? widget.request.name,
@@ -137,7 +138,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
   Widget build(BuildContext context) {
     final p = context.watch<Session>().perms;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.request.productDescription ?? context.l10n.quotations)),
+      appBar: AppBar(title: Text([widget.lead.leadRef, widget.request.productDescription ?? context.l10n.quotations].whereType<String>().join(' · '))),
       body: AsyncView<(List<Quotation>, List<Supplier>)>(
         future: _f,
         onRetry: _reload,
@@ -194,7 +195,7 @@ class QuoteCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(q.name, style: t.textTheme.titleMedium),
+          Row(children: [Flexible(child: Text(q.name, style: t.textTheme.titleMedium)), if ((q.leadRef ?? '').isNotEmpty) ...[const SizedBox(width: 8), RefTag(q.leadRef!)]]),
           const SizedBox(height: 8),
           if (perms.canSeeRawSupplierCost) ...[
             InfoRow(context.l10n.supplierCostUnit, formatMoneyCode(q.unitCost, q.currency)),

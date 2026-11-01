@@ -37,17 +37,17 @@ describe('public enquiry', () => {
     const before = (await twenty.list('leads')).length;
     const r = await post({ ...base, phone: '+919000000000', quantity: '2000', unit: 'pcs', targetPrice: '1.5', currency: 'USD', deliveryCity: 'Chennai', referenceUrl: 'https://example.com/p', message: 'Warm white' });
     expect(r.statusCode).toBe(201);
-    expect(r.json().reference).toMatch(/^SE-\d{6}-[0-9A-F]{6}$/);
+    expect(r.json().reference).toMatch(/^SE-\d{4}-\d{4}$/);
     const leads = await twenty.list('leads');
     expect(leads.length).toBe(before + 1);
     expect(leads.at(-1)).toMatchObject({ clientName: 'Ravi Traders', sourceChannel: 'WEBSITE', status: 'NEW', quantity: 2000, unit: 'pcs',
       targetPrice: { amountMicros: 1500000, currencyCode: 'USD' }, contactPhone: { primaryPhoneNumber: '9000000000', primaryPhoneCallingCode: '+91' },
-      deliveryCity: 'Chennai', referenceUrl: { primaryLinkUrl: 'https://example.com/p' }, enquiryMessage: 'Warm white', enquiryRef: r.json().reference });
+      deliveryCity: 'Chennai', referenceUrl: { primaryLinkUrl: 'https://example.com/p' }, enquiryMessage: 'Warm white', leadRef: r.json().reference });
     for (let i = 0; i < 4; i++) await post(base);
     expect((await post(base)).statusCode).toBe(429);
   });
 
-  it('accepts multipart with photos/documents and serves them only to permitted staff', async () => {
+  it('accepts multipart with photos/documents and serves them to staff of both sides who can read the lead', async () => {
     const { app, twenty, users } = await setup();
     const up = form(base, [{ name: 'photo.png', data: PNG, type: 'image/png' }, { name: 'spec.pdf', data: PDF }]);
     const r = await app.inject({ method: 'POST', url: '/api/public/enquiry', ...up });
@@ -62,8 +62,9 @@ describe('public enquiry', () => {
     const get = async (url: string, t?: string) => app.inject({ method: 'GET', url, headers: t ? { authorization: `Bearer ${t}` } : {} });
     const url = `/api/leads/${lead.id}/attachments`;
     expect((await get(url)).statusCode).toBe(401); // never public
-    expect((await get(url, await tok('c@x.in'))).statusCode).toBe(403); // China side cannot see client files
-    for (const e of ['i@x.in', 's@x.in']) {
+    expect((await get(url, await tok('c@x.in'))).statusCode).toBe(404); // China: only once the lead is assigned to China
+    await twenty.update('leads', String(lead.id), { assignedOffice: 'CHINA' });
+    for (const e of ['i@x.in', 's@x.in', 'c@x.in']) {
       const t = await tok(e);
       const list = (await get(url, t)).json().data;
       expect(list.map((a: any) => [a.name, a.mime])).toEqual([['photo.png', 'image/png'], ['spec.pdf', 'application/pdf']]);

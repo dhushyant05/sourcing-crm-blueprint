@@ -14,10 +14,12 @@ const leads: Lead[] = clients.map((c, i) => ({
   targetPrice: [220, 180, 340, 950, 12, 140, 65, 480, 310, 520, 160, 45][i], targetCurrency: 'INR',
   status: statuses[i], assignedOffice: i % 3 ? 'CHINA' : 'INDIA', assignedChinaAgent: ['Li Wei', 'Chen Jing', 'Wang Fang'][i % 3],
   sourceChannel: ['WhatsApp', 'Referral', 'Website', 'Trade fair'][i % 4], createdAt: day(i * 2 + 1),
+  // Shared reference, numbered oldest first (server assigns these in production).
+  leadRef: `SE-2610-${String(clients.length - i).padStart(4, '0')}`,
 }));
 
 const quotations: Quotation[] = leads.filter((l) => ['QUOTED', 'APPROVED', 'SHIPPING', 'WON'].includes(l.status)).map((l, i) => ({
-  id: `Q${i + 1}`, name: `QT-26${(1040 + i).toString()}`, leadId: l.id, productName: l.productInterest,
+  id: `Q${i + 1}`, name: `QT-26${(1040 + i).toString()}`, leadId: l.id, leadRef: l.leadRef, productName: l.productInterest,
   supplierName: ['Yiwu Huaxin Trading', 'Ningbo Brightway', 'Guangzhou Hometex', 'Shenzhen Joylight', 'Foshan Ceramics Co.'][i % 5],
   unitCost: [11.5, 9.2, 22, 48, 3.1, 7.4][i % 6], currency: (['CNY', 'CNY', 'USD', 'CNY', 'INR', 'USD'] as const)[i % 6], quantity: l.quantity ?? 100,
   clientUnitPrice: [168, 142, 29.5, 720, 52, 1.45][i % 6], clientCurrency: (['INR', 'INR', 'USD', 'INR', 'INR', 'USD'] as const)[i % 6],
@@ -30,6 +32,8 @@ const shipments: Shipment[] = [
   { id: 'S3', name: 'SO-2604', clientName: 'Desai Electricals', stage: 'DELIVERED', carrier: 'DHL Express', trackingNumber: '4021 8833 10', origin: 'Shenzhen', destination: 'Mumbai', eta: day(5), updatedAt: day(5) },
   { id: 'S4', name: 'SO-2613', clientName: 'Urban Nest Decor', stage: 'BOOKED', carrier: 'ONE', trackingNumber: '—', origin: 'Yiwu', destination: 'Mundra', eta: day(-24), updatedAt: day(0) },
 ];
+
+for (const s of shipments) s.leadRef = leads.find((l) => l.clientName === s.clientName)?.leadRef;
 
 const suppliers: Supplier[] = [
   { id: 'SP1', name: 'Yiwu Huaxin Trading', city: 'Yiwu', category: 'Household', rating: 4.6, contactName: 'Zhang Min', wechat: 'huaxin_zm' },
@@ -49,7 +53,7 @@ const users: User[] = [
 ];
 
 // L2 arrived through the website enquiry form with photos and a spec sheet.
-Object.assign(leads[1], { sourceChannel: 'WEBSITE', enquiryRef: 'SE-261030-7F3A21', contactName: 'Rohit Mehta', unit: 'pcs', deliveryCity: 'Chennai',
+Object.assign(leads[1], { sourceChannel: 'WEBSITE', contactName: 'Rohit Mehta', unit: 'pcs', deliveryCity: 'Chennai',
   referenceUrl: 'https://www.alibaba.com/product-detail/bamboo-cutting-board', enquiryMessage: 'Need 3 sizes with juice groove and laser-engraved logo. Sample first please.', attachmentCount: 4 });
 const attachments: Record<string, Attachment[]> = {
   L2: [

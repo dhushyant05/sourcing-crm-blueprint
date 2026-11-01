@@ -5,18 +5,18 @@ export interface Lead {
   id: string; name: string; clientName?: string; contactPhone?: string; contactEmail?: string;
   productInterest?: string; quantity?: number; targetPrice?: number; targetCurrency?: Currency;
   status: LeadStatus; assignedOffice?: string; assignedChinaAgent?: string; sourceChannel?: string; createdAt: string;
-  unit?: string; deliveryCity?: string; referenceUrl?: string; enquiryMessage?: string; enquiryRef?: string; contactName?: string; attachmentCount?: number;
+  unit?: string; deliveryCity?: string; referenceUrl?: string; enquiryMessage?: string; leadRef?: string; contactName?: string; attachmentCount?: number;
 }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
-  id: string; name: string; leadId?: string; productName?: string; supplierName?: string;
+  id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
   /** Supplier cost (China side) in its own currency. */
   unitCost?: number; totalCost?: number; currency?: Currency; quantity: number;
   /** Client price (India side) in its own currency. Never converted from the supplier cost. */
   clientUnitPrice?: number; clientCurrency?: Currency; status: string; validityDate?: string; createdAt: string;
 }
 export interface Shipment {
-  id: string; name: string; clientName?: string; stage: string; carrier?: string; trackingNumber?: string;
+  id: string; name: string; leadRef?: string; clientName?: string; stage: string; carrier?: string; trackingNumber?: string;
   origin?: string; destination?: string; eta?: string; updatedAt: string;
 }
 export interface Supplier { id: string; name: string; phone?: string; wechat?: string; notes?: string; city?: string; category?: string; rating?: number; contactName?: string; }

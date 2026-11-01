@@ -9,8 +9,10 @@ import i18n, { fmtDate } from '../i18n';
 import { MoneyInput, Money } from '../components/MoneyInput';
 import { Avatar, Chip, dot, Empty, Field, PageHeader, Skeleton, SlideOver, TableSkeleton, pretty } from '../components/ui';
 
-const who = (l: Lead, customers: boolean) => (customers ? l.clientName ?? l.name : i18n.t('common.leadN', { id: l.id }));
-export const matches = (l: Lead, q: string) => !q || [l.name, l.clientName, l.productInterest, l.assignedChinaAgent].some((v) => v?.toLowerCase().includes(q.toLowerCase()));
+const who = (l: Lead, customers: boolean) => (customers ? l.clientName ?? l.name : l.leadRef ?? i18n.t('common.leadN', { id: l.id }));
+/** The one reference shared by India, China and the customer (SE-YYMM-NNNN). */
+export const RefTag = ({ v }: { v?: string }) => (v ? <span data-testid="lead-ref" className="inline-flex items-center rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[11px] font-medium text-brand-700 ring-1 ring-brand-200 dark:bg-brand-500/10 dark:text-brand-300 dark:ring-brand-500/30">{v}</span> : null);
+export const matches = (l: Lead, q: string) => !q || [l.leadRef, l.name, l.clientName, l.productInterest, l.assignedChinaAgent].some((v) => v?.toLowerCase().includes(q.toLowerCase()));
 
 export function Leads({ search, openLead }: { search: string; openLead: (l: Lead) => void }) {
   const { api, perms } = useApp();
@@ -54,7 +56,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                   {col.map((l) => (
                     <article key={l.id} draggable onDragStart={() => setDrag(l.id)} onDragEnd={() => setDrag(null)} onClick={() => openLead(l)}
                       className={clsx('cursor-pointer rounded-xl border border-ink-200/70 bg-white p-3.5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift dark:border-ink-800 dark:bg-ink-900', drag === l.id && 'opacity-50')}>
-                      <div className="text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>
+                      <div className="text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>{perms.customers && <div className="mt-1"><RefTag v={l.leadRef} /></div>}
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
                         <span>{t('common.pcs', { n: l.quantity?.toLocaleString() })}</span>
@@ -77,7 +79,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                 <tbody>
                   {leads.map((l) => (
                     <tr key={l.id} onClick={() => openLead(l)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
-                      <td className="td"><div className="flex items-center gap-3"><Avatar name={who(l, perms.customers)} /><span className="font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</span></div></td>
+                      <td className="td"><div className="flex items-center gap-3"><Avatar name={who(l, perms.customers)} /><span className="font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</span>{perms.customers && <RefTag v={l.leadRef} />}</div></td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
                       {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
@@ -129,12 +131,13 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
   const { t } = useTranslation();
   return (
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
-      subtitle={lead && <div className="flex items-center gap-2"><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
+      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{perms.customers && <button className="btn-primary">{t('leads.assignChina')}</button>}</>}>
       {lead && (
         <>
           <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.request')}</h3>
           <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
+            <Field label={t('leads.reference')}><span className="font-mono">{lead.leadRef ?? '—'}</span></Field>
             <Field label={t('common.product')}>{lead.productInterest}</Field>
             <Field label={t('common.quantity')}>{lead.unit && lead.unit !== 'pcs' ? `${lead.quantity?.toLocaleString() ?? ''} ${t(`landing.contact.units.${lead.unit}`)}` : t('common.pcs', { n: lead.quantity?.toLocaleString() })}</Field>
             {perms.clientPricing && <Field label={t('leads.targetPrice')}><Money v={lead.targetPrice} c={lead.targetCurrency} /></Field>}
@@ -148,11 +151,10 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
               {lead.contactName && <Field label={t('leads.contactName')}>{lead.contactName}</Field>}
               <Field label={t('common.phone')}>{lead.contactPhone && <a className="text-brand-600" href={`tel:${lead.contactPhone.replace(/\s/g, '')}`}>{lead.contactPhone}</a>}</Field><Field label={t('common.email')}>{lead.contactEmail}</Field>
               {lead.deliveryCity && <Field label={t('leads.deliveryCity')}>{lead.deliveryCity}</Field>}
-              {lead.enquiryRef && <Field label={t('leads.reference')}><span className="font-mono">{lead.enquiryRef}</span></Field>}
             </dl>
             {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
-            <Attachments leadId={lead.id} />
           </>)}
+          <Attachments leadId={lead.id} />
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
             {[[t('leads.createdEvt'), lead.createdAt], [t('leads.assignedTo', { who: lead.assignedChinaAgent ?? 'China' }), lead.createdAt]].map(([t, d]) => (

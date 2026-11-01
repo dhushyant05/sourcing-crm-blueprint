@@ -20,7 +20,7 @@
     "toggleSidebar": "Toggle sidebar"
   },
   "header": {
-    "search": "Search leads, clients, products…",
+    "search": "Search by reference, lead, product…",
     "viewAs": "View as {{role}}",
     "demoPreview": "Demo: preview as role",
     "theme": "Toggle theme",

@@ -30,13 +30,13 @@ class Lead {
     this.deliveryCity,
     this.referenceUrl,
     this.enquiryMessage,
-    this.enquiryRef,
+    this.leadRef,
     this.contactName,
     this.attachmentCount,
   });
   final String id;
   final String name;
-  final String? unit, deliveryCity, referenceUrl, enquiryMessage, enquiryRef, contactName;
+  final String? unit, deliveryCity, referenceUrl, enquiryMessage, leadRef, contactName;
   final int? attachmentCount;
   final String? clientName, contactPhone, contactEmail, productInterest;
   final double? quantity, targetPrice;
@@ -46,7 +46,7 @@ class Lead {
   final DateTime? createdAt;
   final bool pendingSync;
 
-  static const gqlFields = '''id name createdAt clientName productInterest quantity status
+  static const gqlFields = '''id leadRef name createdAt clientName productInterest quantity status
     sourceChannel assignedOffice assignedChinaAgent winLossReason
     contactPhone { primaryPhoneNumber primaryPhoneCountryCode }
     contactEmail { primaryEmail }
@@ -54,7 +54,7 @@ class Lead {
     chatwootConversationUrl { primaryLinkUrl }''';
 
   /// Fields safe for China staff (no customer details).
-  static const gqlFieldsRedacted = '''id name createdAt productInterest quantity status
+  static const gqlFieldsRedacted = '''id leadRef name createdAt productInterest quantity status
     assignedOffice assignedChinaAgent''';
 
   factory Lead.fromJson(Map<String, dynamic> j) => Lead(
@@ -81,7 +81,7 @@ class Lead {
         deliveryCity: j['deliveryCity'] as String?,
         referenceUrl: _link(j['referenceUrl']),
         enquiryMessage: j['enquiryMessage'] as String?,
-        enquiryRef: j['enquiryRef'] as String?,
+        leadRef: j['leadRef'] as String?,
         contactName: j['contactName'] as String?,
         attachmentCount: _num(j['attachmentCount'])?.toInt(),
       );
@@ -113,8 +113,11 @@ class SourcingRequest {
     this.chatwootConversationId,
     this.leadId,
     this.createdAt,
+    this.leadRef,
   });
   final String id, name;
+  /// Shared lead reference (SE-YYMM-NNNN), copied from the lead by the server.
+  final String? leadRef;
   final String? productDescription;
   final double? quantity, targetPrice;
   final DateTime? deadline;
@@ -140,6 +143,7 @@ class SourcingRequest {
         chatwootConversationId: (j['chatwootConversationId'] as num?)?.toInt(),
         leadId: j['leadId'] as String?,
         createdAt: _date(j['createdAt']),
+        leadRef: j['leadRef'] as String?,
       );
 }
 
@@ -170,8 +174,10 @@ class Quotation {
     this.validityDate,
     this.sourcingRequestId,
     this.supplierName,
+    this.leadRef,
   });
   final String id, name;
+  final String? leadRef;
   final double unitCost;
   /// Supplier cost currency (USD/CNY/INR) as entered by China. Never converted.
   final String currency;
@@ -199,6 +205,7 @@ class Quotation {
         validityDate: _date(j['validityDate']),
         sourcingRequestId: j['sourcingRequestId'] as String?,
         supplierName: j['supplier'] is Map ? j['supplier']['name'] as String? : null,
+        leadRef: j['leadRef'] as String?,
       );
 }
 
@@ -233,8 +240,10 @@ class ShippingOrder {
     this.latitude,
     this.longitude,
     this.leadId,
+    this.leadRef,
   });
   final String id, name;
+  final String? leadRef;
   final String? forwarder, trackingNumber, containerType, customsStatus, shipmentStatus, currentLocation, leadId;
   final DateTime? etd, eta;
   final double? latitude, longitude;
@@ -254,6 +263,7 @@ class ShippingOrder {
         latitude: _num(j['latitude']),
         longitude: _num(j['longitude']),
         leadId: j['leadId'] as String?,
+        leadRef: j['leadRef'] as String?,
       );
 }
 

@@ -1250,11 +1250,11 @@ abstract class AppLocalizations {
   /// **'Reference link'**
   String get referenceLink;
 
-  /// No description provided for @enquiryRef.
+  /// No description provided for @leadRef.
   ///
   /// In en, this message translates to:
-  /// **'Enquiry ref.'**
-  String get enquiryRef;
+  /// **'Reference'**
+  String get leadRef;
 
   /// No description provided for @enquiryMessage.
   ///
@@ -1273,6 +1273,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open / share'**
   String get openFile;
+
+  /// No description provided for @searchRef.
+  ///
+  /// In en, this message translates to:
+  /// **'Search reference, product…'**
+  String get searchRef;
 }
 
 class _AppLocalizationsDelegate

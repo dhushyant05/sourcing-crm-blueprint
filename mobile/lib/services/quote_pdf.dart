@@ -13,12 +13,14 @@ import '../core/currency.dart';
 class QuoteData {
   QuoteData({required this.quoteNo, required this.clientName, required this.product,
       required this.quantity, required this.unitPrice, required this.currency,
-      this.validUntil, this.notes, DateTime? date})
+      this.validUntil, this.notes, this.leadRef, DateTime? date})
       : date = date ?? DateTime.now();
   final String quoteNo, clientName, product, currency;
   final double quantity, unitPrice;
   final DateTime? validUntil;
   final String? notes;
+  /// Shared lead reference (SE-YYMM-NNNN) the customer also got on the website.
+  final String? leadRef;
   final DateTime date;
   double get total => quantity * unitPrice;
 }
@@ -57,6 +59,7 @@ class QuotePdf {
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
             pw.Text('QUOTATION', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.Text('No. ${q.quoteNo}'),
+            if (q.leadRef != null) pw.Text('Ref. ${q.leadRef}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: brandBlue)),
             pw.Text('Date: ${df.format(q.date)}'),
             if (q.validUntil != null) pw.Text('Valid until: ${df.format(q.validUntil!)}'),
           ]),
@@ -98,7 +101,7 @@ class QuotePdf {
     final file = await save(q, await build(q));
     await SharePlus.instance.share(ShareParams(
       files: [XFile(file.path, mimeType: 'application/pdf')],
-      text: 'Quotation ${q.quoteNo} for ${q.product} — ${formatMoney(q.total, q.currency)}',
+      text: '${q.leadRef != null ? '[${q.leadRef}] ' : ''}Quotation ${q.quoteNo} for ${q.product} — ${formatMoney(q.total, q.currency)}',
       subject: 'Source Easy quotation ${q.quoteNo}',
     ));
   }

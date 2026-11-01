@@ -19,6 +19,8 @@ def build_field_input(object_id, f, ids):
            "type": f["type"], "isNullable": True}
     if f.get("description"):
         inp["description"] = f["description"]
+    if f.get("isUnique"):
+        inp["isUnique"] = True
     if f.get("settings"):
         inp["settings"] = f["settings"]
     if f["type"] in ("SELECT", "MULTI_SELECT"):

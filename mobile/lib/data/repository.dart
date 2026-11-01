@@ -113,9 +113,8 @@ class SourceEasyRepository {
     });
   }
 
-  /// Enquiry photos/documents (India side + super admin only; the server enforces this too).
+  /// Enquiry product photos/documents. Both sides (China only for China-assigned leads; the server enforces it).
   Future<List<LeadAttachment>> attachments(String leadId) async {
-    if (!perms.canSeeCustomerDetails) return [];
     final j = await api.send('GET', '/api/leads/${Uri.encodeComponent(leadId)}/attachments') as Map<String, dynamic>;
     return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList();
   }

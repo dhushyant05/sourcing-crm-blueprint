@@ -83,3 +83,21 @@ class InfoRow extends StatelessWidget {
         ]),
       );
 }
+
+/// The one reference shared by India, China and the customer (SE-YYMM-NNNN).
+class RefTag extends StatelessWidget {
+  const RefTag(this.value, {super.key});
+  final String value;
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: c.primaryContainer, borderRadius: BorderRadius.circular(6)),
+        child: Text(value, style: TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w600, color: c.onPrimaryContainer)),
+      ),
+    );
+  }
+}

@@ -21,6 +21,7 @@ class LeadsScreen extends StatefulWidget {
 
 class _LeadsScreenState extends State<LeadsScreen> {
   String? _office, _status;
+  String _q = '';
   late Future<List<Lead>> _f;
 
   @override
@@ -49,6 +50,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
               })
           : null,
       body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            key: const Key('lead-search'),
+            decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: context.l10n.searchRef, isDense: true, border: const OutlineInputBorder()),
+            onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+          ),
+        ),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -75,7 +84,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
             child: AsyncView<List<Lead>>(
               future: _f,
               onRetry: _reload,
-              builder: (c, leads) => leads.isEmpty
+              builder: (c, all) {
+                final leads = all.where((l) => _q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
+                    .whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
+                return leads.isEmpty
                   ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noLeads))])
                   : ListView.separated(
                       itemCount: leads.length,
@@ -86,6 +98,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           leading: CircleAvatar(child: Text((showCustomer ? (l.clientName ?? l.name) : (l.productInterest ?? '?')).characters.first.toUpperCase())),
                           title: Text(showCustomer ? (l.clientName ?? l.name) : (l.productInterest ?? l.name)),
                           subtitle: Text([
+                            l.leadRef,
                             if (showCustomer) l.productInterest,
                             if (l.quantity != null) 'Qty ${l.quantity!.toStringAsFixed(0)}',
                             if (l.pendingSync) 'not synced',
@@ -98,7 +111,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                   _reload();
                                 },
                         );
-                      }),
+                      });
+              },
             ),
           ),
         ),

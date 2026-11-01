@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { TwentyRest } from './twenty.js';
 import { UserStore } from './users.js';
+import { RefCounter } from './refs.js';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -24,6 +25,7 @@ const app = await buildApp({
   webDir: process.env.WEB_DIR ?? new URL('../../web/dist', import.meta.url).pathname,
   backupLinks: process.env.BACKUP_LINKS ? JSON.parse(process.env.BACKUP_LINKS) : [],
   uploadsDir: env('UPLOADS_DIR', './data/uploads'),
+  refs: new RefCounter(env('REFS_FILE', './data/refs.json')),
   logger: true,
 });
 await app.listen({ host: env('HOST', '0.0.0.0'), port: Number(env('PORT', '8080')) });

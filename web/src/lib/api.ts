@@ -67,7 +67,7 @@ export class ServerApi implements Api {
       targetPrice: amount(n.targetPrice), targetCurrency: n.targetPrice?.currencyCode,
     })) as Lead[];
   }
-  async attachments(leadId: string) { return this.india ? this.req<Attachment[]>('GET', `/leads/${encodeURIComponent(leadId)}/attachments`) : []; }
+  async attachments(leadId: string) { return this.req<Attachment[]>('GET', `/leads/${encodeURIComponent(leadId)}/attachments`); }
   async attachmentUrl(leadId: string, a: Attachment) {
     const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(a.id)}`, { headers: { authorization: `Bearer ${this.token}` } });
     if (res.status === 401) this.onAuthError();
@@ -84,7 +84,7 @@ export class ServerApi implements Api {
       const ap = aps.filter((a) => a.quotationId === q.id).sort((a, b) => String(b.decidedAt).localeCompare(String(a.decidedAt)))[0];
       const quantity = s?.quantity ?? (q.unitCost ? Math.round(q.totalCost / q.unitCost) : 1);
       return {
-        id: q.id, name: q.name, leadId: s?.leadId, productName: s?.productDescription ?? s?.name, supplierName: sup.get(q.supplierId),
+        id: q.id, name: q.name, leadRef: q.leadRef ?? s?.leadRef, leadId: s?.leadId, productName: s?.productDescription ?? s?.name, supplierName: sup.get(q.supplierId),
         unitCost: q.unitCost ?? undefined, totalCost: q.totalCost ?? undefined, currency: q.currency ?? undefined, quantity,
         clientUnitPrice: q.clientUnitPrice ?? undefined, clientCurrency: q.clientCurrency ?? undefined,
         status: ap?.status ?? (q.clientUnitPrice ? 'SENT' : 'DRAFT'), validityDate: q.validityDate, createdAt: q.createdAt,
@@ -95,7 +95,7 @@ export class ServerApi implements Api {
     const [ss, leads] = await Promise.all([this.list('shippingOrders'), this.india ? this.list('leads') : Promise.resolve([] as Raw[])]);
     const client = new Map(leads.map((l) => [l.id, l.clientName]));
     return ss.map((s): Shipment => ({
-      id: s.id, name: s.name, clientName: client.get(s.leadId), stage: s.shipmentStatus ?? 'BOOKED', carrier: s.forwarder,
+      id: s.id, name: s.name, leadRef: s.leadRef, clientName: client.get(s.leadId), stage: s.shipmentStatus ?? 'BOOKED', carrier: s.forwarder,
       trackingNumber: s.trackingNumber, origin: s.currentLocation ?? 'China', destination: 'India', eta: s.eta, updatedAt: s.updatedAt ?? s.createdAt,
     }));
   }

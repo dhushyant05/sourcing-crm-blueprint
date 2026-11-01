@@ -9,6 +9,13 @@
       "description": "Client lead captured by the India office",
       "fields": [
         {
+          "name": "leadRef",
+          "label": "Reference",
+          "type": "TEXT",
+          "description": "Shared lead reference SE-YYMM-NNNN, assigned by the API server; same on India and China side. Copied from the lead onto related records.",
+          "isUnique": true
+        },
+        {
           "name": "clientName",
           "label": "Client name",
           "type": "TEXT"
@@ -61,11 +68,6 @@
         {
           "name": "enquiryMessage",
           "label": "Enquiry message",
-          "type": "TEXT"
-        },
-        {
-          "name": "enquiryRef",
-          "label": "Enquiry reference",
           "type": "TEXT"
         },
         {
@@ -137,6 +139,12 @@
       "icon": "IconSearch",
       "description": "China-side sourcing work for a lead",
       "fields": [
+        {
+          "name": "leadRef",
+          "label": "Reference",
+          "type": "TEXT",
+          "description": "Shared lead reference SE-YYMM-NNNN, assigned by the API server; same on India and China side. Copied from the lead onto related records."
+        },
         {
           "name": "productDescription",
           "label": "Product description",
@@ -244,6 +252,12 @@
       "icon": "IconReceipt",
       "description": "Supplier quote stored in the quoted currency",
       "fields": [
+        {
+          "name": "leadRef",
+          "label": "Reference",
+          "type": "TEXT",
+          "description": "Shared lead reference SE-YYMM-NNNN, assigned by the API server; same on India and China side. Copied from the lead onto related records."
+        },
         {
           "name": "unitCost",
           "label": "Unit cost",
@@ -364,6 +378,12 @@
       "icon": "IconShip",
       "description": "Forwarder booking and tracking",
       "fields": [
+        {
+          "name": "leadRef",
+          "label": "Reference",
+          "type": "TEXT",
+          "description": "Shared lead reference SE-YYMM-NNNN, assigned by the API server; same on India and China side. Copied from the lead onto related records."
+        },
         {
           "name": "forwarder",
           "label": "Forwarder",

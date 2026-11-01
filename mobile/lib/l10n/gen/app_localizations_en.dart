@@ -620,7 +620,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get referenceLink => 'Reference link';
 
   @override
-  String get enquiryRef => 'Enquiry ref.';
+  String get leadRef => 'Reference';
 
   @override
   String get enquiryMessage => 'Message';
@@ -630,4 +630,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openFile => 'Open / share';
+
+  @override
+  String get searchRef => 'Search reference, product…';
 }

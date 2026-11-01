@@ -105,6 +105,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     style: t.textTheme.headlineSmall)),
                 StatusChip(l.status),
               ]),
+              if (l.leadRef != null) Padding(padding: const EdgeInsets.only(top: 6), child: RefTag(l.leadRef!)),
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -115,9 +116,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                       InfoRow(context.l10n.contact, l.contactPhone),
                       InfoRow(context.l10n.email, l.contactEmail),
                       InfoRow(context.l10n.source, codeLabel(context, l.sourceChannel)),
-                      if (l.enquiryRef != null) InfoRow(context.l10n.enquiryRef, l.enquiryRef),
                       if (l.deliveryCity != null) InfoRow(context.l10n.deliveryCity, l.deliveryCity),
                     ],
+                    InfoRow(context.l10n.leadRef, l.leadRef ?? '—'),
                     InfoRow(context.l10n.product, l.productInterest),
                     InfoRow(context.l10n.quantity, l.quantity == null ? null : '${l.quantity!.toStringAsFixed(0)} ${l.unit ?? ''}'.trim()),
                     if (l.referenceUrl != null) InfoRow(context.l10n.referenceLink, l.referenceUrl),
@@ -131,11 +132,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               ),
               if (p.canSeeCustomerDetails && l.enquiryMessage != null)
                 Card(child: ListTile(title: Text(context.l10n.enquiryMessage), subtitle: Text(l.enquiryMessage!))),
-              if (p.canSeeCustomerDetails) ...[
-                const SizedBox(height: 8),
-                LeadAttachments(leadId: l.id),
-                const SizedBox(height: 12),
-              ],
+              const SizedBox(height: 8),
+              LeadAttachments(leadId: l.id),
+              const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (p.canCreateLead && l.status == 'NEW')
                   FilledButton.tonalIcon(onPressed: () => _assign(l), icon: Icon(Icons.forward), label: Text(context.l10n.assignToChina)),
@@ -163,7 +162,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               if (d.requests.isEmpty) Padding(padding: EdgeInsets.all(8), child: Text(context.l10n.noneYet)),
               ...d.requests.map((r) => Card(
                     child: ListTile(
-                      title: Text(r.productDescription ?? r.name),
+                      title: Text([r.leadRef, r.productDescription ?? r.name].whereType<String>().join(' · ')),
                       subtitle: Text(context.l10n.samplesStatus(codeLabel(context, r.sampleStatus)) +
                           (r.deadline != null ? ' · ${context.l10n.deadlineOn(dateFmt.format(r.deadline!))}' : '')),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [

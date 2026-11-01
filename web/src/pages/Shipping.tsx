@@ -1,3 +1,4 @@
+import { RefTag } from './Leads';
 import { clsx } from 'clsx';
 import { Check, Ship as ShipIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -14,7 +15,7 @@ export function Shipping({ search }: { search: string }) {
   const { t } = useTranslation();
   const { data } = useLoad(() => api.shipments(), [api]);
   const [sel, setSel] = useState<Shipment | null>(null);
-  const rows = data?.filter((s) => !search || `${s.name} ${s.clientName} ${s.trackingNumber}`.toLowerCase().includes(search.toLowerCase()));
+  const rows = data?.filter((s) => !search || `${s.leadRef ?? ''} ${s.name} ${s.clientName} ${s.trackingNumber}`.toLowerCase().includes(search.toLowerCase()));
   return (
     <>
       <PageHeader title={t('shipping.title')} subtitle={t('shipping.subtitle')} />
@@ -28,7 +29,7 @@ export function Shipping({ search }: { search: string }) {
                   const i = SHIP_STAGES.indexOf(s.stage);
                   return (
                     <tr key={s.id} onClick={() => setSel(s)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
-                      <td className="td"><div className="font-medium text-ink-900 dark:text-white">{s.name}</div><div className="text-xs text-ink-500">{s.carrier} · {s.trackingNumber}</div></td>
+                      <td className="td"><div className="flex items-center gap-2 font-medium text-ink-900 dark:text-white">{s.name}<RefTag v={s.leadRef} /></div><div className="text-xs text-ink-500">{s.carrier} · {s.trackingNumber}</div></td>
                       {perms.customers && <td className="td text-ink-600 dark:text-ink-300">{s.clientName}</td>}
                       <td className="td text-ink-600 dark:text-ink-300">{s.origin} → {s.destination}</td>
                       <td className="td w-48"><div className="h-1.5 rounded-full bg-ink-100 dark:bg-ink-800"><div className="h-1.5 rounded-full bg-gradient-to-r from-brand-500 to-cyan-500" style={{ width: `${((i + 1) / SHIP_STAGES.length) * 100}%` }} /></div></td>
@@ -42,7 +43,7 @@ export function Shipping({ search }: { search: string }) {
           </div>
         )}
       </div>
-      <SlideOver open={!!sel} onClose={() => setSel(null)} title={sel?.name} subtitle={sel && `${sel.origin} → ${sel.destination}`}
+      <SlideOver open={!!sel} onClose={() => setSel(null)} title={sel?.name} subtitle={sel && <div className="flex flex-wrap items-center gap-2"><RefTag v={sel.leadRef} /><span>{sel.origin} → {sel.destination}</span></div>}
         footer={<><button className="btn-outline" onClick={() => setSel(null)}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('shipping.update')}</button>}</>}>
         {sel && (<>
           <ol className="space-y-0">
