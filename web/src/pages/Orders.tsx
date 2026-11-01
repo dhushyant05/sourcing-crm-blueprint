@@ -10,7 +10,7 @@ import { inr } from '../components/CustomerQuote';
 const PROD = ['NEW', 'DEPOSIT_PAID', 'IN_PRODUCTION', 'READY'], IND = ['IN_TRANSIT', 'CUSTOMS', 'OUT_FOR_DELIVERY', 'DELIVERED'], PAY = ['PENDING', 'PARTIAL', 'PAID'];
 
 function OrderCard({ o, onChange, openLead }: { o: Order; onChange: (o: Order) => void; openLead: (id: string) => void }) {
-  const { api, session } = useApp(); const { t } = useTranslation();
+  const { api, session, perms } = useApp(); const { t } = useTranslation();
   const role = session?.role ?? '', sa = role === 'SUPER_ADMIN', china = role.startsWith('CHINA') || sa, india = role.startsWith('INDIA') || sa;
   const [f, setF] = useState<Record<string, string>>(() => ({ production: o.production, tracking: o.tracking ?? '', container: o.container ?? '', etd: o.etd ?? '', eta: o.eta ?? '',
     indiaStatus: o.indiaStatus, paymentStatus: o.paymentStatus ?? 'PENDING', advance: String(o.advance ?? ''), expectedShip: o.expectedShip ?? '' }));
@@ -31,7 +31,7 @@ function OrderCard({ o, onChange, openLead }: { o: Order; onChange: (o: Order) =
       <div>{t('orders.production')}: <b>{t(`orders.prod.${o.production}`)}</b></div><div>{t('orders.shipment')}: <b>{t(`orders.ind.${o.indiaStatus}`)}</b></div>
       <div>{t('orders.tracking')}: <b>{o.tracking || '—'}</b>{o.container && ` · ${o.container}`}</div><div>ETD {o.etd ? fmtDate(o.etd) : '—'} · ETA {o.eta ? fmtDate(o.eta) : '—'}</div>
     </div>
-    {china && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('orders.chinaPart')}</div>
+    {china && perms.can('orders.production') && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('orders.chinaPart')}</div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{!shipped && sel('production', PROD, 'prod', t('orders.production'))}{inp('tracking', t('orders.tracking'))}{inp('container', t('orders.container'))}{inp('etd', t('orders.etd'), 'date')}{inp('eta', t('orders.eta'), 'date')}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button data-testid="o-save-china" className="btn-outline !py-1 text-xs" disabled={busy} onClick={() => void save(shipped ? ['tracking', 'container', 'etd', 'eta'] : ['production', 'tracking', 'container', 'etd', 'eta'])}>{t('orders.save')}</button>
@@ -39,7 +39,7 @@ function OrderCard({ o, onChange, openLead }: { o: Order; onChange: (o: Order) =
         {!shipped && !canShip && <span className="text-xs text-amber-600">{t('ship.needForShip')}</span>}
         {shipped && <span className="text-xs text-emerald-600" data-testid="o-shipped">✓ {t('ship.shippedNote')}</span>}
       </div></div>}
-    {india && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('orders.indiaPart')}</div>
+    {india && (perms.can('orders.payment') || perms.can('orders.production')) && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('orders.indiaPart')}</div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{shipped ? sel('indiaStatus', IND.includes(f.indiaStatus) ? IND : [f.indiaStatus, ...IND], 'ind', t('orders.shipment')) : <div data-testid="o-india-locked" className="col-span-2 self-end pb-2 text-xs text-ink-500">🔒 {t('ship.indiaLocked')}</div>}{sel('paymentStatus', PAY, 'pay', t('orders.payment'))}{inp('advance', t('orders.advance'))}{inp('expectedShip', t('orders.expectedShip'), 'date')}</div>
       <button data-testid="o-save-india" className="btn-primary mt-2 !py-1 text-xs" disabled={busy} onClick={() => void save(shipped && f.indiaStatus !== o.indiaStatus ? ['indiaStatus', 'paymentStatus', 'advance', 'expectedShip'] : ['paymentStatus', 'advance', 'expectedShip'])}>{t('orders.save')}</button></div>}
     {msg && <p role="status" className="mt-1 text-xs text-ink-500">{msg}</p>}

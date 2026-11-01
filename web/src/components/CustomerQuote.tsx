@@ -17,7 +17,7 @@ export function QuoteStatusChip({ s }: { s?: string | null }) {
 
 /** India: prepare the customer quote (INR), preview, generate the branded PDF, send it, then record the customer's decision and create the order. */
 export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuote; lead?: Lead | null; onChange: (q: LeadQuote) => void; onLeadStatus?: (s: string) => void }) {
-  const { api } = useApp(); const { t } = useTranslation();
+  const { api, perms } = useApp(); const { t } = useTranslation();
   const c = q.cq;
   const init = () => ({ qty: String(c?.qty ?? lead?.quantity ?? ''), unitPrice: String(c?.unitPrice ?? q.clientPrice ?? ''), gstPct: String(c?.gstPct ?? 18),
     shipCost: String(c?.shipCost ?? ''), shipTerm: c?.shipTerm ?? '', shipMode: c?.shipMode ?? q.shipMode ?? '', port: c?.port ?? '', transit: c?.transit ?? '',
@@ -108,7 +108,7 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
       <div><label className="label">{t('orders.expectedShip')}</label><input data-testid="of-ship" type="date" className="input" value={order.expectedShip} onChange={(e) => setOrder({ ...order, expectedShip: e.target.value })} /></div>
       <div className="flex items-end"><button data-testid="of-create" className="btn-primary" disabled={busy} onClick={() => void run(async () => { const o = await api.createOrder(q.id, { qty: c?.qty, agreedPrice: c?.unitPrice, advance: order.advance || 0, paymentStatus: order.paymentStatus, expectedShip: order.expectedShip || null }); onChange({ ...q, orderId: o.id }); setOrderDone(true); })}><Package size={14} />{t('orders.create')}</button></div>
       <div className="col-span-full text-ink-500">{t('orders.qty')}: {c?.qty} · {t('orders.agreed')}: {inr(c?.unitPrice)}</div>
-    </div>) : <button data-testid="cq-create-order" className="btn-primary mt-2 !py-1 text-xs" onClick={() => setOrder({ advance: '', paymentStatus: 'PENDING', expectedShip: '' })}><Package size={13} />{t('cq.createOrder')}</button>)}
+    </div>) : perms.can('orders.create') && <button data-testid="cq-create-order" className="btn-primary mt-2 !py-1 text-xs" onClick={() => setOrder({ advance: '', paymentStatus: 'PENDING', expectedShip: '' })}><Package size={13} />{t('cq.createOrder')}</button>)}
     {(q.orderId || orderDone) && <a data-testid="cq-order-link" href="#/orders" className="mt-2 inline-flex items-center gap-1 text-brand-600 hover:underline"><Package size={13} />{t('cq.viewOrder')}</a>}
     {!mode && decided && !q.orderId && <button className="ml-2 mt-2 inline-flex items-center gap-1 text-ink-500 hover:underline" onClick={() => void run(async () => onChange(await api.setQuoteStatus(q.id, 'DRAFT')))}><RotateCcw size={12} />{t('cq.reopen')}</button>}
     {err && !mode && <p role="alert" className="mt-1 text-rose-600">{err}</p>}

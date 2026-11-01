@@ -29,10 +29,10 @@ function Shell() {
     <Layout openLeadId={(id) => { void api.lead(id).then((l) => l && setLead(l)); }} route={route} go={go} search={search} setSearch={(s) => { setSearch(s); if (s && route === 'dashboard') go('leads'); }}>
       {route === 'dashboard' && <Dashboard openLead={setLead} />}
       {route === 'leads' && <Leads search={search} openLead={setLead} />}
-      {route === 'quotations' && <Quotations search={search} openLead={setLead} />}
+      {route === 'quotations' && perms.can('quotes.view') && <Quotations search={search} openLead={setLead} />}
       {route === 'orders' && <Orders search={search} openLead={setLead} />}
       {route === 'shipping' && <Shipping search={search} openLead={setLead} />}
-      {route === 'suppliers' && perms.suppliers && <Suppliers search={search} />}
+      {route === 'suppliers' && perms.suppliers && perms.can('suppliers.view') && <Suppliers search={search} />}
       {route === 'users' && perms.manageUsers && <Team />}
       {route === 'settings' && <Settings />}
       <LeadPanel lead={lead} onClose={() => setLead(null)} />

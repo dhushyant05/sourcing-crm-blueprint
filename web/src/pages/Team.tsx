@@ -5,6 +5,7 @@ import { ROLES, type Role } from '../lib/roles';
 import type { User } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import { AvatarEditor } from '../components/AvatarEditor';
+import { PermissionMatrix } from '../components/PermissionMatrix';
 import { Avatar, Chip, Empty, Field, PageHeader, SlideOver, TableSkeleton } from '../components/ui';
 
 /** Admin user management. The server only returns/permits users on the admin's own side; remove is super admin only. */
@@ -67,6 +68,7 @@ export function Team() {
           </table>
         )}
       </div>
+      {data && !session?.demo && <PermissionMatrix users={data} />}
       {editing && <EditStaff key={editing.id} user={editing} me={isMe(editing)} isSuper={isSuper} roles={allowed}
         onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setMsg(t('team.saved')); reload(); }} />}
       {removing && (

@@ -95,3 +95,7 @@ export const PIPELINE: LeadStatus[] = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 
 /** Gated: China books, then "Mark shipped" (→ IN_TRANSIT, needs tracking/container + ETD); only then India moves it on to DELIVERED. */
 export const SHIP_STAGES = ['PENDING', 'BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
 export const CHINA_SHIP = ['PENDING', 'BOOKED'], INDIA_SHIP = ['IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+
+export interface PermRow { key: string; group: string; side: 'INDIA' | 'CHINA' | 'ANY'; default: boolean; override: boolean | null; effective: boolean; locked: boolean }
+export interface PermAudit { id: number; perm: string; before: boolean | null; after: boolean | null; changedBy: string | null; changedByName: string | null; changedAt: string }
+export interface PermMatrix { userId: string; role: import('./roles').Role; editable: boolean; permissions: PermRow[]; audit: PermAudit[] }

@@ -805,5 +805,47 @@
     "hideClosed": "Hide closed",
     "onlySa": "Only the super admin can reopen a closed lead.",
     "copied": "New lead {{ref}} created"
+  },
+  "perm": {
+    "title": "Permissions",
+    "hint": "Role sets the defaults. Tick or untick to grant or revoke for one person — applies instantly and is audited.",
+    "readOnly": "Set by the super admin.",
+    "legendOverride": "Changed from role default",
+    "legendLocked": "Locked by data-separation rule",
+    "permission": "Permission",
+    "reset": "Reset to role",
+    "locked": "Locked: China never sees customers, India never sees suppliers",
+    "overridden": "Overridden (role default: {{d}})",
+    "default": "default",
+    "on": "on",
+    "off": "off",
+    "audit": "Change log",
+    "export": "Export data",
+    "exportHint": "Download a CSV of what you can see.",
+    "group": {
+      "suppliers": "Suppliers",
+      "quotes": "Quotes & prices",
+      "orders": "Orders",
+      "reports": "Reports & export",
+      "leads": "Leads",
+      "admin": "Administration"
+    },
+    "k": {
+      "suppliers.view": "View suppliers list",
+      "suppliers.edit": "Edit suppliers",
+      "quotes.view": "View quotes",
+      "quotes.create": "Create supplier quotes",
+      "quotes.customer": "Prepare customer quotes",
+      "prices.inr": "View INR selling prices",
+      "orders.create": "Create orders",
+      "orders.production": "Update production / shipping",
+      "orders.payment": "Update payment",
+      "reports.view": "View dashboard / SLA reports",
+      "data.export": "Export data",
+      "leads.all": "View all leads (off = only assigned to me)",
+      "leads.delete": "Delete leads",
+      "staff.manage": "Manage staff (office admin)",
+      "settings.sla": "Change SLA settings"
+    }
   }
 }

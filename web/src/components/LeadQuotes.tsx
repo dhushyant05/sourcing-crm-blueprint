@@ -28,7 +28,7 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
   return (<section data-testid="lead-quotes">
     <div className="mt-6 flex items-center justify-between">
       <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('lq.title')}{list && list.length > 0 && ` · ${list.length}`}</h3>
-      {china && !form && <button data-testid="quote-add" className="btn-primary !py-1.5 text-sm" onClick={() => setForm('new')}><Plus size={15} />{t('lq.add')}</button>}
+      {china && perms.can('quotes.create') && !form && <button data-testid="quote-add" className="btn-primary !py-1.5 text-sm" onClick={() => setForm('new')}><Plus size={15} />{t('lq.add')}</button>}
     </div>
     {err && <p role="alert" className="mt-2 text-sm text-rose-600">{err}</p>}
     {form && <QuoteForm leadId={leadId} quote={form === 'new' ? null : form} onDone={(q) => { if (q) replace(q); setForm(null); }} />}
@@ -56,7 +56,7 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
               <span className="ml-1 text-amber-700/70">({t('lq.chinaOnly')})</span></div>}
             {china && q.createdByName && <div className="mt-1 text-[11px] text-ink-400">{t('lq.by', { who: q.createdByName })}</div>}
             <QuoteFiles quote={q} canEdit={canEdit(q)} onChange={replace} />
-            {india && <CustomerQuote q={q} lead={lead} onChange={replace} onLeadStatus={onLeadStatus} />}
+            {india && perms.can('quotes.customer') && perms.can('prices.inr') && <CustomerQuote q={q} lead={lead} onChange={replace} onLeadStatus={onLeadStatus} />}
           </li>
         ))}
       </ul>

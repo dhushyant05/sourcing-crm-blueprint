@@ -30,6 +30,10 @@ export function Settings() {
         </section>
         {!session?.demo && <PasswordCard />}
         {!session?.demo && <SlaSettingsCard />}
+        {!session?.demo && perms.can('data.export') && api.exportCsv && <div className="card p-5" data-testid="export-card">
+          <h2 className="font-semibold text-ink-900 dark:text-white">{t('perm.export')}</h2><p className="mt-1 text-sm text-ink-500">{t('perm.exportHint')}</p>
+          <div className="mt-3 flex flex-wrap gap-2">{(['leads', 'quotes', 'orders', 'shipments'] as const).map((k) => <button key={k} data-testid={`export-${k}`} className="btn-outline !py-1 text-sm" onClick={() => void api.exportCsv!(k).catch((e) => alert((e as Error).message))}>{t(`nav.${k === 'shipments' ? 'shipping' : k === 'quotes' ? 'quotations' : k}`)} CSV</button>)}</div>
+        </div>}
         <section className="card p-6 lg:col-span-2">
           <h2 className="flex items-center gap-2 font-semibold text-ink-900 dark:text-white"><Coins size={18} className="text-ink-400" />{t('settings.currencies')}</h2>
           <p className="mt-1 text-sm text-ink-500">{t('settings.currenciesHint')}</p>

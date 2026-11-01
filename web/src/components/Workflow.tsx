@@ -83,8 +83,8 @@ export function WorkflowPanel({ lead, onPriority }: { lead: Lead; onPriority?: (
 
 /** Dashboard widget (admins): running clocks at risk + on-time % per office. */
 export function SlaWidget({ leads, openLead }: { leads: Lead[] | null; openLead: (l: Lead) => void }) {
-  const { api, session } = useApp(); const { t } = useTranslation(); const now = useNow();
-  const admin = sides(session?.role ?? '').admin;
+  const { api, perms } = useApp(); const { t } = useTranslation(); const now = useNow();
+  const admin = perms.can('reports.view');
   const { data: rep } = useLoad(() => (admin && api.slaReport ? api.slaReport(30) : Promise.resolve(null)), [api, admin]);
   const running = (leads ?? []).filter((l) => l.sla).map((l) => ({ l, ...slaState(l.sla!, now) })).sort((a, b) => a.left - b.left);
   const risk = running.filter((r) => r.level !== 'ok');
@@ -107,11 +107,11 @@ export function SlaWidget({ leads, openLead }: { leads: Lead[] | null; openLead:
 
 /** Super admin: SLA hours. */
 export function SlaSettingsCard() {
-  const { api, session } = useApp(); const { t } = useTranslation();
+  const { api, perms } = useApp(); const { t } = useTranslation();
   const { data, setData } = useLoad(() => (api.slaSettings ? api.slaSettings() : Promise.resolve(null)), [api]);
   const [f, setF] = useState<{ n: string; p: string } | null>(null), [msg, setMsg] = useState<string | null>(null);
   useEffect(() => { if (data) setF({ n: String(data.normalMinutes / 60), p: String(data.priorityMinutes / 60) }); }, [data]);
-  if (session?.role !== 'SUPER_ADMIN' || !data || !f) return null;
+  if (!perms.can('settings.sla') || !data || !f) return null;
   const save = async () => {
     setMsg(null);
     try { const s: SlaSettings = await api.saveSlaSettings!({ normalMinutes: Math.round(Number(f.n) * 60), priorityMinutes: Math.round(Number(f.p) * 60) }); setData(s); setMsg(t('orders.saved')); } catch (e) { setMsg((e as Error).message); }

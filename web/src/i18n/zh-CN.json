@@ -805,5 +805,47 @@
     "hideClosed": "隐藏已关闭",
     "onlySa": "只有超级管理员可以重新打开已关闭的线索。",
     "copied": "已创建新线索 {{ref}}"
+  },
+  "perm": {
+    "title": "权限",
+    "hint": "角色决定默认权限。勾选或取消即可为个人授予或撤销——立即生效并记录审计。",
+    "readOnly": "由超级管理员设置。",
+    "legendOverride": "已偏离角色默认",
+    "legendLocked": "受数据隔离规则锁定",
+    "permission": "权限",
+    "reset": "恢复角色默认",
+    "locked": "锁定：中国团队不可见客户，印度团队不可见供应商",
+    "overridden": "已覆盖（角色默认：{{d}}）",
+    "default": "默认",
+    "on": "开",
+    "off": "关",
+    "audit": "变更记录",
+    "export": "导出数据",
+    "exportHint": "下载您可见数据的 CSV。",
+    "group": {
+      "suppliers": "供应商",
+      "quotes": "报价与价格",
+      "orders": "订单",
+      "reports": "报表与导出",
+      "leads": "线索",
+      "admin": "管理"
+    },
+    "k": {
+      "suppliers.view": "查看供应商列表",
+      "suppliers.edit": "编辑供应商",
+      "quotes.view": "查看报价",
+      "quotes.create": "创建供应商报价",
+      "quotes.customer": "准备客户报价",
+      "prices.inr": "查看卢比售价",
+      "orders.create": "创建订单",
+      "orders.production": "更新生产/发货",
+      "orders.payment": "更新付款",
+      "reports.view": "查看仪表盘/SLA 报表",
+      "data.export": "导出数据",
+      "leads.all": "查看全部线索（关闭=仅分配给我的）",
+      "leads.delete": "删除线索",
+      "staff.manage": "管理员工（办公室管理员）",
+      "settings.sla": "修改 SLA 设置"
+    }
   }
 }

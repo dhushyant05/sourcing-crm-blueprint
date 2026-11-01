@@ -1,8 +1,8 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
-export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null }
+export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null; permissions?: string[] }
 export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
 export interface Api {
   leads(): Promise<Lead[]>;
@@ -39,6 +39,9 @@ export interface Api {
   /** Returns a fresh token for this device; every other session is signed out. */
   changePassword(current: string, next: string): Promise<string>;
   users(): Promise<User[]>;
+  userPermissions?(id: string): Promise<PermMatrix>;
+  setUserPermissions?(id: string, changes: Record<string, boolean | null>): Promise<{ changed: number }>;
+  exportCsv?(kind: 'leads' | 'quotes' | 'orders' | 'shipments'): Promise<void>;
   createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
   resetPassword(id: string, password: string): Promise<void>;
   setUserActive(id: string, active: boolean): Promise<void>;
@@ -255,6 +258,14 @@ export class ServerApi implements Api {
   async deleteAttachment(leadId: string, id: string) { await this.req('DELETE', `/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(id)}`); }
   async setLanguage(language: string) { await this.req('PATCH', '/me', { language }); }
   users() { return this.req<User[]>('GET', '/users'); }
+  userPermissions(id: string) { return this.req<PermMatrix>('GET', `/users/${encodeURIComponent(id)}/permissions`); }
+  setUserPermissions(id: string, changes: Record<string, boolean | null>) { return this.req<{ changed: number }>('PUT', `/users/${encodeURIComponent(id)}/permissions`, { permissions: changes }); }
+  async exportCsv(kind: 'leads' | 'quotes' | 'orders' | 'shipments') {
+    const res = await fetch(`/api/export/${kind}`, { headers: { authorization: `Bearer ${this.token}` }, cache: 'no-store' });
+    if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `Export failed (${res.status})`);
+    const url = URL.createObjectURL(await res.blob()), a = document.createElement('a');
+    a.href = url; a.download = `source-easy-${kind}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
   async createUser(u: { email: string; name: string; role: Role; password: string }) { await this.req('POST', '/users', u); }
   async resetPassword(id: string, password: string) { await this.req('POST', `/users/${id}/password`, { password }); }
   async setUserActive(id: string, active: boolean) { await this.req('PATCH', `/users/${id}`, { active }); }

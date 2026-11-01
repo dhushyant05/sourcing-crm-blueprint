@@ -11,7 +11,7 @@ const MODES = ['', 'AIR', 'SEA', 'EXPRESS', 'ROAD'], TERMS = ['', 'EXW', 'FOB', 
 const d = (v?: string | null) => (v ? fmtDate(v, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 function ShipCard({ s, onChange, openLead }: { s: Shipment; onChange: (s: Shipment) => void; openLead: (id: string) => void }) {
-  const { api, session } = useApp(); const { t } = useTranslation();
+  const { api, session, perms } = useApp(); const { t } = useTranslation();
   const role = session?.role ?? '', sa = role === 'SUPER_ADMIN', china = role.startsWith('CHINA') || sa, india = role.startsWith('INDIA') || sa;
   const [f, setF] = useState<Record<string, string>>(() => ({ status: s.status, mode: s.mode ?? '', incoterm: s.incoterm ?? '', port: s.port ?? '', transit: s.transit ?? '',
     carrier: s.carrier ?? '', tracking: s.tracking ?? '', container: s.container ?? '', etd: s.etd ?? '', eta: s.eta ?? '', customsNote: s.customsNote ?? '', deliveredAt: s.deliveredAt ?? '' }));
@@ -45,7 +45,7 @@ function ShipCard({ s, onChange, openLead }: { s: Shipment; onChange: (s: Shipme
       {s.deliveredAt && <div>{t('ship.deliveredAt')}: <b>{d(s.deliveredAt)}</b></div>}
       {s.customsNote && <div className="sm:col-span-3">{t('ship.customsNote')}: {s.customsNote}</div>}
     </div>
-    {china && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('ship.chinaPart')}</div>
+    {china && perms.can('orders.production') && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('ship.chinaPart')}</div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{!shipped && sel('status', CHINA_SHIP, t('shipping.stage'), st)}{sel('mode', MODES, t('ship.mode'), (v) => t(`ship.m.${v}`))}{sel('incoterm', TERMS, t('ship.incoterm'), (v) => v)}
         {inp('port', t('ship.port'))}{inp('transit', t('ship.transit'))}{inp('carrier', t('shipping.carrier'))}{inp('tracking', t('shipping.tracking'))}{inp('container', t('orders.container'))}{inp('etd', 'ETD', 'date')}{inp('eta', 'ETA', 'date')}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -54,7 +54,7 @@ function ShipCard({ s, onChange, openLead }: { s: Shipment; onChange: (s: Shipme
         {!shipped && !canShip && <span className="text-xs text-amber-600">{t('ship.needForShip')}</span>}
         {shipped && <span className="text-xs text-emerald-600" data-testid="s-shipped">✓ {t('ship.shippedNote')}</span>}
       </div></div>}
-    {india && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('ship.indiaPart')}</div>
+    {india && perms.can('orders.production') && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('ship.indiaPart')}</div>
       {!shipped ? <p data-testid="s-india-locked" className="text-xs text-ink-500">🔒 {t('ship.indiaLocked')}</p> : <>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{sel('status', INDIA_SHIP.includes(f.status) ? INDIA_SHIP : [f.status, ...INDIA_SHIP], t('shipping.stage'), st)}{inp('deliveredAt', t('ship.deliveredAt'), 'date')}<div className="col-span-2">{inp('customsNote', t('ship.customsNote'))}</div></div>
       <button data-testid="s-save-india" className="btn-primary mt-2 !py-1 text-xs" disabled={busy} onClick={() => void save(['customsNote', 'deliveredAt'], INDIA_SHIP.includes(f.status) && f.status !== s.status ? f.status : undefined)}>{t('orders.save')}</button></>}</div>}

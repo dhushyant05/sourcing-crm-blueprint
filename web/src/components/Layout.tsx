@@ -28,10 +28,10 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
   const nav: { id: Route; icon: typeof Users; show: boolean }[] = [
     { id: 'dashboard', icon: LayoutDashboard, show: true },
     { id: 'leads', icon: Users, show: true },
-    { id: 'quotations', icon: FileText, show: true },
+    { id: 'quotations', icon: FileText, show: perms.can('quotes.view') },
     { id: 'orders', icon: Package, show: true },
     { id: 'shipping', icon: Ship, show: true },
-    { id: 'suppliers', icon: Factory, show: perms.suppliers },
+    { id: 'suppliers', icon: Factory, show: perms.suppliers && perms.can('suppliers.view') },
     { id: 'users', icon: UserCog, show: perms.manageUsers },
     { id: 'settings', icon: Settings, show: true },
   ];

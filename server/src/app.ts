@@ -8,6 +8,7 @@ import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
 import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged, type Attachment } from './uploads.js';
 import { capabilities, isRole, manageableRoles, sides, type Role } from './roles.js';
+import { PermStore, PERMISSIONS } from './permissions.js';
 import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { Db } from './db.js';
 import type { Bus } from './bus.js';
@@ -231,6 +232,29 @@ export async function buildApp(o: AppOptions) {
     reply.header('referrer-policy', 'no-referrer');
   });
 
+  // Per-user feature permissions (role defaults + super-admin overrides). Reloaded on every API process via Redis `se:perms`.
+  const perms = await new PermStore(o.db, o.bus).load();
+  const can = (u: User, k: string) => perms.can(u, k);
+  const need = (u: User, k: string) => { if (!perms.can(u, k)) throw new Forbidden(`You do not have permission: ${k}`); };
+  o.bus.subscribe('se:perms', (m: { id: string; pid: number }) => { void (async () => {
+    if (m.pid !== process.pid) await perms.load();
+    void liveData({ type: 'perms', id: m.id, leadId: null, at: Date.now() });
+  })(); });
+  /** Users this actor may manage: office admins their side, staff granted staff.manage their own side's staff; the super admin everyone. */
+  const manageable = (u: User): Role[] => {
+    if (u.role === 'SUPER_ADMIN') return manageableRoles(u.role);
+    if (!can(u, 'staff.manage')) return [];
+    const r = manageableRoles(u.role); if (r.length) return r;
+    return [u.role];
+  };
+  /** Lead ids a user without `leads.all` may see: assigned to them, raised by them, or (China) quoted by them. */
+  const mineSet = async (u: User) => {
+    const ids = new Set<string>();
+    for (const [id, a] of await assign.all()) if (a?.assignedTo === u.id || a?.raisedBy === u.id) ids.add(id);
+    for (const q of await quotes.all()) if (q.createdBy === u.id) ids.add(q.leadId);
+    return ids;
+  };
+  const scope = async (u: User) => (can(u, 'leads.all') ? null : await mineSet(u));
   const sign = (u: User) => jwt.sign({ sub: u.id, role: u.role, v: o.users.tokenVersion(u.id) }, o.jwtSecret, { expiresIn: (o.jwtTtl ?? '12h') as any });
 
   async function auth(req: FastifyRequest, reply: FastifyReply) {
@@ -247,7 +271,7 @@ export async function buildApp(o: AppOptions) {
   const ctxOf = async (role: Role): Promise<Ctx> => ({ role });
   const avatars = await new AvatarStore(o.db).load();
   const avatarOf = (id: string) => avatars.urls().get(id) ?? null;
-  const me = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, language: u.language ?? null, avatarUrl: avatarOf(u.id), capabilities: capabilities(u.role) });
+  const me = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, language: u.language ?? null, avatarUrl: avatarOf(u.id), capabilities: capabilities(u.role), permissions: perms.effective(u) });
   // Public by design (an <img> cannot send a bearer token); ids are random UUIDs and pictures are low-sensitivity.
   app.get<{ Params: { id: string } }>('/api/avatars/:id', async (req, reply) => {
     const a = await avatars.get(req.params.id); if (!a) return reply.code(404).send({ error: 'Not found' });
@@ -360,6 +384,47 @@ export async function buildApp(o: AppOptions) {
 
   app.register(async (api) => {
     api.addHook('preHandler', auth);
+    // Feature permissions: one 403 gate per endpoint (route pattern + method), after authentication.
+    const PAY = ['qty', 'agreedPrice', 'advance', 'paymentStatus'], INR = ['agreedPrice', 'advance'];
+    const GATES: Record<string, (u: User, b: Rec) => string[]> = {
+      'GET /api/quotes/:qid/files/:fid': () => ['quotes.view'],
+      'POST /api/leads/:id/quotes': () => ['quotes.create'],
+      'DELETE /api/quotes/:qid': () => ['quotes.create'],
+      'POST /api/quotes/:qid/files': () => ['quotes.create'],
+      'DELETE /api/quotes/:qid/files/:fid': () => ['quotes.create'],
+      'PATCH /api/quotes/:qid': (u) => (sides(u.role).china ? ['quotes.create'] : ['quotes.customer', 'prices.inr']),
+      'PUT /api/quotes/:qid/customer': () => ['quotes.customer', 'prices.inr'],
+      'POST /api/quotes/:qid/pdf': () => ['quotes.customer', 'prices.inr'],
+      'POST /api/quotes/:qid/status': () => ['quotes.customer'],
+      'POST /api/leads/:id/rejection/revise': () => ['quotes.customer'],
+      'POST /api/leads/:id/rejection/close': () => ['quotes.customer'],
+      'POST /api/quotes/:qid/order': () => ['orders.create'],
+      'PATCH /api/orders/:id': (_u, b) => { const k = Object.keys(b); const r: string[] = [];
+        if (k.some((x) => PAY.includes(x))) r.push('orders.payment'); if (k.some((x) => INR.includes(x))) r.push('prices.inr');
+        if (k.some((x) => !PAY.includes(x))) r.push('orders.production'); return r; },
+      'PATCH /api/shipments/:id': () => ['orders.production'],
+      'GET /api/suppliers': () => ['suppliers.view'],
+      'GET /api/suppliers/:id': () => ['suppliers.view'],
+      'POST /api/suppliers': () => ['suppliers.edit'],
+      'PATCH /api/suppliers/:id': () => ['suppliers.edit'],
+      'DELETE /api/suppliers/:id': () => ['suppliers.edit'],
+      'GET /api/sla/report': () => ['reports.view'],
+      'PUT /api/settings/sla': () => ['settings.sla'],
+      'DELETE /api/records/leads/:id': () => ['leads.delete'],
+      'GET /api/export/:kind': () => ['data.export'],
+    };
+    api.addHook('preHandler', async (req) => {
+      const g = req.user && GATES[`${req.method} ${req.routeOptions.url}`];
+      if (g) for (const k of g(req.user!, (req.body && typeof req.body === 'object' ? req.body : {}) as Rec)) need(req.user!, k);
+    });
+    // Without `prices.inr` the INR selling side (customer quote, agreed price, advance) is removed from quote/order responses.
+    const INR_KEYS = new Set(['clientPrice', 'clientCurrency', 'clientNotes', 'cq', 'cqTotals', 'pdfToken', 'pdfUrl', 'agreedPrice', 'advance', 'total']);
+    const stripInr = (v: unknown): unknown => Array.isArray(v) ? v.map(stripInr) : v && typeof v === 'object' && !(v instanceof Buffer)
+      ? Object.fromEntries(Object.entries(v).filter(([k]) => !INR_KEYS.has(k)).map(([k, x]) => [k, stripInr(x)])) : v;
+    api.addHook('preSerialization', async (req, _reply, payload) => {
+      const u = req.user; if (!u || u.role === 'SUPER_ADMIN' || !sides(u.role).india || can(u, 'prices.inr')) return payload;
+      return /^\/api\/(quotes|orders|leads\/[^/]+\/quotes)/.test(req.url) ? stripInr(payload) : payload;
+    });
     // Live data: after any successful write, tell every open stream what changed (type + ids only; clients refetch through role-filtered endpoints).
     api.addHook('onResponse', async (req, reply) => {
       if (req.method === 'GET' || reply.statusCode >= 400) return;
@@ -396,6 +461,7 @@ export async function buildApp(o: AppOptions) {
       const role = req.user!.role;
       const r = await leadDb.get(req.params.id);
       if (!r || !readFilter('lead', r, await ctxOf(role))) throw Object.assign(new Error('Not found'), { status: 404 });
+      const sc = await scope(req.user!); if (sc && !sc.has(String(r.id))) throw Object.assign(new Error('Not found'), { status: 404 });
       return String(r.id);
     };
     api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => ({ data: uploads.list(await attLead(req)) }));
@@ -474,6 +540,7 @@ export async function buildApp(o: AppOptions) {
     const leadRefOf = async (id: string) => ((await leadDb.get(id))?.leadRef as string | undefined) ?? null;
     const chinaOnly = (role: Role) => { if (!sides(role).china) throw new Forbidden('Only the China office can do this'); };
     api.get<{ Params: { id: string } }>('/api/leads/:id/quotes', async (req) => {
+      need(req.user!, 'quotes.view');
       const id = await attLead(req), ref = await leadRefOf(id);
       return { data: await Promise.all((await quotes.list(id)).map((q, i) => viewQuote(req.user!, q, i, ref))) };
     });
@@ -542,10 +609,10 @@ export async function buildApp(o: AppOptions) {
       return reply.code(204).send();
     });
     // ---- All quotes across leads (role-filtered) ----
-    const readableLeads = async (role: Role) => {
-      const [rows, ctx] = await Promise.all([leadDb.list(), ctxOf(role)]);
+    const readableLeads = async (u: User) => {
+      const [rows, ctx, sc] = await Promise.all([leadDb.list(), ctxOf(u.role), scope(u)]);
       const all = await assign.all(), names = userNames(), m = new Map<string, Rec>();
-      for (const r of rows) { const f = readFilter('lead', r, ctx); if (f) m.set(String(f.id), await decorate(f, all.get(String(f.id)), names)); }
+      for (const r of rows) { const f = readFilter('lead', r, ctx); if (f && (!sc || sc.has(String(f.id)))) m.set(String(f.id), await decorate(f, all.get(String(f.id)), names)); }
       return m;
     };
     const quoteRow = async (u: { role: Role; id: string }, q: Quote, lead: Rec, keepFiles = false) => {
@@ -556,7 +623,8 @@ export async function buildApp(o: AppOptions) {
         assignedTo: lead.assignedTo ?? null, assignedToName: lead.assignedToName ?? null, raisedBy: lead.raisedBy ?? null };
     };
     api.get<{ Querystring: { status?: string; office?: string; mine?: string } }>('/api/quotes', async (req) => {
-      const u = req.user!, leads = await readableLeads(u.role), q = req.query ?? {};
+      need(req.user!, 'quotes.view');
+      const u = req.user!, leads = await readableLeads(u), q = req.query ?? {};
       let rows = await Promise.all((await quotes.all()).filter((x) => leads.has(x.leadId)).map((x) => quoteRow(u, x, leads.get(x.leadId)!)));
       if (q.status) rows = rows.filter((r) => r.status === String(q.status).toUpperCase());
       if (q.office) rows = rows.filter((r) => r.ownerOffice === String(q.office).toUpperCase());
@@ -672,8 +740,8 @@ export async function buildApp(o: AppOptions) {
     };
     const orderOf = async (u: User, id: string) => {
       const ord = await orders.get(id); if (!ord) throw Object.assign(new Error('Not found'), { status: 404 });
-      const lead = (await readableLeads(u.role)).get(ord.leadId);
-      if (!lead && !sides(u.role).china) throw Object.assign(new Error('Not found'), { status: 404 });
+      const lead = (await readableLeads(u)).get(ord.leadId);
+      if (!lead && !(sides(u.role).china && can(u, 'leads.all'))) throw Object.assign(new Error('Not found'), { status: 404 });
       return { ord, lead: lead ?? null };
     };
     api.post<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/order', async (req, reply) => {
@@ -689,7 +757,7 @@ export async function buildApp(o: AppOptions) {
       return reply.code(201).send({ data: await viewOrder(u, ord, await decorate(lead, await assign.get(q.leadId), userNames())) });
     });
     api.get('/api/orders', async (req) => {
-      const u = req.user!, leads = await readableLeads(u.role), china = sides(u.role).china;
+      const u = req.user!, leads = await readableLeads(u), china = sides(u.role).china && can(u, 'leads.all');
       return { data: await Promise.all((await orders.all()).filter((x) => china || leads.has(x.leadId)).map((x) => viewOrder(u, x, leads.get(x.leadId) ?? null))) };
     });
     api.get<{ Params: { id: string } }>('/api/orders/:id', async (req) => { const { ord, lead } = await orderOf(req.user!, req.params.id); return { data: await viewOrder(req.user!, ord, lead) }; });
@@ -777,12 +845,12 @@ export async function buildApp(o: AppOptions) {
     };
     const shipOf = async (u: User, id: string) => {
       const sh = await ships.get(id); if (!sh) throw Object.assign(new Error('Not found'), { status: 404 });
-      const lead = (await readableLeads(u.role)).get(sh.leadId);
-      if (!lead && !sides(u.role).china) throw Object.assign(new Error('Not found'), { status: 404 });
+      const lead = (await readableLeads(u)).get(sh.leadId);
+      if (!lead && !(sides(u.role).china && can(u, 'leads.all'))) throw Object.assign(new Error('Not found'), { status: 404 });
       return { sh, lead: lead ?? null };
     };
     api.get('/api/shipments', async (req) => {
-      const u = req.user!, leads = await readableLeads(u.role), china = sides(u.role).china;
+      const u = req.user!, leads = await readableLeads(u), china = sides(u.role).china && can(u, 'leads.all');
       return { data: await Promise.all((await ships.all()).filter((x) => china || leads.has(x.leadId)).map((x) => viewShip(u, x, leads.get(x.leadId) ?? null))) };
     });
     api.get<{ Params: { id: string } }>('/api/shipments/:id', async (req) => { const { sh, lead } = await shipOf(req.user!, req.params.id); return { data: await viewShip(req.user!, sh, lead) }; });
@@ -816,7 +884,6 @@ export async function buildApp(o: AppOptions) {
     });
     // Super admin only: permanently remove a lead with its quotes, files, assignment and notifications (e.g. test data).
     api.delete<{ Params: { id: string } }>('/api/records/leads/:id', async (req, reply) => {
-      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can delete leads');
       const id = await attLead(req);
       for (const q of await quotes.list(id)) { uploads.removeAll(qKey(q.id)); await mediaSync(qKey(q.id), []); }
       await quotes.removeLead(id); await rejects.forgetLead(id); await ships.removeLead(id); await orders.removeLead(id); uploads.removeAll(id); await o.db.run('DELETE FROM lead_media WHERE owner_key = ?', id);
@@ -859,7 +926,7 @@ export async function buildApp(o: AppOptions) {
       return sup ? { data: sup } : reply.code(404).send({ error: 'Not found' });
     });
     api.delete<{ Params: { id: string } }>('/api/suppliers/:id', async (req, reply) => {
-      const role = req.user!.role; if (role !== 'SUPER_ADMIN' && role !== 'CHINA_ADMIN') throw new Forbidden('Only a China admin can delete suppliers');
+      const role = req.user!.role; if (role !== 'SUPER_ADMIN' && role !== 'CHINA_ADMIN' && !can(req.user!, 'suppliers.edit')) throw new Forbidden('Only a China admin can delete suppliers');
       await quotes.deleteSupplier(req.params.id); return reply.code(204).send();
     });
 
@@ -887,6 +954,7 @@ export async function buildApp(o: AppOptions) {
         const all = await assign.all(), names = userNames();
         data = await Promise.all(data.map((r) => decorate(r, all.get(String(r.id)), names)));
         if (mine) data = data.filter((r) => r.assignedTo === mine);
+        const sc = await scope(req.user!); if (sc) data = data.filter((r) => sc.has(String(r.id)));
       }
       data = data.sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
       return { data };
@@ -896,6 +964,7 @@ export async function buildApp(o: AppOptions) {
       if (!canRead(role, obj)) throw new Forbidden(`${role} may not read ${obj}`);
       const r = await leadDb.get(req.params.id);
       let f = r && readFilter(obj, r, await ctxOf(role));
+      if (f) { const sc = await scope(req.user!); if (sc && !sc.has(String(f.id))) f = null; }
       if (f) f = await decorate(f, await assign.get(String(f.id)), userNames());
       return f ? { data: f } : reply.code(404).send({ error: 'Not found' });
     });
@@ -1077,12 +1146,10 @@ export async function buildApp(o: AppOptions) {
     });
     api.get('/api/settings/sla', async () => ({ data: await wf.sla() }));
     api.put<{ Body: { normalMinutes?: number; priorityMinutes?: number } }>('/api/settings/sla', async (req) => {
-      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can change SLA hours');
       return { data: await wf.setSla(req.body ?? {}) };
     });
     api.get<{ Querystring: { days?: string } }>('/api/sla/report', async (req) => {
       const u = req.user!;
-      if (!sides(u.role).admin) throw new Forbidden('Admins only');
       const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30)), now = (o.now ?? Date.now)();
       const since = new Date(now - days * 864e5).toISOString(), names = userNames();
       const done = (await wf.runs(since)).map((r) => ({ ...r, open: false }));
@@ -1136,10 +1203,10 @@ export async function buildApp(o: AppOptions) {
 
     // ---- User management (admins manage their own side) ----
     const assertManage = (actor: User, role: Role) => {
-      if (!manageableRoles(actor.role).includes(role)) throw new Forbidden(`${actor.role} cannot manage ${role} users`);
+      if (!manageable(actor).includes(role)) throw new Forbidden(`${actor.role} cannot manage ${role} users`);
     };
     api.get('/api/users', async (req) => {
-      const allowed = manageableRoles(req.user!.role);
+      const allowed = manageable(req.user!);
       if (!allowed.length) throw new Forbidden('Admins only');
       const a = avatars.urls();
       return { data: o.users.list().filter((u) => allowed.includes(u.role)).map((u) => ({ ...u, avatarUrl: a.get(u.id) ?? null })) };
@@ -1187,7 +1254,7 @@ export async function buildApp(o: AppOptions) {
       if (t.id === req.user!.id) throw new Forbidden('You cannot remove yourself');
       if (lastSuper(t, 'delete')) return reply.code(409).send({ error: 'This is the last active super admin', code: 'last_super_admin' });
       await o.users.remove(t.id); await avatars.remove(t.id);
-      await assign.forgetUser(t.id);
+      await assign.forgetUser(t.id); await perms.forgetUser(t.id);
       return reply.code(204).send();
     });
     api.post<{ Params: { id: string }; Body: { password: string } }>('/api/users/:id/password', async (req, reply) => {
@@ -1196,6 +1263,44 @@ export async function buildApp(o: AppOptions) {
       assertManage(req.user!, t.role);
       try { await o.users.setPassword(t.id, req.body?.password ?? ''); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
       return { ok: true };
+    });
+
+    // ---- Per-user permissions (super admin sets; the user and their managers can read) ----
+    api.get('/api/permissions/catalog', async () => ({ data: PERMISSIONS }));
+    api.get<{ Params: { id: string } }>('/api/users/:id/permissions', async (req) => {
+      const u = req.user!, t = o.users.byId(req.params.id);
+      if (!t) throw Object.assign(new Error('Not found'), { status: 404 });
+      if (u.id !== t.id && !manageable(u).includes(t.role)) throw new Forbidden('Not allowed');
+      const names = userNames();
+      return { data: { userId: t.id, role: t.role, editable: u.role === 'SUPER_ADMIN' && t.role !== 'SUPER_ADMIN', permissions: perms.matrix(t),
+        audit: (await perms.audit(t.id, 50)).map((a) => ({ ...a, changedByName: (a.changedBy && names.get(a.changedBy)) || null })) } };
+    });
+    api.put<{ Params: { id: string }; Body: { permissions?: Record<string, boolean | null> } }>('/api/users/:id/permissions', async (req) => {
+      const u = req.user!; if (u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can change permissions');
+      const t = o.users.byId(req.params.id); if (!t) throw Object.assign(new Error('Not found'), { status: 404 });
+      const ch = req.body?.permissions; if (!ch || typeof ch !== 'object') throw bad('permissions object required');
+      const changed = await perms.set(t, ch, u.id);
+      return { data: { changed, permissions: perms.matrix(t) } };
+    });
+    api.get<{ Querystring: { limit?: string } }>('/api/permissions/audit', async (req) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Super admin only');
+      const names = userNames();
+      return { data: (await perms.audit(undefined, Math.min(500, Number(req.query?.limit) || 100))).map((a) => ({ ...a, userName: names.get(a.userId) ?? null, changedByName: (a.changedBy && names.get(a.changedBy)) || null })) };
+    });
+    // ---- CSV export: re-reads the same role/permission-filtered endpoints as the app, so nothing hidden can leak. ----
+    const EXPORTS: Record<string, string> = { leads: '/api/records/leads', quotes: '/api/quotes', orders: '/api/orders', shipments: '/api/shipments' };
+    const cell = (v: unknown): string => { if (v == null) return ''; const x = typeof v === 'object' ? ((v as any).primaryEmail ?? (v as any).primaryPhoneNumber ?? (v as any).primaryLinkUrl ?? ((v as any).amountMicros != null ? `${(v as any).amountMicros / 1e6} ${(v as any).currencyCode ?? ''}`.trim() : JSON.stringify(v))) : String(v);
+      return /[",\n\r]/.test(x) || /^[=+\-@]/.test(x) ? `"${(/^[=+\-@]/.test(x) ? "'" : '') + x.replace(/"/g, '""')}"` : x; };
+    api.get<{ Params: { kind: string } }>('/api/export/:kind', async (req, reply) => {
+      const kind = req.params.kind.replace(/\.csv$/, ''), path = EXPORTS[kind];
+      if (!path) throw Object.assign(new Error('Unknown export'), { status: 404 });
+      const r = await app.inject({ method: 'GET', url: path, headers: { authorization: req.headers.authorization ?? '' } });
+      if (r.statusCode !== 200) return reply.code(r.statusCode).send(r.json());
+      const rows = (r.json().data ?? []) as Rec[], skip = new Set(['files', 'sla', 'rejection', 'canEdit']);
+      const cols = [...new Set(rows.flatMap((x) => Object.keys(x)))].filter((c) => !skip.has(c));
+      const csv = [cols.join(','), ...rows.map((x) => cols.map((c) => cell(x[c])).join(','))].join('\r\n');
+      return reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', `attachment; filename="source-easy-${kind}-${new Date().toISOString().slice(0, 10)}.csv"`)
+        .header('cache-control', 'no-store').send('\ufeff' + csv);
     });
   });
 
