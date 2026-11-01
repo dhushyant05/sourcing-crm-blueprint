@@ -17,6 +17,16 @@ function OrderCard({ o, onChange, openLead }: { o: Order; onChange: (o: Order) =
   const [busy, setBusy] = useState(false), [msg, setMsg] = useState<string | null>(null);
   const shipped = o.production === 'SHIPPED', canShip = !!(f.tracking.trim() || f.container.trim()) && !!f.etd;
   const save = async (keys: string[], extra: Record<string, unknown> = {}) => { setBusy(true); setMsg(null); try { const b: Record<string, unknown> = { ...extra }; keys.forEach((k) => { b[k] = f[k] === '' ? null : f[k]; }); onChange(await api.updateOrder(o.id, b)); setMsg(t('orders.saved')); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); } };
+  // Shipping (orders.production) and payment (orders.payment) are separate permissions → separate requests, each only if allowed and changed.
+  const saveIndia = async () => {
+    const v = (k: string) => (f[k] === '' ? null : f[k]), was: Record<string, unknown> = { indiaStatus: o.indiaStatus, expectedShip: o.expectedShip ?? null, paymentStatus: o.paymentStatus ?? 'PENDING', advance: o.advance ?? null };
+    const pick = (keys: string[]) => Object.fromEntries(keys.filter((k) => String(v(k) ?? '') !== String(was[k] ?? '')).map((k) => [k, v(k)]));
+    const ship = perms.can('orders.production') ? pick(shipped ? ['indiaStatus', 'expectedShip'] : ['expectedShip']) : {};
+    const pay = perms.can('orders.payment') ? pick(['paymentStatus', 'advance']) : {};
+    setBusy(true); setMsg(null);
+    try { let r: Order | null = null; if (Object.keys(ship).length) r = await api.updateOrder(o.id, ship); if (Object.keys(pay).length) r = await api.updateOrder(o.id, pay); if (r) onChange(r); setMsg(t('orders.saved')); }
+    catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
   const sel = (k: string, opts: string[], ns: string, label: string) => (<div><label className="label">{label}</label><select data-testid={`o-${k}`} className="input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })}>{opts.map((v) => <option key={v} value={v}>{t(`orders.${ns}.${v}`)}</option>)}</select></div>);
   const inp = (k: string, label: string, type = 'text') => (<div><label className="label">{label}</label><input data-testid={`o-${k}`} type={type} className="input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>);
   return (<div data-testid="order-card" className="card p-4">
@@ -40,8 +50,8 @@ function OrderCard({ o, onChange, openLead }: { o: Order; onChange: (o: Order) =
         {shipped && <span className="text-xs text-emerald-600" data-testid="o-shipped">✓ {t('ship.shippedNote')}</span>}
       </div></div>}
     {india && (perms.can('orders.payment') || perms.can('orders.production')) && <div className="mt-3 rounded-lg border border-ink-100 p-2 dark:border-ink-800"><div className="mb-1 text-xs font-medium uppercase text-ink-400">{t('orders.indiaPart')}</div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{shipped ? sel('indiaStatus', IND.includes(f.indiaStatus) ? IND : [f.indiaStatus, ...IND], 'ind', t('orders.shipment')) : <div data-testid="o-india-locked" className="col-span-2 self-end pb-2 text-xs text-ink-500">🔒 {t('ship.indiaLocked')}</div>}{sel('paymentStatus', PAY, 'pay', t('orders.payment'))}{inp('advance', t('orders.advance'))}{inp('expectedShip', t('orders.expectedShip'), 'date')}</div>
-      <button data-testid="o-save-india" className="btn-primary mt-2 !py-1 text-xs" disabled={busy} onClick={() => void save(shipped && f.indiaStatus !== o.indiaStatus ? ['indiaStatus', 'paymentStatus', 'advance', 'expectedShip'] : ['paymentStatus', 'advance', 'expectedShip'])}>{t('orders.save')}</button></div>}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{shipped ? sel('indiaStatus', IND.includes(f.indiaStatus) ? IND : [f.indiaStatus, ...IND], 'ind', t('orders.shipment')) : <div data-testid="o-india-locked" className="col-span-2 self-end pb-2 text-xs text-ink-500">🔒 {t('ship.indiaLocked')}</div>}{perms.can('orders.payment') && sel('paymentStatus', PAY, 'pay', t('orders.payment'))}{perms.can('orders.payment') && inp('advance', t('orders.advance'))}{perms.can('orders.production') && inp('expectedShip', t('orders.expectedShip'), 'date')}</div>
+      <button data-testid="o-save-india" className="btn-primary mt-2 !py-1 text-xs" disabled={busy} onClick={() => void saveIndia()}>{t('orders.save')}</button></div>}
     {msg && <p role="status" className="mt-1 text-xs text-ink-500">{msg}</p>}
   </div>);
 }
