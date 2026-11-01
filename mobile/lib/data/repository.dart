@@ -75,12 +75,13 @@ class SourceEasyRepository {
   // ---------- Leads ----------
   String get _leadFields => perms.canSeeCustomerDetails ? Lead.gqlFields : Lead.gqlFieldsRedacted;
 
-  Future<List<Lead>> leads({String? office, String? status}) async {
+  Future<List<Lead>> leads({String? office, String? status, bool mine = false}) async {
     final filter = <String, dynamic>{
+      if (mine) 'assignedTo': {'eq': 'me'},
       if (office != null) 'assignedOffice': {'eq': office},
       if (status != null) 'status': {'eq': status},
     };
-    final rows = await _read('leads:$office:$status', 'leads', _leadFields, filter: filter.isEmpty ? null : filter);
+    final rows = await _read('leads:$office:$status:$mine', 'leads', _leadFields, filter: filter.isEmpty ? null : filter);
     final pending = (await store.pending()).where((p) => p.object == 'lead' && p.kind == 'create');
     return [
       ...pending.map((p) => Lead.fromJson({...p.payload, 'id': 'pending-${p.id}', '_pending': true})),
@@ -140,6 +141,27 @@ class SourceEasyRepository {
   /// Step 2: hand a lead to a China agent.
   Future<WriteResult> assignToChina(String leadId, String agent) =>
       updateLead(leadId, {if (agent.isNotEmpty) 'assignedChinaAgent': agent, 'assignedOffice': 'CHINA', 'status': 'ASSIGNED'});
+
+  /// Active members of an office, for the assignee picker.
+  Future<List<StaffLite>> staff(String office) async {
+    final j = await api.send('GET', '/api/staff', query: {'office': office}) as Map<String, dynamic>;
+    return (j['data'] as List).cast<Map<String, dynamic>>().map(StaffLite.fromJson).toList();
+  }
+
+  /// Hands a lead to [office]. [assignedTo] null = office queue; [useDefault] omits it (China→India returns to the raiser).
+  Future<Lead> assignLead(String id, String office, {String? assignedTo, bool useDefault = false}) async {
+    final j = await api.send('POST', '/api/leads/${Uri.encodeComponent(id)}/assign',
+        body: {'office': office, if (!useDefault) 'assignedTo': assignedTo}) as Map<String, dynamic>;
+    return Lead.fromJson((j['data'] ?? j) as Map<String, dynamic>);
+  }
+
+  Future<({List<AppNotification> items, int unread})> notifications() async {
+    final j = await api.send('GET', '/api/notifications') as Map<String, dynamic>;
+    return (items: (j['data'] as List).cast<Map<String, dynamic>>().map(AppNotification.fromJson).toList(), unread: (j['unread'] as num?)?.toInt() ?? 0);
+  }
+
+  Future<void> markNotificationRead([String? id]) =>
+      api.send('POST', id == null ? '/api/notifications/read-all' : '/api/notifications/${Uri.encodeComponent(id)}/read');
 
   // ---------- Sourcing ----------
   Future<List<SourcingRequest>> sourcingRequests({String? leadId}) async {

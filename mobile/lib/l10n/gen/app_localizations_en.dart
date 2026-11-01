@@ -769,4 +769,75 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get assignedToChina => 'Assigned to the China office';
+
+  @override
+  String get notifications => 'Notifications';
+
+  @override
+  String get noNotifications => 'No notifications yet';
+
+  @override
+  String get markAllRead => 'Mark all read';
+
+  @override
+  String notifAssigned(String ref, String product, String by) {
+    return '$ref · $product assigned to you$by';
+  }
+
+  @override
+  String notifReturned(String ref, String product, String by) {
+    return '$ref · $product returned to you$by';
+  }
+
+  @override
+  String notifQueue(String ref, String product, String office, String by) {
+    return '$ref · $product is waiting in the $office queue$by';
+  }
+
+  @override
+  String notifBy(String name) {
+    return ' by $name';
+  }
+
+  @override
+  String get assignedToMe => 'Assigned to me';
+
+  @override
+  String get noneAssignedToMe => 'Nothing is assigned to you';
+
+  @override
+  String get raisedBy => 'Raised by';
+
+  @override
+  String get assignedTo => 'Assigned to';
+
+  @override
+  String officeQueue(String office) {
+    return '$office queue (unassigned)';
+  }
+
+  @override
+  String get sendToChina => 'Send to China';
+
+  @override
+  String get returnToIndia => 'Return to India';
+
+  @override
+  String get reassign => 'Reassign';
+
+  @override
+  String get teamMember => 'Team member';
+
+  @override
+  String raiserDefault(String name) {
+    return '$name (raised it — default)';
+  }
+
+  @override
+  String handedTo(String who) {
+    return 'Handed to $who';
+  }
+
+  @override
+  String get newLeadNotif => 'Source Easy lead';
 }

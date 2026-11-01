@@ -757,4 +757,75 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get assignedToChina => '已分配给中国办公室';
+
+  @override
+  String get notifications => '通知';
+
+  @override
+  String get noNotifications => '暂无通知';
+
+  @override
+  String get markAllRead => '全部已读';
+
+  @override
+  String notifAssigned(String ref, String product, String by) {
+    return '$ref · $product 已分配给你$by';
+  }
+
+  @override
+  String notifReturned(String ref, String product, String by) {
+    return '$ref · $product 已退回给你$by';
+  }
+
+  @override
+  String notifQueue(String ref, String product, String office, String by) {
+    return '$ref · $product 在$office待分配队列中$by';
+  }
+
+  @override
+  String notifBy(String name) {
+    return '（$name）';
+  }
+
+  @override
+  String get assignedToMe => '分配给我';
+
+  @override
+  String get noneAssignedToMe => '暂无分配给你的线索';
+
+  @override
+  String get raisedBy => '提交人';
+
+  @override
+  String get assignedTo => '负责人';
+
+  @override
+  String officeQueue(String office) {
+    return '$office队列（未分配）';
+  }
+
+  @override
+  String get sendToChina => '发送到中国';
+
+  @override
+  String get returnToIndia => '退回印度';
+
+  @override
+  String get reassign => '重新分配';
+
+  @override
+  String get teamMember => '团队成员';
+
+  @override
+  String raiserDefault(String name) {
+    return '$name（提交人，默认）';
+  }
+
+  @override
+  String handedTo(String who) {
+    return '已交给 $who';
+  }
+
+  @override
+  String get newLeadNotif => 'Source Easy 线索';
 }

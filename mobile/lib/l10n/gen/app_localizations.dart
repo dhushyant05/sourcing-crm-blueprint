@@ -1507,6 +1507,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Assigned to the China office'**
   String get assignedToChina;
+
+  /// No description provided for @notifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notifications;
+
+  /// No description provided for @noNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'No notifications yet'**
+  String get noNotifications;
+
+  /// No description provided for @markAllRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all read'**
+  String get markAllRead;
+
+  /// No description provided for @notifAssigned.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product} assigned to you{by}'**
+  String notifAssigned(String ref, String product, String by);
+
+  /// No description provided for @notifReturned.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product} returned to you{by}'**
+  String notifReturned(String ref, String product, String by);
+
+  /// No description provided for @notifQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product} is waiting in the {office} queue{by}'**
+  String notifQueue(String ref, String product, String office, String by);
+
+  /// No description provided for @notifBy.
+  ///
+  /// In en, this message translates to:
+  /// **' by {name}'**
+  String notifBy(String name);
+
+  /// No description provided for @assignedToMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned to me'**
+  String get assignedToMe;
+
+  /// No description provided for @noneAssignedToMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is assigned to you'**
+  String get noneAssignedToMe;
+
+  /// No description provided for @raisedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Raised by'**
+  String get raisedBy;
+
+  /// No description provided for @assignedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned to'**
+  String get assignedTo;
+
+  /// No description provided for @officeQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'{office} queue (unassigned)'**
+  String officeQueue(String office);
+
+  /// No description provided for @sendToChina.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to China'**
+  String get sendToChina;
+
+  /// No description provided for @returnToIndia.
+  ///
+  /// In en, this message translates to:
+  /// **'Return to India'**
+  String get returnToIndia;
+
+  /// No description provided for @reassign.
+  ///
+  /// In en, this message translates to:
+  /// **'Reassign'**
+  String get reassign;
+
+  /// No description provided for @teamMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Team member'**
+  String get teamMember;
+
+  /// No description provided for @raiserDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} (raised it — default)'**
+  String raiserDefault(String name);
+
+  /// No description provided for @handedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Handed to {who}'**
+  String handedTo(String who);
+
+  /// No description provided for @newLeadNotif.
+  ///
+  /// In en, this message translates to:
+  /// **'Source Easy lead'**
+  String get newLeadNotif;
 }
 
 class _AppLocalizationsDelegate

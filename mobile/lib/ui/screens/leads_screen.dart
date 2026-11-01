@@ -21,6 +21,7 @@ class LeadsScreen extends StatefulWidget {
 
 class _LeadsScreenState extends State<LeadsScreen> {
   String? _office, _status;
+  bool _mine = false;
   String _q = '';
   late Future<List<Lead>> _f;
 
@@ -30,7 +31,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _load();
   }
 
-  void _load() => _f = context.read<Session>().repo.leads(office: _office, status: _status);
+  void _load() => _f = context.read<Session>().repo.leads(office: _office, status: _status, mine: _mine);
   void _reload() => setState(_load);
 
   @override
@@ -62,6 +63,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(key: const Key('filter-mine'), avatar: const Icon(Icons.person_outline, size: 16), label: Text(context.l10n.assignedToMe), selected: _mine,
+                  onSelected: (v) { _mine = v; _reload(); }),
+            ),
             for (final o in const ['INDIA', 'CHINA'])
               Padding(
                 padding: const EdgeInsets.only(right: 6),

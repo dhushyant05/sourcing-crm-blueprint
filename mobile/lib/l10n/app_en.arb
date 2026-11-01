@@ -406,5 +406,94 @@
   "delete": "Delete",
   "playVideo": "Play video",
   "agentOptional": "China agent (optional)",
-  "assignedToChina": "Assigned to the China office"
+  "assignedToChina": "Assigned to the China office",
+  "notifications": "Notifications",
+  "noNotifications": "No notifications yet",
+  "markAllRead": "Mark all read",
+  "notifAssigned": "{ref} · {product} assigned to you{by}",
+  "notifReturned": "{ref} · {product} returned to you{by}",
+  "notifQueue": "{ref} · {product} is waiting in the {office} queue{by}",
+  "notifBy": " by {name}",
+  "assignedToMe": "Assigned to me",
+  "noneAssignedToMe": "Nothing is assigned to you",
+  "raisedBy": "Raised by",
+  "assignedTo": "Assigned to",
+  "officeQueue": "{office} queue (unassigned)",
+  "sendToChina": "Send to China",
+  "returnToIndia": "Return to India",
+  "reassign": "Reassign",
+  "teamMember": "Team member",
+  "raiserDefault": "{name} (raised it — default)",
+  "handedTo": "Handed to {who}",
+  "newLeadNotif": "Source Easy lead",
+  "@notifAssigned": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "@notifReturned": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "@notifQueue": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "office": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "@notifBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@officeQueue": {
+    "placeholders": {
+      "office": {
+        "type": "String"
+      }
+    }
+  },
+  "@raiserDefault": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@handedTo": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      }
+    }
+  }
 }

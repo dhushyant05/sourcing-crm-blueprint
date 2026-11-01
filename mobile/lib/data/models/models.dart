@@ -34,7 +34,10 @@ class Lead {
     this.contactName,
     this.attachmentCount,
     this.summary,
+    this.raisedBy, this.raisedByName, this.assignedTo, this.assignedToName, this.ownerOffice,
   });
+  final String? raisedBy, raisedByName, assignedTo, assignedToName, ownerOffice;
+  String get owner => ownerOffice ?? (assignedOffice == 'CHINA' ? 'CHINA' : 'INDIA');
   final String id;
   final String name;
   final String? unit, deliveryCity, referenceUrl, enquiryMessage, leadRef, contactName;
@@ -87,6 +90,9 @@ class Lead {
         contactName: j['contactName'] as String?,
         attachmentCount: _num(j['attachmentCount'])?.toInt(),
         summary: j['summary'] as String?,
+        raisedBy: j['raisedBy'] as String?, raisedByName: j['raisedByName'] as String?,
+        assignedTo: j['assignedTo'] as String?, assignedToName: j['assignedToName'] as String?,
+        ownerOffice: j['ownerOffice'] as String?,
       );
 }
 
@@ -286,4 +292,23 @@ class ChatMessage {
   final String content, sender;
   final bool outgoing;
   final DateTime at;
+}
+
+class StaffLite {
+  StaffLite(this.id, this.name, this.role);
+  final String id, name, role;
+  factory StaffLite.fromJson(Map<String, dynamic> j) => StaffLite(j['id'] as String, (j['name'] as String?) ?? '', (j['role'] as String?) ?? '');
+}
+
+/// Server notification. Carries only the SE reference + product summary (never customer details).
+class AppNotification {
+  AppNotification({required this.id, required this.leadId, this.leadRef, this.product, required this.kind, this.office, this.byName, this.createdAt, this.read = false});
+  final String id, leadId, kind;
+  final String? leadRef, product, office, byName;
+  final DateTime? createdAt;
+  final bool read;
+  factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
+        id: '${j['id']}', leadId: j['leadId'] as String, leadRef: j['leadRef'] as String?, product: j['product'] as String?,
+        kind: (j['kind'] as String?) ?? 'ASSIGNED', office: j['office'] as String?, byName: j['byName'] as String?,
+        createdAt: _date(j['createdAt']), read: j['read'] == true || j['readAt'] != null);
 }

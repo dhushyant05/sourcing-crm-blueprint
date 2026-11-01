@@ -47,22 +47,44 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
 
   void _reload() => setState(() => _f = _load());
 
-  Future<void> _assign(Lead l) async {
-    final c = TextEditingController(text: l.assignedChinaAgent);
-    final agent = await showDialog<String>(
+  /// Hand [l] to [office]: pick a member, the office queue, or (China→India) the raiser by default.
+  Future<void> _assign(Lead l, String office) async {
+    final repo = context.read<Session>().repo;
+    final returning = office == 'INDIA' && l.owner == 'CHINA';
+    List<StaffLite> staff;
+    try { staff = await repo.staff(office); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); return; }
+    if (!mounted) return;
+    const def = '__default__';
+    String pick = returning ? def : '';
+    final officeName = codeLabel(context, office);
+    final chosen = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: Text(context.l10n.assignToChinaAgent),
-        content: TextField(controller: c, decoration: InputDecoration(labelText: context.l10n.agentOptional)),
+      builder: (d) => StatefulBuilder(builder: (d, set) => AlertDialog(
+        title: Text(office != l.owner ? (office == 'CHINA' ? context.l10n.sendToChina : context.l10n.returnToIndia) : context.l10n.reassign),
+        content: DropdownButtonFormField<String>(
+          key: const Key('assign-picker'),
+          initialValue: pick, isExpanded: true,
+          decoration: InputDecoration(labelText: '${context.l10n.teamMember} · $officeName'),
+          items: [
+            if (returning) DropdownMenuItem(value: def, child: Text(l.raisedByName != null ? context.l10n.raiserDefault(l.raisedByName!) : context.l10n.officeQueue(officeName))),
+            DropdownMenuItem(value: '', child: Text(context.l10n.officeQueue(officeName))),
+            for (final m in staff) DropdownMenuItem(value: m.id, child: Text(m.name)),
+          ],
+          onChanged: (v) => set(() => pick = v ?? ''),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d), child: Text(context.l10n.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: Text(context.l10n.assign)),
+          FilledButton(key: const Key('assign-confirm'), onPressed: () => Navigator.pop(d, pick), child: Text(context.l10n.assign)),
         ],
-      ),
+      )),
     );
-    if (agent == null || !mounted) return;
-    final r = await context.read<Session>().repo.assignToChina(l.id, agent);
-    if (mounted) showWriteResult(context, r, context.l10n.assignment);
+    if (chosen == null || !mounted) return;
+    try {
+      final r = await repo.assignLead(l.id, office, assignedTo: chosen.isEmpty || chosen == def ? null : chosen, useDefault: chosen == def);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.handedTo(r.assignedToName ?? context.l10n.officeQueue(officeName)))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
     _reload();
   }
 
@@ -144,7 +166,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     if (p.canSeeClientPricing && l.targetPrice != null)
                       InfoRow(context.l10n.targetPrice, formatMoneyCode(l.targetPrice!, l.targetCurrency ?? 'INR')),
                     InfoRow(context.l10n.office, codeLabel(context, l.assignedOffice)),
-                    InfoRow(context.l10n.chinaAgent, l.assignedChinaAgent),
+                    InfoRow(context.l10n.raisedBy, l.raisedByName ?? '—'),
+                    InfoRow(context.l10n.assignedTo, l.assignedToName ?? context.l10n.officeQueue(codeLabel(context, l.owner))),
+                    if (l.assignedChinaAgent != null) InfoRow(context.l10n.chinaAgent, l.assignedChinaAgent),
                     if (l.winLossReason != null) InfoRow(context.l10n.winLossReason, l.winLossReason),
                   ]),
                 ),
@@ -165,8 +189,12 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               LeadAttachments(leadId: l.id, canEdit: p.canCreateLead),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                if (p.canCreateLead && (l.status == 'NEW' || l.assignedOffice != 'CHINA') && !['WON', 'LOST'].contains(l.status))
-                  FilledButton.tonalIcon(onPressed: () => _assign(l), icon: Icon(Icons.forward), label: Text(context.l10n.assignToChina)),
+                if (p.canSeeCustomerDetails && l.owner != 'CHINA' && !['WON', 'LOST'].contains(l.status))
+                  FilledButton.tonalIcon(key: const Key('send-china'), onPressed: () => _assign(l, 'CHINA'), icon: const Icon(Icons.forward), label: Text(context.l10n.sendToChina)),
+                if (!p.canSeeCustomerDetails && l.owner == 'CHINA' && l.assignedOffice == 'CHINA')
+                  FilledButton.tonalIcon(key: const Key('return-india'), onPressed: () => _assign(l, 'INDIA'), icon: const Icon(Icons.reply), label: Text(context.l10n.returnToIndia)),
+                if (s.role.isAdmin && (s.role.office == null || s.role.office!.name.toUpperCase() == l.owner))
+                  OutlinedButton.icon(key: const Key('reassign'), onPressed: () => _assign(l, l.owner), icon: const Icon(Icons.swap_horiz), label: Text(context.l10n.reassign)),
                 if (p.canCreateSourcingRequest)
                   FilledButton.tonalIcon(
                     icon: const Icon(Icons.add_task),
