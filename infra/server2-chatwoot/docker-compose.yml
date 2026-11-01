@@ -1,0 +1,58 @@
+# Server 2 — Chatwoot (internal India<->China chat) on chat.sourceeasy.in
+name: source-easy-chatwoot
+x-base: &base
+  image: chatwoot/chatwoot:${TAG:-latest}
+  env_file: .env
+  restart: unless-stopped
+  volumes:
+    - storage:/app/storage
+services:
+  rails:
+    <<: *base
+    depends_on: [postgres, redis]
+    environment:
+      NODE_ENV: production
+      RAILS_ENV: production
+      INSTALLATION_ENV: docker
+    entrypoint: docker/entrypoints/rails.sh
+    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
+  sidekiq:
+    <<: *base
+    depends_on: [postgres, redis]
+    environment:
+      NODE_ENV: production
+      RAILS_ENV: production
+      INSTALLATION_ENV: docker
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: chatwoot
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    env_file: .env
+    volumes:
+      - redis:/data
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [rails]
+volumes:
+  storage:
+  postgres:
+  redis:
+  caddy-data:

@@ -1,0 +1,686 @@
+{
+  "@@locale": "en",
+  "syncNow": "Sync now",
+  "dashboard": "Dashboard",
+  "leads": "Leads",
+  "shipping": "Shipping",
+  "chat": "Chat",
+  "settings": "Settings",
+  "clientApproval": "Client approval",
+  "notesFromClient": "Notes from client",
+  "reject": "Reject",
+  "accept": "Accept",
+  "indiaChinaChat": "India ⇄ China chat",
+  "addYourChatwootAccessTokenIn": "Add your Chatwoot access token in Settings to use chat.",
+  "retry": "Retry",
+  "message": "Message",
+  "pipeline": "Pipeline",
+  "assignToChinaAgent": "Assign to China agent",
+  "agentName": "Agent name",
+  "cancel": "Cancel",
+  "assign": "Assign",
+  "winLossReason": "Win/loss reason",
+  "closeLead": "Close lead",
+  "lead": "Lead",
+  "assignToChina": "Assign to China",
+  "sourcingRequest": "Sourcing request",
+  "closeWon": "Close won",
+  "closeLost": "Close lost",
+  "sourcingRequests": "Sourcing requests",
+  "noneYet": "None yet",
+  "chatThread": "Chat thread",
+  "timeline": "Timeline",
+  "newLead": "New lead",
+  "clientName": "Client name *",
+  "phone": "Phone",
+  "email": "Email",
+  "productInterest": "Product interest *",
+  "quantity": "Quantity",
+  "targetPriceUnit": "Target price/unit",
+  "sourceChannel": "Source channel",
+  "saveLead": "Save lead",
+  "allStatuses": "All statuses",
+  "noLeads": "No leads",
+  "sourceEasy": "Source Easy",
+  "indiaChinaSourcing": "India ⇄ China sourcing",
+  "password": "Password",
+  "sourceEasyServerURL": "Source Easy server URL",
+  "signIn": "Sign in",
+  "newQuotation": "New quotation",
+  "supplier": "Supplier",
+  "unitCost": "Unit cost",
+  "save": "Save",
+  "clientPricePerUnit": "Client price per unit",
+  "setTheClientPriceFirst": "Set the client price first",
+  "quotation": "Quotation",
+  "amountsAreShownInTheCurrency": "Amounts are shown in the currency they were entered in. No conversion.",
+  "suppliers": "Suppliers",
+  "noQuotationsYet": "No quotations yet",
+  "clientPrice": "Client price",
+  "pdfToWhatsApp": "PDF to WhatsApp",
+  "approval": "Approval",
+  "language": "Language",
+  "currencies": "Currencies",
+  "usdRMBAndINREveryAmount": "USD, RMB and INR. Every amount stays in the currency it was entered in — no conversion.",
+  "offlineQueue": "Offline queue",
+  "chatwootConnection": "Chatwoot connection",
+  "backups": "Backups",
+  "openTheBackupBrowserOnThe": "Open the backup browser on the storage server in a browser to download dumps. Restores are CLI-only.",
+  "signOut": "Sign out",
+  "chatwoot": "Chatwoot",
+  "chatwootURL": "Chatwoot URL",
+  "accountID": "Account ID",
+  "internalAPIInboxID": "Internal API inbox ID",
+  "yourAccessToken": "Your access token",
+  "chatwootProfileSettingsAccessToken": "Chatwoot → Profile settings → Access token",
+  "shippingTracker": "Shipping tracker",
+  "noShipmentsYet": "No shipments yet",
+  "updateShipment": "Update shipment",
+  "forwarder": "Forwarder",
+  "trackingNumber": "Tracking number",
+  "currentLocation": "Current location",
+  "latitude": "Latitude",
+  "longitude": "Longitude",
+  "saveUpdate": "Save update",
+  "productDescription": "Product description *",
+  "sampleStatus": "Sample status",
+  "supplierNamesOnePerLine": "Supplier names (one per line)",
+  "createRequest": "Create request",
+  "chinaAgent": "China agent",
+  "clientPriceUnit": "Client price/unit",
+  "clientTotal": "Client total",
+  "contact": "Contact",
+  "container": "Container",
+  "customs": "Customs",
+  "eta": "ETA",
+  "etd": "ETD",
+  "location": "Location",
+  "office": "Office",
+  "product": "Product",
+  "source": "Source",
+  "supplierCostUnit": "Supplier cost/unit",
+  "supplierTotal": "Supplier total",
+  "targetPrice": "Target price",
+  "trackingNo": "Tracking no.",
+  "validUntil": "Valid until",
+  "quotations": "Quotations",
+  "offlineAndNothingCachedYet": "Offline and nothing cached yet",
+  "noThreadYet": "No thread yet",
+  "notConfigured": "Not configured",
+  "setDeadline": "Set deadline",
+  "hideServer": "Hide server",
+  "serverSettings": "Server settings",
+  "helloName": "Hello {name}",
+  "@helloName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingChanges": "{count} pending change(s)",
+  "@pendingChanges": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "offlineQueued": "Offline — changes are queued ({count} pending)",
+  "@offlineQueued": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingToSync": "{count} change(s) waiting to sync",
+  "@waitingToSync": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "syncedSummary": "Synced {synced}, failed {failed}, remaining {remaining}",
+  "@syncedSummary": {
+    "placeholders": {
+      "synced": {
+        "type": "String"
+      },
+      "failed": {
+        "type": "String"
+      },
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "deadlineOn": "Deadline: {date}",
+  "@deadlineOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "qtyValidUntil": "Qty {qty} · valid until {date}",
+  "@qtyValidUntil": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "samplesStatus": "Samples: {status}",
+  "@samplesStatus": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "threadNo": "Thread #{id}",
+  "@threadNo": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "closeAsWon": "Close as won",
+  "closeAsLost": "Close as lost",
+  "required": "Required",
+  "status": "Status",
+  "forwarderTbd": "Forwarder TBD",
+  "shipment": "Shipment",
+  "notSent": "Not sent: {error}",
+  "@notSent": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "codeNew": "New",
+  "codeAssigned": "Assigned",
+  "codeSourcing": "Sourcing",
+  "codeQuoted": "Quoted",
+  "codeApproved": "Approved",
+  "codeRejected": "Rejected",
+  "codeShipping": "Shipping",
+  "codeDelivered": "Delivered",
+  "codeWon": "Won",
+  "codeLost": "Lost",
+  "codeOpen": "Open",
+  "codePending": "Pending",
+  "codeSent": "Sent",
+  "codeDraft": "Draft",
+  "codeExpired": "Expired",
+  "codeIndia": "India",
+  "codeChina": "China",
+  "codeBoth": "Both",
+  "codeNotRequested": "Not Requested",
+  "codeRequested": "Requested",
+  "codeReceived": "Received",
+  "codeNotStarted": "Not Started",
+  "codeFiled": "Filed",
+  "codeCleared": "Cleared",
+  "codeHeld": "Held",
+  "codeBooked": "Booked",
+  "codeInTransit": "In Transit",
+  "codeAtPort": "At Port",
+  "codeOutForDelivery": "Out For Delivery",
+  "codeAir": "Air",
+  "codeLcl": "Lcl",
+  "codeFcl": "Fcl",
+  "codeFcl20": "Fcl 20",
+  "codeFcl40": "Fcl 40",
+  "codeCourier": "Courier",
+  "codePhone": "Phone",
+  "codeWhatsapp": "Whatsapp",
+  "codeWebsite": "Website",
+  "codeReferral": "Referral",
+  "codeWalkIn": "Walk In",
+  "codeExhibition": "Exhibition",
+  "codeEmail": "Email",
+  "codeOther": "Other",
+  "codeQuotation": "Quotation",
+  "codeIndiaStaff": "India Staff",
+  "codeChinaStaff": "China Staff",
+  "codeIndiaAdmin": "India Admin",
+  "codeChinaAdmin": "China Admin",
+  "codeSuperAdmin": "Super Admin",
+  "client": "Client",
+  "dateField": "{label}: {date}",
+  "@dateField": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "savedOffline": "{what} saved offline — will sync when online",
+  "@savedOffline": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "savedOk": "{what} saved",
+  "@savedOk": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "assignment": "Assignment",
+  "rejection": "Rejection",
+  "languageTooltip": "Language",
+  "loggedBy": "logged by {name}",
+  "@loggedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "about": "About",
+  "tlLeadCreated": "Lead created",
+  "tlOffice": "{office} office",
+  "@tlOffice": {
+    "placeholders": {
+      "office": {
+        "type": "String"
+      }
+    }
+  },
+  "kpiActiveLeads": "Active leads",
+  "kpiPendingSync": "Pending sync",
+  "attachments": "Photos & documents",
+  "noAttachments": "No files attached",
+  "deliveryCity": "Delivery city",
+  "referenceLink": "Reference link",
+  "leadRef": "Reference",
+  "enquiryMessage": "Message",
+  "contactPerson": "Contact person",
+  "openFile": "Open / share",
+  "searchRef": "Search reference, product…",
+  "updateAvailable": "Update available",
+  "updateRequired": "Update required",
+  "updateRequiredHint": "This version is no longer supported. Please update to keep using Source Easy.",
+  "updateVersion": "Version {version} (build {build})",
+  "@updateVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "updateNotes": "What's new",
+  "updateDownloading": "Downloading… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "updateInstalling": "The installer has opened. Tap Install to finish.",
+  "updatePermissionTitle": "Allow installs from Source Easy",
+  "updatePermissionSteps": "Android needs your permission once:\n1. Tap “Open settings”.\n2. Turn on “Allow from this source”.\n3. Come back and tap “Install”.",
+  "updateOpenSettings": "Open settings",
+  "updateInstall": "Install",
+  "updateNow": "Update now",
+  "updateLater": "Later",
+  "updateCheck": "Check for updates",
+  "updateChecking": "Checking for updates…",
+  "updateNone": "You have the latest version.",
+  "updateCheckFailed": "Couldn't check for updates. Check your connection and try again.",
+  "updateDownloadFailed": "Download failed. Please try again.",
+  "updateChecksumFailed": "The downloaded file is damaged (checksum mismatch). Please try again.",
+  "updateInstalled": "Installed version {version} (build {build})",
+  "@updateInstalled": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "summary": "Product summary",
+  "summaryHint": "Specs, material, size, colour, packaging, certifications…",
+  "noSummary": "No summary yet",
+  "editSummary": "Edit summary",
+  "mediaTitle": "Product photos & videos",
+  "addPhotos": "Photos / videos",
+  "takePhoto": "Take photo",
+  "recordVideo": "Record video",
+  "mediaHint": "Photos up to 10 MB, videos up to 100 MB, original quality",
+  "uploadingFiles": "Uploading {count} files…",
+  "@uploadingFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "uploadedFiles": "{count} files uploaded",
+  "@uploadedFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileTooBig": "{name} is too large (photos 10 MB, videos 100 MB)",
+  "@fileTooBig": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadNeedsOnline": "Lead saved offline. Add photos/videos once you are online.",
+  "deleteFileQ": "Delete {name}?",
+  "@deleteFileQ": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "delete": "Delete",
+  "playVideo": "Play video",
+  "agentOptional": "China agent (optional)",
+  "assignedToChina": "Assigned to the China office",
+  "notifications": "Notifications",
+  "noNotifications": "No notifications yet",
+  "markAllRead": "Mark all read",
+  "notifAssigned": "{ref} · {product} assigned to you{by}",
+  "notifReturned": "{ref} · {product} returned to you{by}",
+  "notifQueue": "{ref} · {product} is waiting in the {office} queue{by}",
+  "notifBy": " by {name}",
+  "assignedToMe": "Assigned to me",
+  "noneAssignedToMe": "Nothing is assigned to you",
+  "raisedBy": "Raised by",
+  "assignedTo": "Assigned to",
+  "officeQueue": "{office} queue (unassigned)",
+  "sendToChina": "Send to China",
+  "returnToIndia": "Return to India",
+  "reassign": "Reassign",
+  "teamMember": "Team member",
+  "raiserDefault": "{name} (raised it — default)",
+  "handedTo": "Handed to {who}",
+  "newLeadNotif": "Source Easy lead",
+  "@notifAssigned": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "@notifReturned": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "@notifQueue": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "office": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "@notifBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@officeQueue": {
+    "placeholders": {
+      "office": {
+        "type": "String"
+      }
+    }
+  },
+  "@raiserDefault": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@handedTo": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      }
+    }
+  },
+  "lqTitle": "Supplier quotes",
+  "lqAdd": "Add quote",
+  "lqEdit": "Edit",
+  "lqNone": "No supplier quotes yet. China will add them here.",
+  "lqNoneChina": "No quotes yet. Add the supplier's price, MOQ and product photos.",
+  "lqLoadFail": "Couldn't load quotes.",
+  "lqUnit": "unit",
+  "lqMoq": "MOQ",
+  "lqLeadTime": "Lead time",
+  "lqValidity": "Valid for",
+  "lqNotes": "Notes",
+  "lqSupplier": "Supplier",
+  "lqChinaOnly": "China only",
+  "lqNoSupplier": "— Select supplier —",
+  "lqNewSupplier": "New supplier",
+  "lqSupName": "Supplier name",
+  "lqSupContact": "Contact person",
+  "lqSupPhone": "Phone",
+  "lqSupCity": "City",
+  "lqProduct": "Product / model",
+  "lqProductPh": "e.g. SB-500 steel bottle 500ml",
+  "lqUnitPrice": "Unit price",
+  "lqCurrency": "Currency",
+  "lqMedia": "Supplier photos, videos & documents",
+  "lqAddMedia": "Add photos / files",
+  "lqSellPrice": "Our selling price",
+  "lqSellNotes": "Customer quote notes",
+  "lqAddSell": "Add INR price",
+  "lqReturnHint": "Done quoting? Tap “Return to India” to notify the person who raised this lead.",
+  "lqErrProduct": "Enter the product / model.",
+  "lqErrPrice": "Enter a valid unit price.",
+  "lqErrSupplier": "Enter the new supplier's name.",
+  "lqDeleteQ": "Delete the quote for “{product}”?",
+  "@lqDeleteQ": {
+    "placeholders": {
+      "product": {
+        "type": "String"
+      }
+    }
+  },
+  "lqBy": "Added by {name}",
+  "@lqBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quotesTab": "Quotes",
+  "ordersTab": "Orders",
+  "more": "More",
+  "qlTitle": "All quotes",
+  "qlNone": "No quotes yet",
+  "qlMine": "Assigned to me",
+  "qlAll": "All",
+  "shipTitle": "Shipping",
+  "shipCost": "Shipping cost",
+  "shipCostInr": "Shipping (₹ INR)",
+  "shipTerm": "Incoterm",
+  "shipMode": "Mode",
+  "shipPort": "Port / destination",
+  "shipTransit": "Transit time",
+  "shipNone": "—",
+  "qsDRAFT": "Draft",
+  "qsSENT": "Sent",
+  "qsACCEPTED": "Accepted",
+  "qsREJECTED": "Rejected",
+  "cqPrepare": "Prepare customer quote",
+  "cqTitle": "Customer quote",
+  "cqUnit": "Price per unit (₹ INR)",
+  "cqQty": "Quantity",
+  "cqGst": "GST %",
+  "cqOther": "Other charges (₹)",
+  "cqOtherLabel": "Other charges label",
+  "cqValidity": "Valid for",
+  "cqTerms": "Terms",
+  "cqSubtotal": "Product subtotal",
+  "cqGstAmt": "GST",
+  "cqTotal": "Total",
+  "cqSavePreview": "Save & preview",
+  "cqGenerate": "Generate PDF",
+  "cqDownload": "Open PDF",
+  "cqWhatsapp": "WhatsApp",
+  "cqEmail": "Email",
+  "cqShare": "Share",
+  "cqMarkSent": "Mark sent",
+  "cqAccept": "Customer accepted",
+  "cqReject": "Customer rejected",
+  "cqReason": "Reason (required)",
+  "cqCreateOrder": "Create order",
+  "cqOrderCreated": "Order created",
+  "cqErr": "Enter quantity and price",
+  "orTitle": "Orders",
+  "orNone": "No orders yet",
+  "orProduction": "Production",
+  "orShipment": "Shipment (India)",
+  "orPayment": "Payment",
+  "orAdvance": "Advance (₹)",
+  "orTracking": "Tracking no.",
+  "orContainer": "Container no.",
+  "orEtd": "ETD (YYYY-MM-DD)",
+  "orEta": "ETA (YYYY-MM-DD)",
+  "orExpectedShip": "Expected ship (YYYY-MM-DD)",
+  "orCustomer": "Customer",
+  "orSupplier": "Supplier",
+  "orCost": "China cost",
+  "orTotal": "Order value",
+  "orSaved": "Saved",
+  "notifQuoteAccepted": "{ref} · {product}: customer accepted the quote{by}",
+  "@notifQuoteAccepted": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "notifQuoteRejected": "{ref} · {product}: customer rejected the quote{by}",
+  "@notifQuoteRejected": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "notifOrderNew": "{ref} · {product}: new order{by}",
+  "@notifOrderNew": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "notifOrderUpdate": "{ref} · {product}: order updated{by}",
+  "@notifOrderUpdate": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "prodNew": "New",
+  "prodDepositPaid": "Deposit paid",
+  "prodInProduction": "In production",
+  "prodReady": "Ready",
+  "prodShipped": "Shipped",
+  "indNone": "Not shipped",
+  "indInTransit": "In transit",
+  "indCustoms": "At customs",
+  "indDelivered": "Delivered",
+  "payPending": "Pending",
+  "payPartial": "Partly paid",
+  "payPaid": "Paid",
+  "termExw": "EXW",
+  "termFob": "FOB",
+  "termCif": "CIF",
+  "termCfr": "CFR",
+  "termDdp": "DDP",
+  "termDap": "DAP",
+  "termDoor": "Door to door",
+  "modeAir": "Air",
+  "modeSea": "Sea",
+  "modeExpress": "Express / courier",
+  "modeRoad": "Road"
+}
