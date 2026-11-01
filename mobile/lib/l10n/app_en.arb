@@ -682,5 +682,6 @@
   "modeAir": "Air",
   "modeSea": "Sea",
   "modeExpress": "Express / courier",
-  "modeRoad": "Road"
+  "modeRoad": "Road",
+  "tagline": "Sourcing made easy"
 }

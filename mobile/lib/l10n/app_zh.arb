@@ -374,5 +374,6 @@
   "modeAir": "空运",
   "modeSea": "海运",
   "modeExpress": "快递",
-  "modeRoad": "陆运"
+  "modeRoad": "陆运",
+  "tagline": "轻松采购"
 }

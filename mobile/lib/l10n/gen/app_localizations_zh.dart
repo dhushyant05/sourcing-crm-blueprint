@@ -1203,4 +1203,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get modeRoad => '陆运';
+
+  @override
+  String get tagline => '轻松采购';
 }

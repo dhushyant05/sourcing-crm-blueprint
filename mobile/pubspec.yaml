@@ -1,7 +1,7 @@
 name: source_easy
 description: "A new Flutter project."
 publish_to: 'none'
-version: 0.2.7+9
+version: 0.2.8+10
 
 environment:
   sdk: ^3.9.2
@@ -42,6 +42,8 @@ flutter_launcher_icons:
   image_path: assets/brand/launcher.png
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: assets/brand/launcher_fg.png
+  adaptive_icon_foreground_inset: 0
+  adaptive_icon_monochrome: assets/brand/launcher_mono.png
   min_sdk_android: 21
 
 flutter:

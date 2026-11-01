@@ -44,7 +44,7 @@ export function DownloadPage() {
         <a href="/" className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ArrowLeft size={14} />{t('download.back')}</a>
         <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_300px]">
           <section>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('download.title')}</h1>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('download.title')}</h1><div data-testid="brand-tagline" className="mt-1 text-sm font-medium text-brand-200">{t('app.tagline')}</div>
             <p className="mt-3 max-w-xl text-white/70">{t('download.sub')}</p>
             <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm" data-testid="apk-meta">
               <div><dt className="text-white/50">{t('download.version')}</dt><dd className="font-medium">{v?.version ? `${v.version}${v.build ? ` (${v.build})` : ''}` : '—'}</dd></div>

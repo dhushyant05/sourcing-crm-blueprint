@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Languages, Mail, MapPin, MessageCircle, Phone, Radar, Receipt, Ship, ShieldCheck, Sofa, Shirt, Package, Plug, Wrench, Cog, Gift, CookingPot } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
@@ -11,6 +11,7 @@ const WA = `https://wa.me/917299541489`, WA_DISPLAY = '+91 72995 41489';
 export function Landing() {
   const { t } = useTranslation();
   const l = (k: string) => t(`landing.${k}`);
+  useEffect(() => { document.title = `Source Easy — ${t('app.tagline')}`; }, [t]);
   const cats = t('landing.cat.items', { returnObjects: true }) as string[];
   const catIcons = [CookingPot, Plug, Package, Shirt, Wrench, Sofa, Cog, Gift];
   return (
@@ -19,7 +20,7 @@ export function Landing() {
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           <a href="/" className="flex items-center gap-2.5">
             <img src="/brand/mark.png" alt="" className="h-9 w-9 object-contain" />
-            <span className="hidden text-[17px] font-semibold tracking-tight text-white sm:inline">Source Easy</span>
+            <span className="hidden leading-tight sm:block"><span className="block text-[17px] font-semibold tracking-tight text-white">Source Easy</span><span className="block text-[11px] text-white/60">{t('app.tagline')}</span></span>
           </a>
           <nav className="ml-8 hidden gap-6 text-sm text-white/70 lg:flex">
             {(['how', 'services', 'categories', 'contact'] as const).map((k) => <a key={k} href={`#${k}`} className="transition hover:text-white">{l(`nav.${k}`)}</a>)}
@@ -37,7 +38,7 @@ export function Landing() {
         <div className="pointer-events-none absolute -right-32 top-20 h-[28rem] w-[28rem] rounded-full bg-accent-500/25 blur-3xl animate-[pulse_10s_ease-in-out_infinite]" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 animate-fade-in">
-          <img src="/brand/lockup.png" alt="Source Easy" data-testid="hero-logo" className="mb-8 h-28 w-auto object-contain sm:h-36" />
+          <img src="/brand/lockup.png" alt="Source Easy" data-testid="hero-logo" className="mb-3 h-28 w-auto object-contain sm:h-36" /><div data-testid="brand-tagline" className="mb-8 text-lg font-medium tracking-wide text-brand-200 sm:text-xl">{t('app.tagline')}</div>
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-white/80"><Globe2 size={14} />{l('hero.badge')}</span>
           <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
             {l('hero.title')}<br /><span className="bg-gradient-to-r from-brand-200 via-brand-300 to-accent-300 bg-clip-text text-transparent">{l('hero.titleAccent')}</span>
@@ -108,7 +109,7 @@ export function Landing() {
         </div>
       </Section>
 
-      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-4 h-16 w-auto object-contain" /><div className="mb-4"><AppDownloadButton variant="outline" /></div>{t('landing.footer', { year: new Date().getFullYear() })}</footer>
+      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-2 h-16 w-auto object-contain" /><div data-testid="brand-tagline" className="mb-4 font-medium text-ink-700">{t('app.tagline')}</div><div className="mb-4"><AppDownloadButton variant="outline" /></div>{t('landing.footer', { year: new Date().getFullYear() })}</footer>
     </div>
   );
 }

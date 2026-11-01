@@ -64,7 +64,7 @@ class SettingsScreen extends StatelessWidget {
         ),
         FutureBuilder<PackageInfo>(
           future: PackageInfo.fromPlatform(),
-          builder: (c, snap) => AboutListTile(applicationName: 'Source Easy', applicationVersion: snap.hasData ? '${snap.data!.version} (${snap.data!.buildNumber})' : '', icon: const Icon(Icons.info_outline)),
+          builder: (c, snap) => AboutListTile(applicationName: 'Source Easy', applicationLegalese: 'Source Easy — ${c.l10n.tagline}\nsourceeasy.in', applicationIcon: Image.asset('assets/brand/mark.png', height: 48), applicationVersion: snap.hasData ? '${snap.data!.version} (${snap.data!.buildNumber})' : '', icon: const Icon(Icons.info_outline)),
         ),
       ]),
     );

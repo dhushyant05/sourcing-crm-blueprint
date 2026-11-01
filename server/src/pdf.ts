@@ -21,7 +21,7 @@ export function customerQuotePdf(x: PdfInput): Promise<Buffer> {
     const W = doc.page.width - 96, green = '#3d8b2f', ink = '#1f2937', mute = '#6b7280';
     if (ASSETS && existsSync(join(ASSETS, 'lockup.png'))) doc.image(join(ASSETS, 'lockup.png'), 48, 40, { height: 56 });
     doc.font(B).fontSize(18).fillColor(ink).text('QUOTATION', 48, 44, { width: W, align: 'right' });
-    doc.font(R).fontSize(9).fillColor(mute).text('sourceeasy.in', { width: W, align: 'right' });
+    doc.font(R).fontSize(9).fillColor(mute).text('Sourcing made easy · sourceeasy.in', { width: W, align: 'right' });
     doc.moveTo(48, 108).lineTo(48 + W, 108).strokeColor(green).lineWidth(1.5).stroke();
     let y = 120;
     const kv = (k: string, v: string, xx: number, yy: number) => { doc.font(R).fontSize(8).fillColor(mute).text(k.toUpperCase(), xx, yy); doc.font(B).fontSize(10).fillColor(ink).text(v, xx, yy + 10, { width: W / 2 - 10 }); };
@@ -67,7 +67,7 @@ export function customerQuotePdf(x: PdfInput): Promise<Buffer> {
     }
     if (x.cq.terms) { doc.font(B).fontSize(10).fillColor(ink).text('Terms & notes', 48, y); doc.font(R).fontSize(9).fillColor(ink).text(x.cq.terms, 48, doc.y + 2, { width: W }); }
     doc.page.margins.bottom = 0;
-    doc.font(R).fontSize(8).fillColor(mute).text('Prices in Indian Rupees. Source Easy · sourceeasy.in · Thank you for your business.',
+    doc.font(R).fontSize(8).fillColor(mute).text('Prices in Indian Rupees. Source Easy · Sourcing made easy · sourceeasy.in · Thank you for your business.',
       48, doc.page.height - 64, { width: W, align: 'center', lineBreak: true });
     doc.end();
   });

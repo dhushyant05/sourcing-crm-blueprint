@@ -70,7 +70,7 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
       <div className="flex gap-2"><button data-testid="cq-preview" className="btn-primary" disabled={busy} onClick={toPreview}>{t('cq.preview')}</button><button className="btn-outline" onClick={() => setMode(null)}>{t('common.cancel')}</button></div>
     </div>)}
     {mode === 'preview' && c && T && (<div data-testid="cq-preview-box" className="mt-2 rounded-lg border border-ink-200 bg-white p-4 text-sm shadow-sm dark:border-ink-700 dark:bg-ink-900">
-      <div className="flex items-start justify-between border-b-2 border-emerald-600 pb-2"><img src="/brand/lockup.png" alt="Source Easy" className="h-12" /><div className="text-right"><div className="text-lg font-bold">QUOTATION</div><div className="text-xs text-ink-500">sourceeasy.in</div></div></div>
+      <div className="flex items-start justify-between border-b-2 border-emerald-600 pb-2"><img src="/brand/lockup.png" alt="Source Easy" className="h-12" /><div className="text-right"><div className="text-lg font-bold">QUOTATION</div><div className="text-xs text-ink-500">Sourcing made easy · sourceeasy.in</div></div></div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><div><div className="text-ink-400">No.</div><b>{ref}</b></div><div><div className="text-ink-400">{t('cq.validity')}</div><b>{c.validity || '—'}</b></div>
         {(lead?.clientName) && <div><div className="text-ink-400">{t('orders.customer')}</div><b>{lead.clientName}</b></div>}</div>
       <div className="mt-2 font-semibold">{q.product}</div>

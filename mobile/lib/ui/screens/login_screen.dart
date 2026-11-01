@@ -50,6 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: AutofillGroup(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Image.asset('assets/brand/lockup.png', height: 150, semanticLabel: 'Source Easy'),
+                Text(context.l10n.tagline, key: const Key('brand-tagline'), textAlign: TextAlign.center, style: t.textTheme.titleMedium?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 Text(context.l10n.indiaChinaSourcing, textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
                 const SizedBox(height: 32),

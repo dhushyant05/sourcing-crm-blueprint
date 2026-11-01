@@ -48,7 +48,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
           <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-white shadow-lift animate-fade-in dark:bg-ink-900">
             <div className="flex h-14 items-center gap-2.5 px-4">
               <img src="/brand/mark.png" alt="" className="h-8 w-8 shrink-0 object-contain" />
-              <span className="flex-1 font-semibold text-ink-900 dark:text-white">Source Easy</span>
+              <span className="flex-1 leading-tight"><span className="block font-semibold text-ink-900 dark:text-white">Source Easy</span><span className="block text-[11px] text-ink-500">{t('app.tagline')}</span></span>
               <button className="btn-ghost p-2" onClick={() => setDrawer(false)} aria-label={t('common.close')}><X size={20} /></button>
             </div>
             <nav className="flex-1 space-y-1 px-3 py-2">
@@ -70,7 +70,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
       <aside className={clsx('hidden shrink-0 md:flex flex-col border-r border-ink-200/70 bg-white/80 backdrop-blur transition-[width] duration-300 dark:border-ink-800 dark:bg-ink-900/60', collapsed ? 'w-[72px]' : 'w-60')}>
         <div className="flex h-16 items-center gap-2.5 px-5">
           <img src="/brand/mark.png" alt="" className="h-8 w-8 shrink-0 object-contain" />
-          {!collapsed && <span className="truncate text-[15px] font-semibold tracking-tight text-ink-900 dark:text-white">Source Easy</span>}
+          {!collapsed && <span className="min-w-0 leading-tight"><span className="block truncate text-[15px] font-semibold tracking-tight text-ink-900 dark:text-white">Source Easy</span><span className="block truncate text-[11px] text-ink-500">{t('app.tagline')}</span></span>}
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">
           {nav.filter((n) => n.show).map(({ id, icon: I }) => { const label = t(`nav.${id}`); return (

@@ -30,7 +30,7 @@ export function Login() {
       <div className="relative flex items-center justify-center p-8">
         <LanguageSwitch className="absolute right-6 top-6" />
         <form className="w-full max-w-sm animate-fade-in" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-          <img src="/brand/lockup.png" alt="Source Easy" data-testid="login-logo" className="mb-8 h-24 w-auto object-contain" />
+          <img src="/brand/lockup.png" alt="Source Easy" data-testid="login-logo" className="mb-2 h-24 w-auto object-contain" /><div data-testid="brand-tagline" className="mb-8 text-sm font-medium text-brand-600">{t('app.tagline')}</div>
           <h2 className="text-xl font-semibold tracking-tight text-ink-900 dark:text-white">{t('login.title')}</h2>
           <p className="mt-1 text-sm text-ink-500">{t('login.hint')}</p>
           <div className="mt-6 space-y-4">

@@ -53,7 +53,7 @@ class QuotePdf {
             pw.SizedBox(width: 10),
             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               pw.Text('Source Easy', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: brandBlue)),
-              pw.Text('sourceeasy.in', style: const pw.TextStyle(color: brandGreen)),
+              pw.Text('Sourcing made easy · sourceeasy.in', style: const pw.TextStyle(color: brandGreen)),
             ]),
           ]),
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [

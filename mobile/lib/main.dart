@@ -104,7 +104,15 @@ class SourceEasyApp extends StatelessWidget {
       darkTheme: theme(Brightness.dark),
       themeMode: ThemeMode.system,
       home: Consumer<Session>(builder: (context, s, _) {
-        if (s.restoring) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        if (s.restoring) {
+          return Scaffold(body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Image.asset('assets/brand/lockup.png', height: 140, semanticLabel: 'Source Easy'),
+            const SizedBox(height: 8),
+            Text(context.l10n.tagline, key: const Key('splash-tagline'), style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 24),
+            const CircularProgressIndicator(),
+          ])));
+        }
         return UpdateGate(child: s.signedIn ? const HomeShell() : const LoginScreen());
       }),
     );

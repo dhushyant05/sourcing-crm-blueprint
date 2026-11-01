@@ -1217,4 +1217,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get modeRoad => 'Road';
+
+  @override
+  String get tagline => 'Sourcing made easy';
 }

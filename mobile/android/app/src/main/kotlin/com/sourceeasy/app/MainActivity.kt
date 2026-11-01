@@ -45,7 +45,7 @@ class MainActivity : FlutterActivity() {
                         packageManager.getLaunchIntentForPackage(packageName)!!.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                     val n = NotificationCompat.Builder(this, "alerts_bell")
-                        .setSmallIcon(R.mipmap.ic_launcher)
+                        .setSmallIcon(R.drawable.ic_stat_notify).setColor(0xFF2A9FD6.toInt())
                         .setContentTitle(call.argument<String>("title"))
                         .setContentText(call.argument<String>("body"))
                         .setPriority(NotificationCompat.PRIORITY_HIGH).setSound(bell)

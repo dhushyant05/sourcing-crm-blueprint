@@ -2347,6 +2347,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Road'**
   String get modeRoad;
+
+  /// No description provided for @tagline.
+  ///
+  /// In en, this message translates to:
+  /// **'Sourcing made easy'**
+  String get tagline;
 }
 
 class _AppLocalizationsDelegate
