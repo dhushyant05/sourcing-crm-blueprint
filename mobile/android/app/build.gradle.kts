@@ -7,12 +7,13 @@ plugins {
 
 import java.util.Properties
 
-// Release signing: put key.properties (storeFile, storePassword, keyAlias, keyPassword)
-// next to this file. It and the .jks are git-ignored. Without it, release uses debug keys.
-val keyProps = Properties().apply {
-    val f = rootProject.file("app/key.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
+// Release signing: key.properties (storeFile, storePassword, keyAlias, keyPassword) is read from
+// $SOURCEEASY_KEY_PROPERTIES, else android/key.properties, else android/app/key.properties (all git-ignored,
+// android/key.properties may be a symlink to a secrets folder). storeFile may be absolute or relative to that file.
+// If none exists, release builds fall back to the debug key.
+val keyPropsFile: File? = listOfNotNull(System.getenv("SOURCEEASY_KEY_PROPERTIES")?.let { File(it) },
+    rootProject.file("key.properties"), rootProject.file("app/key.properties")).firstOrNull { it.exists() }
+val keyProps = Properties().apply { keyPropsFile?.inputStream()?.use { load(it) } }
 
 android {
     namespace = "com.sourceeasy.app"
@@ -42,7 +43,7 @@ android {
     signingConfigs {
         if (keyProps.isNotEmpty()) {
             create("release") {
-                storeFile = file(keyProps["storeFile"] as String)
+                storeFile = (keyProps["storeFile"] as String).let { p -> File(p).takeIf { it.isAbsolute } ?: File(keyPropsFile!!.canonicalFile.parentFile, p) }
                 storePassword = keyProps["storePassword"] as String
                 keyAlias = keyProps["keyAlias"] as String
                 keyPassword = keyProps["keyPassword"] as String

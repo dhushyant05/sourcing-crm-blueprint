@@ -23,3 +23,11 @@ sudo infra/app-servers/publish-apk.sh mobile/build/app/outputs/flutter-apk/app-r
 
 The script checks it is an APK, archives the previous one (keeps 5), copies atomically and rewrites `version.json`.
 Installed apps update by installing the new APK over the old one (same signing key — keep `mobile/android/key.properties` + keystore safe).
+
+## Release signing
+
+`mobile/android/app/build.gradle.kts` reads key.properties from `$SOURCEEASY_KEY_PROPERTIES`, else `mobile/android/key.properties`
+(git-ignored; on the build box it is a symlink to `/home/box/secrets/sourceeasy-key.properties`), else `android/app/key.properties`.
+Without one, release builds are debug-signed. Keystore: `/home/box/secrets/sourceeasy-release.jks` (PKCS12, RSA 4096, alias `sourceeasy`,
+cert SHA-256 `24a42d6330246eb320dccd95761b11c35bb57f03bcbc5cb9283387df0c63b855`). Back up the .jks and properties offline — losing them means
+installed apps cannot be updated. Verify: `apksigner verify --print-certs app-release.apk`.
