@@ -71,6 +71,22 @@ class ServerClient {
   /// Saves the UI language on the user's account (`en` or `zh-CN`).
   Future<void> setLanguage(String language) async => send('PATCH', '/api/me', body: {'language': language});
 
+  /// Authenticated binary download (enquiry attachments are never public URLs).
+  Future<List<int>> getBytes(String path) async {
+    http.Response res;
+    try {
+      res = await _http.get(_uri(path), headers: {if (token != null) 'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 60));
+    } on SocketException catch (e) {
+      throw OfflineException(e);
+    } on TimeoutException catch (e) {
+      throw OfflineException(e);
+    } on http.ClientException catch (e) {
+      throw OfflineException(e);
+    }
+    if (res.statusCode >= 400) throw ApiException('HTTP ${res.statusCode}', statusCode: res.statusCode);
+    return res.bodyBytes;
+  }
+
   static String _plural(String singular) => '${singular}s';
 
   /// `filter` uses the `{'field': {'eq': value}}` shape; only `eq` is supported (the server whitelists fields).

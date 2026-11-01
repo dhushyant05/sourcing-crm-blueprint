@@ -601,4 +601,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get kpiPendingSync => '待同步';
+
+  @override
+  String get attachments => '照片和文件';
+
+  @override
+  String get noAttachments => '没有附件';
+
+  @override
+  String get deliveryCity => '交货城市';
+
+  @override
+  String get referenceLink => '参考链接';
+
+  @override
+  String get enquiryRef => '询盘编号';
+
+  @override
+  String get enquiryMessage => '留言';
+
+  @override
+  String get contactPerson => '联系人';
+
+  @override
+  String get openFile => '打开 / 分享';
 }

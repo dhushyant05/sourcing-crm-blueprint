@@ -187,5 +187,13 @@
   "tlLeadCreated": "创建线索",
   "tlOffice": "{office}办公室",
   "kpiActiveLeads": "活跃线索",
-  "kpiPendingSync": "待同步"
+  "kpiPendingSync": "待同步",
+  "attachments": "照片和文件",
+  "noAttachments": "没有附件",
+  "deliveryCity": "交货城市",
+  "referenceLink": "参考链接",
+  "enquiryRef": "询盘编号",
+  "enquiryMessage": "留言",
+  "contactPerson": "联系人",
+  "openFile": "打开 / 分享"
 }

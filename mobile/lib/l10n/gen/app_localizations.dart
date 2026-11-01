@@ -1225,6 +1225,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pending sync'**
   String get kpiPendingSync;
+
+  /// No description provided for @attachments.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos & documents'**
+  String get attachments;
+
+  /// No description provided for @noAttachments.
+  ///
+  /// In en, this message translates to:
+  /// **'No files attached'**
+  String get noAttachments;
+
+  /// No description provided for @deliveryCity.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery city'**
+  String get deliveryCity;
+
+  /// No description provided for @referenceLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Reference link'**
+  String get referenceLink;
+
+  /// No description provided for @enquiryRef.
+  ///
+  /// In en, this message translates to:
+  /// **'Enquiry ref.'**
+  String get enquiryRef;
+
+  /// No description provided for @enquiryMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Message'**
+  String get enquiryMessage;
+
+  /// No description provided for @contactPerson.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact person'**
+  String get contactPerson;
+
+  /// No description provided for @openFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Open / share'**
+  String get openFile;
 }
 
 class _AppLocalizationsDelegate

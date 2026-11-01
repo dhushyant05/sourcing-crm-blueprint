@@ -9,6 +9,7 @@ import '../../core/currency.dart';
 import '../../data/models/models.dart';
 import '../../services/session.dart';
 import '../widgets/common.dart';
+import '../widgets/lead_attachments.dart';
 import 'chat_screen.dart';
 import 'quotation_screen.dart';
 import 'shipping_screen.dart';
@@ -110,12 +111,16 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Column(children: [
                     if (p.canSeeCustomerDetails) ...[
+                      if (l.contactName != null) InfoRow(context.l10n.contactPerson, l.contactName),
                       InfoRow(context.l10n.contact, l.contactPhone),
                       InfoRow(context.l10n.email, l.contactEmail),
                       InfoRow(context.l10n.source, codeLabel(context, l.sourceChannel)),
+                      if (l.enquiryRef != null) InfoRow(context.l10n.enquiryRef, l.enquiryRef),
+                      if (l.deliveryCity != null) InfoRow(context.l10n.deliveryCity, l.deliveryCity),
                     ],
                     InfoRow(context.l10n.product, l.productInterest),
-                    InfoRow(context.l10n.quantity, l.quantity?.toStringAsFixed(0)),
+                    InfoRow(context.l10n.quantity, l.quantity == null ? null : '${l.quantity!.toStringAsFixed(0)} ${l.unit ?? ''}'.trim()),
+                    if (l.referenceUrl != null) InfoRow(context.l10n.referenceLink, l.referenceUrl),
                     if (p.canSeeClientPricing && l.targetPrice != null)
                       InfoRow(context.l10n.targetPrice, formatMoneyCode(l.targetPrice!, l.targetCurrency ?? 'INR')),
                     InfoRow(context.l10n.office, codeLabel(context, l.assignedOffice)),
@@ -124,6 +129,13 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                   ]),
                 ),
               ),
+              if (p.canSeeCustomerDetails && l.enquiryMessage != null)
+                Card(child: ListTile(title: Text(context.l10n.enquiryMessage), subtitle: Text(l.enquiryMessage!))),
+              if (p.canSeeCustomerDetails) ...[
+                const SizedBox(height: 8),
+                LeadAttachments(leadId: l.id),
+                const SizedBox(height: 12),
+              ],
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (p.canCreateLead && l.status == 'NEW')
                   FilledButton.tonalIcon(onPressed: () => _assign(l), icon: Icon(Icons.forward), label: Text(context.l10n.assignToChina)),

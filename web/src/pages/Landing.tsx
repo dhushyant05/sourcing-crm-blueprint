@@ -1,7 +1,8 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Languages, Mail, MapPin, MessageCircle, Phone, Radar, Receipt, Ship, ShieldCheck, Sofa, Shirt, Package, Plug, Wrench, Cog, Gift, CookingPot, Send } from 'lucide-react';
+import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Languages, Mail, MapPin, MessageCircle, Phone, Radar, Receipt, Ship, ShieldCheck, Sofa, Shirt, Package, Plug, Wrench, Cog, Gift, CookingPot } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
+import { EnquiryForm } from '../components/EnquiryForm';
 
 const PHONE = '+91 9094124755', TEL = '+919094124755', EMAIL = 'fortuneengineering05@gmail.com';
 const WA = `https://wa.me/919094124755`;
@@ -121,37 +122,3 @@ function Section({ id, title, sub, tint, children }: { id: string; title: string
   );
 }
 
-function EnquiryForm() {
-  const { t } = useTranslation();
-  const l = (k: string) => t(`landing.contact.${k}`);
-  const [st, setSt] = useState<'idle' | 'busy' | 'ok' | 'err' | 'need'>('idle');
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const body = Object.fromEntries(new FormData(e.currentTarget));
-    if (!body.name || !body.product || (!body.phone && !body.email)) return setSt('need');
-    setSt('busy');
-    try {
-      const r = await fetch('/api/public/enquiry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-      setSt(r.ok ? 'ok' : 'err'); if (r.ok) e.currentTarget?.reset();
-    } catch { setSt('err'); }
-  };
-  const f = 'w-full min-h-[48px] rounded-xl border border-ink-200 bg-white px-4 text-[16px] outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10';
-  return (
-    <form onSubmit={submit} className="grid gap-4 rounded-2xl border border-ink-100 p-5 shadow-sm sm:grid-cols-2 sm:p-6 lg:col-span-3" noValidate>
-      <input name="name" placeholder={l('name')} aria-label={l('name')} className={f} />
-      <input name="company" placeholder={l('biz')} aria-label={l('biz')} className={f} />
-      <input name="phone" type="tel" placeholder={l('phone')} aria-label={l('phone')} className={f} />
-      <input name="email" type="email" placeholder={l('email')} aria-label={l('email')} className={f} />
-      <input name="product" placeholder={l('product')} aria-label={l('product')} className={`${f} sm:col-span-2`} />
-      <input name="quantity" inputMode="numeric" placeholder={l('qty')} aria-label={l('qty')} className={f} />
-      <input name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
-      <textarea name="message" rows={3} placeholder={l('msg')} aria-label={l('msg')} className={`${f} py-3 sm:col-span-2`} />
-      <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-        <button disabled={st === 'busy'} className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 px-6 font-medium text-white shadow-md transition hover:brightness-110 disabled:opacity-60"><Send size={16} />{st === 'busy' ? l('sending') : l('send')}</button>
-        {st === 'ok' && <p className="text-sm text-accent-600">{l('ok')}</p>}
-        {st === 'err' && <p className="text-sm text-rose-600">{l('err')}</p>}
-        {st === 'need' && <p className="text-sm text-amber-600">{l('need')}</p>}
-      </div>
-    </form>
-  );
-}

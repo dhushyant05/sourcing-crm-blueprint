@@ -39,6 +39,41 @@
           "type": "CURRENCY"
         },
         {
+          "name": "contactName",
+          "label": "Contact person",
+          "type": "TEXT"
+        },
+        {
+          "name": "unit",
+          "label": "Unit (pcs, kg, sets…)",
+          "type": "TEXT"
+        },
+        {
+          "name": "deliveryCity",
+          "label": "Delivery city",
+          "type": "TEXT"
+        },
+        {
+          "name": "referenceUrl",
+          "label": "Reference link",
+          "type": "LINKS"
+        },
+        {
+          "name": "enquiryMessage",
+          "label": "Enquiry message",
+          "type": "TEXT"
+        },
+        {
+          "name": "enquiryRef",
+          "label": "Enquiry reference",
+          "type": "TEXT"
+        },
+        {
+          "name": "attachmentCount",
+          "label": "Attachments (files on Source Easy server)",
+          "type": "NUMBER"
+        },
+        {
           "name": "sourceChannel",
           "label": "Source channel",
           "type": "SELECT",

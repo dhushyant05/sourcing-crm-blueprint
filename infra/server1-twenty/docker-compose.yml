@@ -74,6 +74,7 @@ services:
       SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Super Admin}
       BACKUP_LINKS: ${BACKUP_LINKS:-[]}
       USERS_DB: /data/users.db
+      UPLOADS_DIR: /data/uploads
     volumes:
       - api-data:/data
     depends_on:

@@ -1,8 +1,9 @@
 import { clsx } from 'clsx';
-import { KanbanSquare, Plus, Rows3 } from 'lucide-react';
-import { useState } from 'react';
+import { Download, KanbanSquare, Plus, Rows3 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { FileIcon, fmtSize } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
-import { PIPELINE, type Currency, type Lead, type LeadStatus } from '../lib/types';
+import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import i18n, { fmtDate } from '../i18n';
 import { MoneyInput, Money } from '../components/MoneyInput';
@@ -135,16 +136,22 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
           <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.request')}</h3>
           <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
             <Field label={t('common.product')}>{lead.productInterest}</Field>
-            <Field label={t('common.quantity')}>{t('common.pcs', { n: lead.quantity?.toLocaleString() })}</Field>
+            <Field label={t('common.quantity')}>{lead.unit && lead.unit !== 'pcs' ? `${lead.quantity?.toLocaleString() ?? ''} ${t(`landing.contact.units.${lead.unit}`)}` : t('common.pcs', { n: lead.quantity?.toLocaleString() })}</Field>
             {perms.clientPricing && <Field label={t('leads.targetPrice')}><Money v={lead.targetPrice} c={lead.targetCurrency} /></Field>}
             <Field label={t('leads.channel')}>{lead.sourceChannel}</Field>
             <Field label={t('common.chinaAgent')}>{lead.assignedChinaAgent}</Field>
+            {lead.referenceUrl && <Field label={t('leads.refLink')}><a href={lead.referenceUrl} target="_blank" rel="noreferrer noopener" className="break-all text-brand-600 underline">{lead.referenceUrl}</a></Field>}
           </dl>
           {perms.customers && (<>
             <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.customer')}</h3>
             <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
-              <Field label={t('common.phone')}>{lead.contactPhone}</Field><Field label={t('common.email')}>{lead.contactEmail}</Field>
+              {lead.contactName && <Field label={t('leads.contactName')}>{lead.contactName}</Field>}
+              <Field label={t('common.phone')}>{lead.contactPhone && <a className="text-brand-600" href={`tel:${lead.contactPhone.replace(/\s/g, '')}`}>{lead.contactPhone}</a>}</Field><Field label={t('common.email')}>{lead.contactEmail}</Field>
+              {lead.deliveryCity && <Field label={t('leads.deliveryCity')}>{lead.deliveryCity}</Field>}
+              {lead.enquiryRef && <Field label={t('leads.reference')}><span className="font-mono">{lead.enquiryRef}</span></Field>}
             </dl>
+            {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
+            <Attachments leadId={lead.id} />
           </>)}
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
@@ -156,4 +163,50 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
       )}
     </SlideOver>
   );
+}
+
+/** Enquiry photos/documents. Files are fetched with the staff token and shown via blob: URLs, never public links. */
+function Attachments({ leadId }: { leadId: string }) {
+  const { api } = useApp();
+  const { t } = useTranslation();
+  const [list, setList] = useState<Attachment[] | null>(null);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let live = true; const made: string[] = [];
+    setList(null); setThumbs({});
+    api.attachments(leadId).then(async (as) => {
+      if (!live) return; setList(as);
+      for (const a of as.filter((x) => /^image\/(jpeg|png|webp)$/.test(x.mime))) {
+        const u = await api.attachmentUrl(leadId, a).catch(() => ''); if (!live) return;
+        if (u.startsWith('blob:')) made.push(u);
+        if (u) setThumbs((t0) => ({ ...t0, [a.id]: u }));
+      }
+    }).catch(() => live && setList([]));
+    return () => { live = false; made.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [api, leadId]);
+  const open = async (a: Attachment, dl: boolean) => {
+    const u = thumbs[a.id] ?? await api.attachmentUrl(leadId, a);
+    if (!u) return;
+    const el = document.createElement('a'); el.href = u; el.rel = 'noopener';
+    if (dl || !/^image\/|^application\/pdf$/.test(a.mime)) el.download = a.name; else el.target = '_blank';
+    el.click();
+  };
+  return (<>
+    <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.attachments')}{list && list.length > 0 && ` · ${list.length}`}</h3>
+    {!list ? <p className="mt-2 text-sm text-ink-400">{t('leads.loadingFiles')}</p> : list.length === 0 ? <p className="mt-2 text-sm text-ink-400">{t('leads.noAttachments')}</p> : (
+      <ul className="mt-3 grid grid-cols-2 gap-3">
+        {list.map((a) => (
+          <li key={a.id} className="overflow-hidden rounded-xl border border-ink-100 dark:border-ink-800">
+            <button className="block w-full" onClick={() => open(a, false)} title={t('leads.open')}>
+              {thumbs[a.id] ? <img src={thumbs[a.id]} alt={a.name} className="h-28 w-full object-cover" /> : <span className="grid h-28 place-items-center bg-ink-50 dark:bg-ink-800"><FileIcon name={a.name} className="h-10 w-10" /></span>}
+            </button>
+            <div className="flex items-center gap-2 p-2">
+              <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium text-ink-800 dark:text-ink-100">{a.name}</div><div className="text-[11px] text-ink-400">{fmtSize(a.size)}</div></div>
+              <button onClick={() => open(a, true)} aria-label={`${t('leads.download')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"><Download size={15} /></button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+  </>);
 }

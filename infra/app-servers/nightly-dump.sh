@@ -35,4 +35,19 @@ rm -f "$file"
 ssh -i "$SSH_KEY" -o BatchMode=yes "$STORAGE_HOST" \
   "$STORAGE_DIR/../source-easy/infra/server3-storage/rotate.sh" "$APP_NAME" || \
   echo "rotation call failed (cron on storage will still rotate)"
+
+# Optional: also archive the API data volume (users.db + enquiry attachments in /data/uploads).
+# Set FILES_SERVICE=api (and FILES_PATH=/data) on server 1.
+if [ -n "${FILES_SERVICE:-}" ]; then
+  fapp="${APP_NAME}-files"; ffile="$LOCAL_TMP/${fapp}_${ts}.tar.gz"
+  echo "[$(date -Is)] archiving $FILES_SERVICE:${FILES_PATH:-/data} -> $ffile"
+  docker compose --project-directory "$COMPOSE_DIR" exec -T "$FILES_SERVICE" \
+    tar czf - -C "${FILES_PATH:-/data}" . > "$ffile.partial"
+  gzip -t "$ffile.partial"
+  mv "$ffile.partial" "$ffile"
+  rsync -az --partial -e "ssh -i $SSH_KEY -o BatchMode=yes" "$ffile" "$STORAGE_HOST:$STORAGE_DIR/incoming/$fapp/"
+  rm -f "$ffile"
+  ssh -i "$SSH_KEY" -o BatchMode=yes "$STORAGE_HOST" \
+    "$STORAGE_DIR/../source-easy/infra/server3-storage/rotate.sh" "$fapp" || echo "rotation call failed for $fapp"
+fi
 echo "[$(date -Is)] done"

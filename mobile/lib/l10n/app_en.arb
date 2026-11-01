@@ -304,5 +304,13 @@
     }
   },
   "kpiActiveLeads": "Active leads",
-  "kpiPendingSync": "Pending sync"
+  "kpiPendingSync": "Pending sync",
+  "attachments": "Photos & documents",
+  "noAttachments": "No files attached",
+  "deliveryCity": "Delivery city",
+  "referenceLink": "Reference link",
+  "enquiryRef": "Enquiry ref.",
+  "enquiryMessage": "Message",
+  "contactPerson": "Contact person",
+  "openFile": "Open / share"
 }

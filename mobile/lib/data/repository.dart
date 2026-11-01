@@ -113,6 +113,16 @@ class SourceEasyRepository {
     });
   }
 
+  /// Enquiry photos/documents (India side + super admin only; the server enforces this too).
+  Future<List<LeadAttachment>> attachments(String leadId) async {
+    if (!perms.canSeeCustomerDetails) return [];
+    final j = await api.send('GET', '/api/leads/${Uri.encodeComponent(leadId)}/attachments') as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList();
+  }
+
+  Future<List<int>> attachmentBytes(String leadId, LeadAttachment a) =>
+      api.getBytes('/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(a.id)}');
+
   Future<WriteResult> updateLead(String id, Map<String, dynamic> data) => _write('lead', data, id: id);
 
   /// Step 2: hand a lead to a China agent.

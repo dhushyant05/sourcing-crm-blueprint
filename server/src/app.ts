@@ -2,6 +2,10 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import jwt from 'jsonwebtoken';
 import { existsSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import multipart from '@fastify/multipart';
+import { sides } from './roles.js';
+import { MAX_FILE_BYTES, MAX_FILES, UploadStore, validateFile } from './uploads.js';
 import { capabilities, isRole, manageableRoles, type Role } from './roles.js';
 import { canRead, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { TwentyLike } from './twenty.js';
@@ -15,6 +19,8 @@ export interface AppOptions {
   webDir?: string;
   backupLinks?: { label: string; url: string }[];
   logger?: boolean;
+  /** Private folder for enquiry attachments (default: in-memory temp dir for tests). */
+  uploadsDir?: string;
 }
 
 declare module 'fastify' { interface FastifyRequest { user?: User } }
@@ -62,24 +68,64 @@ export async function buildApp(o: AppOptions) {
   });
 
   // Public website enquiry -> a NEW lead for the India office. No auth; honeypot + per-IP rate limit (5/hour).
+  // Accepts multipart/form-data (with up to 5 attachments, 10 MB each) or plain JSON.
+  const uploads = new UploadStore(o.uploadsDir ?? `${process.env.TMPDIR ?? '/tmp'}/se-uploads-${process.pid}`);
+  await app.register(multipart, { limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fields: 40, fieldSize: 4000 } });
   const enq = new Map<string, number[]>();
-  app.post<{ Body: Record<string, unknown> }>('/api/public/enquiry', async (req, reply) => {
-    const b = req.body ?? {}, str = (k: string, max = 200) => (typeof b[k] === 'string' ? (b[k] as string).trim().slice(0, max) : '');
+  const UNITS = ['pcs', 'kg', 'ton', 'm', 'sqm', 'sets', 'cartons', 'containers'];
+  app.post('/api/public/enquiry', async (req, reply) => {
+    const b: Record<string, string> = {}; const files: { name: string; mime: string; data: Buffer }[] = [];
+    if (req.isMultipart()) {
+      try {
+        for await (const part of req.parts()) {
+          if (part.type === 'file') {
+            const data = await part.toBuffer();
+            if (!data.length) continue;
+            const mime = validateFile(part.filename ?? '', data);
+            if (!mime) return reply.code(415).send({ error: `File type not allowed: ${part.filename}`, code: 'type' });
+            files.push({ name: part.filename ?? 'file', mime, data });
+          } else b[part.fieldname] = String(part.value ?? '');
+        }
+      } catch (e: any) {
+        if (e?.code === 'FST_REQ_FILE_TOO_LARGE') return reply.code(413).send({ error: 'Each file must be 10 MB or smaller', code: 'size' });
+        if (e?.code === 'FST_FILES_LIMIT') return reply.code(413).send({ error: 'Up to 5 files', code: 'count' });
+        throw e;
+      }
+    } else Object.assign(b, Object.fromEntries(Object.entries((req.body ?? {}) as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])));
+    const str = (k: string, max = 200) => (b[k] ?? '').trim().slice(0, max);
     if (str('website')) return reply.code(202).send({ ok: true }); // bot filled the hidden field
     const now = Date.now(), hits = (enq.get(req.ip) ?? []).filter((t) => now - t < 3600e3);
     if (hits.length >= 5) return reply.code(429).send({ error: 'Too many enquiries, please try again later' });
-    const name = str('name', 120), phone = str('phone', 40), email = str('email', 160), product = str('product', 200);
-    if (!name || (!phone && !email) || !product) return reply.code(400).send({ error: 'Name, product and a phone or email are required' });
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Invalid email' });
+
+    const name = str('name', 120), email = str('email', 160), product = str('product', 1000);
+    const code = str('phoneCode', 6) || '+91';
+    let digits = str('phone', 40).replace(/[\s\-().]/g, '');
+    if (digits.startsWith(code)) digits = digits.slice(code.length);
+    if (!name || !product || !digits) return reply.code(400).send({ error: 'Name, mobile number and product are required', code: 'required' });
+    if (!/^\+\d{1,4}$/.test(code) || !/^\d{6,14}$/.test(digits) || (code === '+91' && !/^[6-9]\d{9}$/.test(digits)))
+      return reply.code(400).send({ error: 'Invalid mobile number', code: 'phone' });
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Invalid email', code: 'email' });
+    const ref = str('referenceUrl', 500);
+    if (ref && !/^https?:\/\/[^\s]+$/i.test(ref)) return reply.code(400).send({ error: 'Reference link must start with http:// or https://', code: 'url' });
+    const currency = ['USD', 'CNY', 'INR'].includes(str('currency', 3)) ? str('currency', 3) : 'INR';
+    const price = Number(str('targetPrice', 20)), qty = Number(str('quantity', 12));
+    const unit = UNITS.includes(str('unit', 12)) ? str('unit', 12) : 'pcs';
     hits.push(now); enq.set(req.ip, hits);
-    const company = str('company', 160), qty = Number(str('quantity', 12)) || undefined, msg = str('message', 2000);
-    await o.twenty.create('leads', {
-      name: `${company || name} — ${product}`.slice(0, 200), clientName: company || name, productInterest: (msg ? `${product} — ${name}: ${msg}` : product).slice(0, 2000),
-      ...(qty ? { quantity: qty } : {}),
-      ...(phone ? { contactPhone: { primaryPhoneNumber: phone } } : {}), ...(email ? { contactEmail: { primaryEmail: email } } : {}),
+
+    const d = new Date(), enquiryRef = `SE-${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+    const company = str('company', 160), msg = str('message', 2000), city = str('deliveryCity', 120);
+    const lead = await o.twenty.create('leads', {
+      name: `${company || name} — ${product}`.slice(0, 200), clientName: company || name, productInterest: product,
+      ...(qty > 0 ? { quantity: qty, unit } : {}),
+      ...(price > 0 ? { targetPrice: { amountMicros: Math.round(price * 1e6), currencyCode: currency } } : {}),
+      contactPhone: { primaryPhoneNumber: digits, primaryPhoneCallingCode: code },
+      ...(email ? { contactEmail: { primaryEmail: email } } : {}),
+      ...(city ? { deliveryCity: city } : {}), ...(ref ? { referenceUrl: { primaryLinkUrl: ref } } : {}),
+      ...(msg ? { enquiryMessage: msg } : {}), contactName: name, enquiryRef, attachmentCount: files.length,
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
-    return reply.code(201).send({ ok: true });
+    if (files.length && lead?.id) uploads.save(String(lead.id), files);
+    return reply.code(201).send({ ok: true, reference: enquiryRef, attachments: files.length });
   });
 
   app.register(async (api) => {
@@ -94,6 +140,25 @@ export async function buildApp(o: AppOptions) {
       if (!(await o.users.verify(req.user!.email, req.body?.currentPassword ?? ''))) return reply.code(400).send({ error: 'Current password is wrong' });
       await o.users.setPassword(req.user!.id, req.body.newPassword ?? '');
       return { token: sign(o.users.byId(req.user!.id)!) };
+    });
+
+    // ---- Enquiry attachments: India side + super admin only, and only for a lead they can read. Never a public URL. ----
+    const attLead = async (req: FastifyRequest<{ Params: { id: string } }>) => {
+      const role = req.user!.role;
+      if (!sides(role).india) throw new Forbidden('Attachments are India-side only');
+      const r = await o.twenty.get(OBJECTS.lead, req.params.id);
+      if (!r || !readFilter('lead', r, await ctxOf(role))) throw Object.assign(new Error('Not found'), { status: 404 });
+      return String(r.id);
+    };
+    api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => ({ data: uploads.list(await attLead(req)) }));
+    api.get<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
+      const f = uploads.read(await attLead(req), req.params.fid);
+      if (!f) return reply.code(404).send({ error: 'Not found' });
+      const inline = /^image\/(jpeg|png|webp)$|^application\/pdf$/.test(f.meta.mime);
+      reply.header('content-type', f.meta.mime).header('cache-control', 'private, no-store')
+        .header('content-security-policy', "default-src 'none'; sandbox")
+        .header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.meta.name)}`);
+      return reply.send(f.data);
     });
 
     // ---- Generic filtered records API (used by mobile and web) ----

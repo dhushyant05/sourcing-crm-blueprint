@@ -1,4 +1,4 @@
-import type { BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -19,6 +19,10 @@ export interface Api {
   resetPassword(id: string, password: string): Promise<void>;
   setUserActive(id: string, active: boolean): Promise<void>;
   backups(): Promise<BackupLink[]>;
+  /** Enquiry photos/documents of a lead (India side + super admin). */
+  attachments(leadId: string): Promise<Attachment[]>;
+  /** Downloads one file with the staff token (never a public URL) and returns a blob: URL. */
+  attachmentUrl(leadId: string, a: Attachment): Promise<string>;
 }
 
 type Raw = Record<string, any>;
@@ -58,9 +62,17 @@ export class ServerApi implements Api {
 
   async leads() {
     return (await this.list('leads')).map((n) => ({
-      ...n, contactPhone: n.contactPhone?.primaryPhoneNumber, contactEmail: n.contactEmail?.primaryEmail,
+      ...n, contactPhone: n.contactPhone?.primaryPhoneNumber && [n.contactPhone.primaryPhoneCallingCode, n.contactPhone.primaryPhoneNumber].filter(Boolean).join(' '),
+      contactEmail: n.contactEmail?.primaryEmail, referenceUrl: n.referenceUrl?.primaryLinkUrl,
       targetPrice: amount(n.targetPrice), targetCurrency: n.targetPrice?.currencyCode,
     })) as Lead[];
+  }
+  async attachments(leadId: string) { return this.india ? this.req<Attachment[]>('GET', `/leads/${encodeURIComponent(leadId)}/attachments`) : []; }
+  async attachmentUrl(leadId: string, a: Attachment) {
+    const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(a.id)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
   }
   async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); }
   async quotations() {
@@ -109,6 +121,8 @@ export class ServerApi implements Api {
 export class DemoApi implements Api {
   private wait = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 450));
   leads() { return this.wait(demo.leads); }
+  async attachments(leadId: string) { return structuredClone(demo.attachments[leadId] ?? []); }
+  async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
   quotations() { return this.wait(demo.quotations); }
   shipments() { return this.wait(demo.shipments); }

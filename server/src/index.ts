@@ -23,6 +23,7 @@ const app = await buildApp({
   users, jwtSecret: secret, jwtTtl: process.env.JWT_TTL,
   webDir: process.env.WEB_DIR ?? new URL('../../web/dist', import.meta.url).pathname,
   backupLinks: process.env.BACKUP_LINKS ? JSON.parse(process.env.BACKUP_LINKS) : [],
+  uploadsDir: env('UPLOADS_DIR', './data/uploads'),
   logger: true,
 });
 await app.listen({ host: env('HOST', '0.0.0.0'), port: Number(env('PORT', '8080')) });

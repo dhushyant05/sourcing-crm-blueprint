@@ -5,7 +5,9 @@ export interface Lead {
   id: string; name: string; clientName?: string; contactPhone?: string; contactEmail?: string;
   productInterest?: string; quantity?: number; targetPrice?: number; targetCurrency?: Currency;
   status: LeadStatus; assignedOffice?: string; assignedChinaAgent?: string; sourceChannel?: string; createdAt: string;
+  unit?: string; deliveryCity?: string; referenceUrl?: string; enquiryMessage?: string; enquiryRef?: string; contactName?: string; attachmentCount?: number;
 }
+export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
   id: string; name: string; leadId?: string; productName?: string; supplierName?: string;
   /** Supplier cost (China side) in its own currency. */

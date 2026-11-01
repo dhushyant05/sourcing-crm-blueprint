@@ -26,9 +26,18 @@ class Lead {
     this.winLossReason,
     this.createdAt,
     this.pendingSync = false,
+    this.unit,
+    this.deliveryCity,
+    this.referenceUrl,
+    this.enquiryMessage,
+    this.enquiryRef,
+    this.contactName,
+    this.attachmentCount,
   });
   final String id;
   final String name;
+  final String? unit, deliveryCity, referenceUrl, enquiryMessage, enquiryRef, contactName;
+  final int? attachmentCount;
   final String? clientName, contactPhone, contactEmail, productInterest;
   final double? quantity, targetPrice;
   final String? targetCurrency, sourceChannel;
@@ -53,7 +62,7 @@ class Lead {
         name: (j['name'] as String?) ?? '',
         clientName: j['clientName'] as String?,
         contactPhone: j['contactPhone'] is Map
-            ? '${j['contactPhone']['primaryPhoneCountryCode'] ?? ''} ${j['contactPhone']['primaryPhoneNumber'] ?? ''}'.trim()
+            ? '${j['contactPhone']['primaryPhoneCallingCode'] ?? j['contactPhone']['primaryPhoneCountryCode'] ?? ''} ${j['contactPhone']['primaryPhoneNumber'] ?? ''}'.trim()
             : null,
         contactEmail: j['contactEmail'] is Map ? j['contactEmail']['primaryEmail'] as String? : null,
         productInterest: j['productInterest'] as String?,
@@ -68,7 +77,26 @@ class Lead {
         winLossReason: j['winLossReason'] as String?,
         createdAt: _date(j['createdAt']),
         pendingSync: j['_pending'] == true,
+        unit: j['unit'] as String?,
+        deliveryCity: j['deliveryCity'] as String?,
+        referenceUrl: _link(j['referenceUrl']),
+        enquiryMessage: j['enquiryMessage'] as String?,
+        enquiryRef: j['enquiryRef'] as String?,
+        contactName: j['contactName'] as String?,
+        attachmentCount: _num(j['attachmentCount'])?.toInt(),
       );
+}
+
+/// A photo/document a client attached to a website enquiry. Bytes are fetched with the staff token.
+class LeadAttachment {
+  LeadAttachment({required this.id, required this.name, required this.mime, required this.size, this.createdAt});
+  final String id, name, mime;
+  final int size;
+  final DateTime? createdAt;
+  bool get isImage => RegExp(r'^image/(jpeg|png|webp)$').hasMatch(mime);
+  factory LeadAttachment.fromJson(Map<String, dynamic> j) => LeadAttachment(
+        id: j['id'] as String, name: (j['name'] as String?) ?? 'file', mime: (j['mime'] as String?) ?? 'application/octet-stream',
+        size: (j['size'] as num?)?.toInt() ?? 0, createdAt: _date(j['createdAt']));
 }
 
 class SourcingRequest {

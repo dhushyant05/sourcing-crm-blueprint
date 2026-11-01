@@ -606,4 +606,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get kpiPendingSync => 'Pending sync';
+
+  @override
+  String get attachments => 'Photos & documents';
+
+  @override
+  String get noAttachments => 'No files attached';
+
+  @override
+  String get deliveryCity => 'Delivery city';
+
+  @override
+  String get referenceLink => 'Reference link';
+
+  @override
+  String get enquiryRef => 'Enquiry ref.';
+
+  @override
+  String get enquiryMessage => 'Message';
+
+  @override
+  String get contactPerson => 'Contact person';
+
+  @override
+  String get openFile => 'Open / share';
 }

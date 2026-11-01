@@ -1,4 +1,4 @@
-import type { Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { Attachment, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
 
 const day = (n: number) => new Date(Date.UTC(2026, 9, 31) - n * 864e5).toISOString();
 const clients = ['Arora Home Store', 'Mehta Kitchenware', 'Sri Balaji Traders', 'Kapoor Retail', 'Nair Hospitality',
@@ -48,4 +48,17 @@ const users: User[] = [
   { id: 'U5', email: 'chenjing@sourceeasy.in', name: 'Chen Jing', role: 'CHINA_STAFF', active: true, createdAt: day(30) },
 ];
 
-export const demo = { leads, quotations, shipments, suppliers, users };
+// L2 arrived through the website enquiry form with photos and a spec sheet.
+Object.assign(leads[1], { sourceChannel: 'WEBSITE', enquiryRef: 'SE-261030-7F3A21', contactName: 'Rohit Mehta', unit: 'pcs', deliveryCity: 'Chennai',
+  referenceUrl: 'https://www.alibaba.com/product-detail/bamboo-cutting-board', enquiryMessage: 'Need 3 sizes with juice groove and laser-engraved logo. Sample first please.', attachmentCount: 4 });
+const attachments: Record<string, Attachment[]> = {
+  L2: [
+    { id: 'a1', name: 'board-front.jpg', mime: 'image/jpeg', size: 1843200, createdAt: day(3) },
+    { id: 'a2', name: 'board-back.jpg', mime: 'image/jpeg', size: 1622016, createdAt: day(3) },
+    { id: 'a3', name: 'Mehta-bamboo-spec.pdf', mime: 'application/pdf', size: 248000, createdAt: day(3) },
+    { id: 'a4', name: 'sizes-and-quantities.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size: 18400, createdAt: day(3) },
+  ],
+};
+const files: Record<string, string> = { a1: '/demo/bamboo-board-1.jpg', a2: '/demo/bamboo-board-2.jpg' };
+
+export const demo = { leads, quotations, shipments, suppliers, users, attachments, files };
