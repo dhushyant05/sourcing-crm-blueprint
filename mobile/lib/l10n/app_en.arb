@@ -543,5 +543,144 @@
         "type": "String"
       }
     }
-  }
+  },
+  "quotesTab": "Quotes",
+  "ordersTab": "Orders",
+  "more": "More",
+  "qlTitle": "All quotes",
+  "qlNone": "No quotes yet",
+  "qlMine": "Assigned to me",
+  "qlAll": "All",
+  "shipTitle": "Shipping",
+  "shipCost": "Shipping cost",
+  "shipCostInr": "Shipping (₹ INR)",
+  "shipTerm": "Incoterm",
+  "shipMode": "Mode",
+  "shipPort": "Port / destination",
+  "shipTransit": "Transit time",
+  "shipNone": "—",
+  "qsDRAFT": "Draft",
+  "qsSENT": "Sent",
+  "qsACCEPTED": "Accepted",
+  "qsREJECTED": "Rejected",
+  "cqPrepare": "Prepare customer quote",
+  "cqTitle": "Customer quote",
+  "cqUnit": "Price per unit (₹ INR)",
+  "cqQty": "Quantity",
+  "cqGst": "GST %",
+  "cqOther": "Other charges (₹)",
+  "cqOtherLabel": "Other charges label",
+  "cqValidity": "Valid for",
+  "cqTerms": "Terms",
+  "cqSubtotal": "Product subtotal",
+  "cqGstAmt": "GST",
+  "cqTotal": "Total",
+  "cqSavePreview": "Save & preview",
+  "cqGenerate": "Generate PDF",
+  "cqDownload": "Open PDF",
+  "cqWhatsapp": "WhatsApp",
+  "cqEmail": "Email",
+  "cqShare": "Share",
+  "cqMarkSent": "Mark sent",
+  "cqAccept": "Customer accepted",
+  "cqReject": "Customer rejected",
+  "cqReason": "Reason (required)",
+  "cqCreateOrder": "Create order",
+  "cqOrderCreated": "Order created",
+  "cqErr": "Enter quantity and price",
+  "orTitle": "Orders",
+  "orNone": "No orders yet",
+  "orProduction": "Production",
+  "orShipment": "Shipment (India)",
+  "orPayment": "Payment",
+  "orAdvance": "Advance (₹)",
+  "orTracking": "Tracking no.",
+  "orContainer": "Container no.",
+  "orEtd": "ETD (YYYY-MM-DD)",
+  "orEta": "ETA (YYYY-MM-DD)",
+  "orExpectedShip": "Expected ship (YYYY-MM-DD)",
+  "orCustomer": "Customer",
+  "orSupplier": "Supplier",
+  "orCost": "China cost",
+  "orTotal": "Order value",
+  "orSaved": "Saved",
+  "notifQuoteAccepted": "{ref} · {product}: customer accepted the quote{by}",
+  "@notifQuoteAccepted": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "notifQuoteRejected": "{ref} · {product}: customer rejected the quote{by}",
+  "@notifQuoteRejected": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "notifOrderNew": "{ref} · {product}: new order{by}",
+  "@notifOrderNew": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "notifOrderUpdate": "{ref} · {product}: order updated{by}",
+  "@notifOrderUpdate": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      },
+      "product": {
+        "type": "String"
+      },
+      "by": {
+        "type": "String"
+      }
+    }
+  },
+  "prodNew": "New",
+  "prodDepositPaid": "Deposit paid",
+  "prodInProduction": "In production",
+  "prodReady": "Ready",
+  "prodShipped": "Shipped",
+  "indNone": "Not shipped",
+  "indInTransit": "In transit",
+  "indCustoms": "At customs",
+  "indDelivered": "Delivered",
+  "payPending": "Pending",
+  "payPartial": "Partly paid",
+  "payPaid": "Paid",
+  "termExw": "EXW",
+  "termFob": "FOB",
+  "termCif": "CIF",
+  "termCfr": "CFR",
+  "termDdp": "DDP",
+  "termDap": "DAP",
+  "termDoor": "Door to door",
+  "modeAir": "Air",
+  "modeSea": "Sea",
+  "modeExpress": "Express / courier",
+  "modeRoad": "Road"
 }

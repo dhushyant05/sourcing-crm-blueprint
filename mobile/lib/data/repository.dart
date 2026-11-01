@@ -148,6 +148,24 @@ class SourceEasyRepository {
   Future<List<int>> quoteFileBytes(String id, LeadAttachment a) => api.getBytes('/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(a.id)}');
   ({Uri uri, Map<String, String> headers}) quoteFileStream(String id, LeadAttachment a) => api.authed('/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(a.id)}');
   Future<void> deleteQuoteFile(String id, String fid) => api.send('DELETE', '/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(fid)}');
+  Map<String, dynamic> _d(dynamic r) => ((r as Map<String, dynamic>)['data'] as Map).cast<String, dynamic>();
+  Future<List<LeadQuote>> allQuotes({String? status, String? office, bool mine = false}) async {
+    final q = [if (status != null) 'status=$status', if (office != null) 'office=$office', if (mine) 'mine=1'].join('&');
+    final j = await api.send('GET', '/api/quotes${q.isEmpty ? '' : '?$q'}') as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadQuote.fromJson).toList();
+  }
+  Future<LeadQuote> saveCustomerQuote(String id, Map<String, dynamic> b) async => LeadQuote.fromJson(_d(await api.send('PUT', '/api/quotes/${Uri.encodeComponent(id)}/customer', body: b)));
+  Future<LeadQuote> quotePdf(String id) async => LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/pdf', body: <String, dynamic>{})));
+  Future<LeadQuote> setQuoteStatus(String id, String status, [String? reason]) async =>
+      LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/status', body: {'status': status, if (reason != null) 'reason': reason})));
+  Future<SeOrder> createOrder(String quoteId, Map<String, dynamic> b) async => SeOrder(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(quoteId)}/order', body: b)));
+  Future<List<SeOrder>> orders() async {
+    final j = await api.send('GET', '/api/orders') as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(SeOrder.new).toList();
+  }
+  Future<SeOrder> updateOrder(String id, Map<String, dynamic> b) async => SeOrder(_d(await api.send('PATCH', '/api/orders/${Uri.encodeComponent(id)}', body: b)));
+  String absoluteUrl(String path) => api.authed(path).uri.toString();
+
   Future<List<QuoteSupplier>> quoteSuppliers() async {
     final j = await api.send('GET', '/api/suppliers') as Map<String, dynamic>;
     return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(QuoteSupplier.fromJson).toList();

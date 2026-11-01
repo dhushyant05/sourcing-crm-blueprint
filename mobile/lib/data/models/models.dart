@@ -326,8 +326,13 @@ class QuoteSupplier {
 class LeadQuote {
   LeadQuote({required this.id, required this.product, required this.unitPrice, required this.currency, this.label, this.moq, this.leadTime,
       this.validity, this.notes, this.clientPrice, this.clientCurrency, this.clientNotes, this.supplierId, this.supplier, this.createdByName,
-      this.canEdit = false, this.files = const []});
-  final String id, product, currency;
+      this.canEdit = false, this.files = const [], this.status = 'DRAFT', this.sentAt, this.decidedAt, this.rejectReason, this.shipCost, this.shipCurrency,
+      this.shipTerm, this.shipMode, this.shipPort, this.shipTransit, this.cq, this.cqTotals, this.pdfUrl, this.leadId, this.leadRef, this.leadStatus,
+      this.assignedToName, this.ownerOffice, this.orderId});
+  final String id, product, currency, status;
+  final String? sentAt, decidedAt, rejectReason, shipCurrency, shipTerm, shipMode, shipPort, shipTransit, pdfUrl, leadId, leadRef, leadStatus, assignedToName, ownerOffice, orderId;
+  final double? shipCost;
+  final Map<String, dynamic>? cq, cqTotals;
   final double unitPrice;
   final String? label, moq, leadTime, validity, notes, clientCurrency, clientNotes, supplierId, createdByName;
   final double? clientPrice;
@@ -340,5 +345,38 @@ class LeadQuote {
         clientPrice: _num(j['clientPrice']), clientCurrency: j['clientCurrency'] as String?, clientNotes: j['clientNotes'] as String?,
         supplierId: j['supplierId'] as String?, supplier: j['supplier'] is Map ? QuoteSupplier.fromJson((j['supplier'] as Map).cast<String, dynamic>()) : null,
         createdByName: j['createdByName'] as String?, canEdit: j['canEdit'] == true,
-        files: ((j['files'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList());
+        files: ((j['files'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList(),
+        status: (j['status'] as String?) ?? 'DRAFT', sentAt: j['sentAt'] as String?, decidedAt: j['decidedAt'] as String?, rejectReason: j['rejectReason'] as String?,
+        shipCost: _num(j['shipCost']), shipCurrency: j['shipCurrency'] as String?, shipTerm: j['shipTerm'] as String?, shipMode: j['shipMode'] as String?,
+        shipPort: j['shipPort'] as String?, shipTransit: j['shipTransit'] as String?,
+        cq: (j['cq'] as Map?)?.cast<String, dynamic>(), cqTotals: (j['cqTotals'] as Map?)?.cast<String, dynamic>(), pdfUrl: j['pdfUrl'] as String?,
+        leadId: j['leadId'] as String?, leadRef: j['leadRef'] as String?, leadStatus: j['leadStatus'] as String?, assignedToName: j['assignedToName'] as String?,
+        ownerOffice: j['ownerOffice'] as String?, orderId: j['orderId'] as String?);
+}
+
+/// An order created from an accepted customer quote. Fields the caller may not see are null (server-redacted).
+class SeOrder {
+  SeOrder(this.j);
+  final Map<String, dynamic> j;
+  String get id => j['id'] as String;
+  String get leadId => j['leadId'] as String;
+  String? get leadRef => j['leadRef'] as String?;
+  String get product => (j['product'] as String?) ?? '';
+  double get qty => _num(j['qty']) ?? 0;
+  String get production => (j['production'] as String?) ?? 'NEW';
+  String get indiaStatus => (j['indiaStatus'] as String?) ?? 'NONE';
+  String? get paymentStatus => j['paymentStatus'] as String?;
+  String? get tracking => j['tracking'] as String?;
+  String? get container => j['container'] as String?;
+  String? get etd => j['etd'] as String?;
+  String? get eta => j['eta'] as String?;
+  String? get expectedShip => j['expectedShip'] as String?;
+  String? get customer => j['customer'] as String?;
+  String? get leadStatus => j['leadStatus'] as String?;
+  double? get agreedPrice => _num(j['agreedPrice']);
+  double? get advance => _num(j['advance']);
+  double? get total => _num(j['total']);
+  double? get unitPrice => _num(j['unitPrice']);
+  String? get currency => j['currency'] as String?;
+  String? get supplierName => (j['supplier'] as Map?)?['name'] as String?;
 }

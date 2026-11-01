@@ -1825,6 +1825,528 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Added by {name}'**
   String lqBy(String name);
+
+  /// No description provided for @quotesTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Quotes'**
+  String get quotesTab;
+
+  /// No description provided for @ordersTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders'**
+  String get ordersTab;
+
+  /// No description provided for @more.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get more;
+
+  /// No description provided for @qlTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'All quotes'**
+  String get qlTitle;
+
+  /// No description provided for @qlNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No quotes yet'**
+  String get qlNone;
+
+  /// No description provided for @qlMine.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned to me'**
+  String get qlMine;
+
+  /// No description provided for @qlAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get qlAll;
+
+  /// No description provided for @shipTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shipping'**
+  String get shipTitle;
+
+  /// No description provided for @shipCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Shipping cost'**
+  String get shipCost;
+
+  /// No description provided for @shipCostInr.
+  ///
+  /// In en, this message translates to:
+  /// **'Shipping (₹ INR)'**
+  String get shipCostInr;
+
+  /// No description provided for @shipTerm.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoterm'**
+  String get shipTerm;
+
+  /// No description provided for @shipMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode'**
+  String get shipMode;
+
+  /// No description provided for @shipPort.
+  ///
+  /// In en, this message translates to:
+  /// **'Port / destination'**
+  String get shipPort;
+
+  /// No description provided for @shipTransit.
+  ///
+  /// In en, this message translates to:
+  /// **'Transit time'**
+  String get shipTransit;
+
+  /// No description provided for @shipNone.
+  ///
+  /// In en, this message translates to:
+  /// **'—'**
+  String get shipNone;
+
+  /// No description provided for @qsDRAFT.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get qsDRAFT;
+
+  /// No description provided for @qsSENT.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get qsSENT;
+
+  /// No description provided for @qsACCEPTED.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepted'**
+  String get qsACCEPTED;
+
+  /// No description provided for @qsREJECTED.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get qsREJECTED;
+
+  /// No description provided for @cqPrepare.
+  ///
+  /// In en, this message translates to:
+  /// **'Prepare customer quote'**
+  String get cqPrepare;
+
+  /// No description provided for @cqTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer quote'**
+  String get cqTitle;
+
+  /// No description provided for @cqUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'Price per unit (₹ INR)'**
+  String get cqUnit;
+
+  /// No description provided for @cqQty.
+  ///
+  /// In en, this message translates to:
+  /// **'Quantity'**
+  String get cqQty;
+
+  /// No description provided for @cqGst.
+  ///
+  /// In en, this message translates to:
+  /// **'GST %'**
+  String get cqGst;
+
+  /// No description provided for @cqOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other charges (₹)'**
+  String get cqOther;
+
+  /// No description provided for @cqOtherLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Other charges label'**
+  String get cqOtherLabel;
+
+  /// No description provided for @cqValidity.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for'**
+  String get cqValidity;
+
+  /// No description provided for @cqTerms.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms'**
+  String get cqTerms;
+
+  /// No description provided for @cqSubtotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Product subtotal'**
+  String get cqSubtotal;
+
+  /// No description provided for @cqGstAmt.
+  ///
+  /// In en, this message translates to:
+  /// **'GST'**
+  String get cqGstAmt;
+
+  /// No description provided for @cqTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get cqTotal;
+
+  /// No description provided for @cqSavePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Save & preview'**
+  String get cqSavePreview;
+
+  /// No description provided for @cqGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate PDF'**
+  String get cqGenerate;
+
+  /// No description provided for @cqDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Open PDF'**
+  String get cqDownload;
+
+  /// No description provided for @cqWhatsapp.
+  ///
+  /// In en, this message translates to:
+  /// **'WhatsApp'**
+  String get cqWhatsapp;
+
+  /// No description provided for @cqEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get cqEmail;
+
+  /// No description provided for @cqShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get cqShare;
+
+  /// No description provided for @cqMarkSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark sent'**
+  String get cqMarkSent;
+
+  /// No description provided for @cqAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer accepted'**
+  String get cqAccept;
+
+  /// No description provided for @cqReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer rejected'**
+  String get cqReject;
+
+  /// No description provided for @cqReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason (required)'**
+  String get cqReason;
+
+  /// No description provided for @cqCreateOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Create order'**
+  String get cqCreateOrder;
+
+  /// No description provided for @cqOrderCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Order created'**
+  String get cqOrderCreated;
+
+  /// No description provided for @cqErr.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter quantity and price'**
+  String get cqErr;
+
+  /// No description provided for @orTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders'**
+  String get orTitle;
+
+  /// No description provided for @orNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No orders yet'**
+  String get orNone;
+
+  /// No description provided for @orProduction.
+  ///
+  /// In en, this message translates to:
+  /// **'Production'**
+  String get orProduction;
+
+  /// No description provided for @orShipment.
+  ///
+  /// In en, this message translates to:
+  /// **'Shipment (India)'**
+  String get orShipment;
+
+  /// No description provided for @orPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment'**
+  String get orPayment;
+
+  /// No description provided for @orAdvance.
+  ///
+  /// In en, this message translates to:
+  /// **'Advance (₹)'**
+  String get orAdvance;
+
+  /// No description provided for @orTracking.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracking no.'**
+  String get orTracking;
+
+  /// No description provided for @orContainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Container no.'**
+  String get orContainer;
+
+  /// No description provided for @orEtd.
+  ///
+  /// In en, this message translates to:
+  /// **'ETD (YYYY-MM-DD)'**
+  String get orEtd;
+
+  /// No description provided for @orEta.
+  ///
+  /// In en, this message translates to:
+  /// **'ETA (YYYY-MM-DD)'**
+  String get orEta;
+
+  /// No description provided for @orExpectedShip.
+  ///
+  /// In en, this message translates to:
+  /// **'Expected ship (YYYY-MM-DD)'**
+  String get orExpectedShip;
+
+  /// No description provided for @orCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer'**
+  String get orCustomer;
+
+  /// No description provided for @orSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier'**
+  String get orSupplier;
+
+  /// No description provided for @orCost.
+  ///
+  /// In en, this message translates to:
+  /// **'China cost'**
+  String get orCost;
+
+  /// No description provided for @orTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Order value'**
+  String get orTotal;
+
+  /// No description provided for @orSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get orSaved;
+
+  /// No description provided for @notifQuoteAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product}: customer accepted the quote{by}'**
+  String notifQuoteAccepted(String ref, String product, String by);
+
+  /// No description provided for @notifQuoteRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product}: customer rejected the quote{by}'**
+  String notifQuoteRejected(String ref, String product, String by);
+
+  /// No description provided for @notifOrderNew.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product}: new order{by}'**
+  String notifOrderNew(String ref, String product, String by);
+
+  /// No description provided for @notifOrderUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'{ref} · {product}: order updated{by}'**
+  String notifOrderUpdate(String ref, String product, String by);
+
+  /// No description provided for @prodNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get prodNew;
+
+  /// No description provided for @prodDepositPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Deposit paid'**
+  String get prodDepositPaid;
+
+  /// No description provided for @prodInProduction.
+  ///
+  /// In en, this message translates to:
+  /// **'In production'**
+  String get prodInProduction;
+
+  /// No description provided for @prodReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get prodReady;
+
+  /// No description provided for @prodShipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Shipped'**
+  String get prodShipped;
+
+  /// No description provided for @indNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not shipped'**
+  String get indNone;
+
+  /// No description provided for @indInTransit.
+  ///
+  /// In en, this message translates to:
+  /// **'In transit'**
+  String get indInTransit;
+
+  /// No description provided for @indCustoms.
+  ///
+  /// In en, this message translates to:
+  /// **'At customs'**
+  String get indCustoms;
+
+  /// No description provided for @indDelivered.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered'**
+  String get indDelivered;
+
+  /// No description provided for @payPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get payPending;
+
+  /// No description provided for @payPartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Partly paid'**
+  String get payPartial;
+
+  /// No description provided for @payPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get payPaid;
+
+  /// No description provided for @termExw.
+  ///
+  /// In en, this message translates to:
+  /// **'EXW'**
+  String get termExw;
+
+  /// No description provided for @termFob.
+  ///
+  /// In en, this message translates to:
+  /// **'FOB'**
+  String get termFob;
+
+  /// No description provided for @termCif.
+  ///
+  /// In en, this message translates to:
+  /// **'CIF'**
+  String get termCif;
+
+  /// No description provided for @termCfr.
+  ///
+  /// In en, this message translates to:
+  /// **'CFR'**
+  String get termCfr;
+
+  /// No description provided for @termDdp.
+  ///
+  /// In en, this message translates to:
+  /// **'DDP'**
+  String get termDdp;
+
+  /// No description provided for @termDap.
+  ///
+  /// In en, this message translates to:
+  /// **'DAP'**
+  String get termDap;
+
+  /// No description provided for @termDoor.
+  ///
+  /// In en, this message translates to:
+  /// **'Door to door'**
+  String get termDoor;
+
+  /// No description provided for @modeAir.
+  ///
+  /// In en, this message translates to:
+  /// **'Air'**
+  String get modeAir;
+
+  /// No description provided for @modeSea.
+  ///
+  /// In en, this message translates to:
+  /// **'Sea'**
+  String get modeSea;
+
+  /// No description provided for @modeExpress.
+  ///
+  /// In en, this message translates to:
+  /// **'Express / courier'**
+  String get modeExpress;
+
+  /// No description provided for @modeRoad.
+  ///
+  /// In en, this message translates to:
+  /// **'Road'**
+  String get modeRoad;
 }
 
 class _AppLocalizationsDelegate

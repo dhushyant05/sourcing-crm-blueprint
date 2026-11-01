@@ -8,6 +8,8 @@ import '../../l10n/l10n.dart';
 import '../../services/session.dart';
 import 'lead_attachments.dart';
 import 'media_picker.dart';
+import 'se_codes.dart';
+import '../screens/customer_quote_screen.dart';
 
 const quoteCurrencies = [('USD', r'$', 'USD'), ('CNY', '¥', 'RMB'), ('INR', '₹', 'INR')];
 String quoteMoney(double? n, String? c) {
@@ -19,8 +21,9 @@ String quoteMoney(double? n, String? c) {
 
 /// Supplier quotes on a lead. China adds/edits (with supplier + media); India sees product/price/media and adds its INR selling price.
 class LeadQuotesSection extends StatefulWidget {
-  const LeadQuotesSection({super.key, required this.leadId, this.initial});
+  const LeadQuotesSection({super.key, required this.leadId, this.initial, this.lead});
   final String leadId;
+  final Lead? lead;
   final List<LeadQuote>? initial; // for tests/screenshots
   @override
   State<LeadQuotesSection> createState() => _LeadQuotesSectionState();
@@ -62,21 +65,8 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
   }
 
   Future<void> _sell(LeadQuote q) async {
-    final l = context.l10n;
-    final price = TextEditingController(text: q.clientPrice?.toString() ?? ''), notes = TextEditingController(text: q.clientNotes ?? '');
-    final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-          title: Text(l.lqSellPrice),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(key: const Key('sell-price'), controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: '${l.lqSellPrice} (₹ INR)')),
-            TextField(controller: notes, decoration: InputDecoration(labelText: l.lqSellNotes)),
-          ]),
-          actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: Text(l.cancel)), FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(l.save))],
-        ));
-    if (ok != true || !mounted) return;
-    try {
-      await context.read<Session>().repo.updateLeadQuote(q.id, {'clientPrice': price.text.trim().isEmpty ? null : price.text.trim(), 'clientCurrency': 'INR', 'clientNotes': notes.text});
-      await _load();
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerQuoteScreen(quote: q, lead: widget.lead)));
+    await _load();
   }
 
   @override
@@ -104,7 +94,7 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
     return Card(key: Key('quote-${q.id}'), margin: const EdgeInsets.symmetric(vertical: 6), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(q.label ?? 'Q${i + 1}', style: t.textTheme.labelSmall?.copyWith(color: t.hintColor)),
+          Row(children: [Text(q.label ?? 'Q${i + 1}', style: t.textTheme.labelSmall?.copyWith(color: t.hintColor)), const SizedBox(width: 6), QuoteStatusChip(q.status)]),
           Text(q.product, style: t.textTheme.titleSmall),
           Text('${quoteMoney(q.unitPrice, q.currency)} / ${l.lqUnit}', style: t.textTheme.titleMedium?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600)),
         ])),
@@ -115,6 +105,8 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
       ]),
       const SizedBox(height: 6),
       Row(children: [kv(l.lqMoq, q.moq), kv(l.lqLeadTime, q.leadTime), kv(l.lqValidity, q.validity)]),
+      if (q.shipCost != null || q.shipTerm != null || q.shipMode != null || q.shipPort != null || q.shipTransit != null) Padding(padding: const EdgeInsets.only(top: 6),
+          child: Text('${l.shipTitle}: ${[if (q.shipCost != null) quoteMoney(q.shipCost, q.shipCurrency ?? q.currency), if (q.shipTerm != null) seCode(l, 'term', q.shipTerm), if (q.shipMode != null) seCode(l, 'mode', q.shipMode), q.shipPort, q.shipTransit].whereType<String>().where((x) => x.isNotEmpty).join(' · ')}', key: const Key('quote-ship'), style: t.textTheme.bodySmall)),
       if ((q.notes ?? '').isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(q.notes!, style: t.textTheme.bodySmall)),
       if (china && q.supplier != null) Container(
         margin: const EdgeInsets.only(top: 8), padding: const EdgeInsets.all(8), width: double.infinity,
@@ -129,8 +121,8 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
         margin: const EdgeInsets.only(top: 8), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(color: t.colorScheme.primaryContainer.withValues(alpha: .4), borderRadius: BorderRadius.circular(8)),
         child: Row(children: [
-          Expanded(child: Text('${l.lqSellPrice}: ${q.clientPrice != null ? quoteMoney(q.clientPrice, q.clientCurrency ?? 'INR') : '—'}${(q.clientNotes ?? '').isNotEmpty ? ' · ${q.clientNotes}' : ''}', style: t.textTheme.bodySmall)),
-          TextButton(key: Key('sell-${q.id}'), onPressed: () => _sell(q), child: Text(q.clientPrice != null ? l.lqEdit : l.lqAddSell)),
+          Expanded(child: Text('${l.lqSellPrice}: ${q.clientPrice != null ? quoteMoney(q.clientPrice, q.clientCurrency ?? 'INR') : '—'}${q.cqTotals != null ? ' · ${l.cqTotal} ${inr(q.cqTotals!['total'] as num?)}' : ''}', style: t.textTheme.bodySmall)),
+          TextButton(key: Key('sell-${q.id}'), onPressed: () => _sell(q), child: Text(l.cqPrepare)),
         ]),
       ),
     ])));
@@ -208,10 +200,10 @@ class QuoteFormScreen extends StatefulWidget {
 
 class _QuoteFormScreenState extends State<QuoteFormScreen> {
   late final _c = {
-    for (final k in ['product', 'unitPrice', 'moq', 'leadTime', 'validity', 'notes', 'sName', 'sContact', 'sPhone', 'sWechat', 'sCity']) k: TextEditingController(),
+    for (final k in ['product', 'unitPrice', 'moq', 'leadTime', 'validity', 'notes', 'shipCost', 'shipPort', 'shipTransit', 'sName', 'sContact', 'sPhone', 'sWechat', 'sCity']) k: TextEditingController(),
   };
   List<QuoteSupplier> _sups = [];
-  String _sup = '', _cur = 'USD';
+  String _sup = '', _cur = 'USD', _shipCur = 'USD', _term = '', _mode = '';
   final _paths = <String>[];
   bool _busy = false;
   String? _err;
@@ -225,6 +217,8 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
       _c['product']!.text = q.product; _c['unitPrice']!.text = q.unitPrice.toString(); _c['moq']!.text = q.moq ?? '';
       _c['leadTime']!.text = q.leadTime ?? ''; _c['validity']!.text = q.validity ?? ''; _c['notes']!.text = q.notes ?? '';
       _sup = q.supplierId ?? ''; _cur = q.currency; _existing = q.files;
+      _c['shipCost']!.text = q.shipCost?.toString() ?? ''; _c['shipPort']!.text = q.shipPort ?? ''; _c['shipTransit']!.text = q.shipTransit ?? '';
+      _shipCur = q.shipCurrency ?? q.currency; _term = q.shipTerm ?? ''; _mode = q.shipMode ?? '';
     }
     if (widget.suppliers != null) { _sups = widget.suppliers!; } else {
       context.read<Session>().repo.quoteSuppliers().then((s) { if (mounted) setState(() => _sups = s); }).catchError((_) {});
@@ -240,6 +234,8 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
     final body = <String, dynamic>{
       'product': _c['product']!.text.trim(), 'unitPrice': price, 'currency': _cur, 'moq': _c['moq']!.text.trim(), 'leadTime': _c['leadTime']!.text.trim(),
       'validity': _c['validity']!.text.trim(), 'notes': _c['notes']!.text.trim(),
+      'shipCost': _c['shipCost']!.text.trim().isEmpty ? null : _c['shipCost']!.text.trim(), 'shipCurrency': _shipCur, 'shipTerm': _term.isEmpty ? null : _term,
+      'shipMode': _mode.isEmpty ? null : _mode, 'shipPort': _c['shipPort']!.text.trim(), 'shipTransit': _c['shipTransit']!.text.trim(),
       if (_sup == '__new') 'newSupplier': {'name': _c['sName']!.text.trim(), 'contact': _c['sContact']!.text.trim(), 'phone': _c['sPhone']!.text.trim(), 'wechat': _c['sWechat']!.text.trim(), 'city': _c['sCity']!.text.trim()}
       else 'supplierId': _sup.isEmpty ? null : _sup,
     };
@@ -303,6 +299,18 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
           Expanded(child: f('leadTime', l.lqLeadTime, hint: '15 days')), const SizedBox(width: 8),
           Expanded(child: f('validity', l.lqValidity, hint: '30 days')),
         ]),
+        Text(l.shipTitle, style: t.textTheme.titleSmall), const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: f('shipCost', l.shipCost, kb: const TextInputType.numberWithOptions(decimal: true))), const SizedBox(width: 8),
+          SizedBox(width: 120, child: DropdownButtonFormField<String>(key: const Key('qf-shipCurrency'), initialValue: _shipCur,
+            decoration: InputDecoration(labelText: l.lqCurrency, border: const OutlineInputBorder(), isDense: true),
+            items: [for (final c in quoteCurrencies) DropdownMenuItem(value: c.$1, child: Text('${c.$2} ${c.$3}'))], onChanged: (v) => setState(() => _shipCur = v ?? 'USD'))),
+        ]),
+        Row(children: [
+          Expanded(child: seDropdown('qf-term', l.shipTerm, _term, incoterms, (o) => seCode(l, 'term', o), (v) => setState(() => _term = v))), const SizedBox(width: 8),
+          Expanded(child: seDropdown('qf-mode', l.shipMode, _mode, shipModes, (o) => seCode(l, 'mode', o), (v) => setState(() => _mode = v))),
+        ]),
+        Row(children: [Expanded(child: f('shipPort', l.shipPort, hint: 'Ningbo')), const SizedBox(width: 8), Expanded(child: f('shipTransit', l.shipTransit, hint: '20 days'))]),
         f('notes', l.lqNotes, lines: 3),
         Text(l.lqMedia, style: t.textTheme.titleSmall),
         const SizedBox(height: 6),

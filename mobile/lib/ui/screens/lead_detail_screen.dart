@@ -189,7 +189,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               const SizedBox(height: 8),
               LeadAttachments(leadId: l.id, canEdit: p.canCreateLead),
               const SizedBox(height: 12),
-              LeadQuotesSection(key: ValueKey('quotes-${l.id}'), leadId: l.id),
+              LeadQuotesSection(key: ValueKey('quotes-${l.id}'), leadId: l.id, lead: l),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (p.canSeeCustomerDetails && l.owner != 'CHINA' && !['WON', 'LOST'].contains(l.status))

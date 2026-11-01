@@ -934,4 +934,273 @@ class AppLocalizationsZh extends AppLocalizations {
   String lqBy(String name) {
     return '由 $name 添加';
   }
+
+  @override
+  String get quotesTab => '报价';
+
+  @override
+  String get ordersTab => '订单';
+
+  @override
+  String get more => '更多';
+
+  @override
+  String get qlTitle => '全部报价';
+
+  @override
+  String get qlNone => '暂无报价';
+
+  @override
+  String get qlMine => '分配给我';
+
+  @override
+  String get qlAll => '全部';
+
+  @override
+  String get shipTitle => '运输';
+
+  @override
+  String get shipCost => '运费';
+
+  @override
+  String get shipCostInr => '运费（₹ 卢比）';
+
+  @override
+  String get shipTerm => '贸易条款';
+
+  @override
+  String get shipMode => '运输方式';
+
+  @override
+  String get shipPort => '港口 / 目的地';
+
+  @override
+  String get shipTransit => '运输时间';
+
+  @override
+  String get shipNone => '—';
+
+  @override
+  String get qsDRAFT => '草稿';
+
+  @override
+  String get qsSENT => '已发送';
+
+  @override
+  String get qsACCEPTED => '已接受';
+
+  @override
+  String get qsREJECTED => '已拒绝';
+
+  @override
+  String get cqPrepare => '准备客户报价';
+
+  @override
+  String get cqTitle => '客户报价';
+
+  @override
+  String get cqUnit => '单价（₹ 卢比）';
+
+  @override
+  String get cqQty => '数量';
+
+  @override
+  String get cqGst => 'GST %';
+
+  @override
+  String get cqOther => '其他费用（₹）';
+
+  @override
+  String get cqOtherLabel => '其他费用说明';
+
+  @override
+  String get cqValidity => '有效期';
+
+  @override
+  String get cqTerms => '条款';
+
+  @override
+  String get cqSubtotal => '产品小计';
+
+  @override
+  String get cqGstAmt => 'GST';
+
+  @override
+  String get cqTotal => '合计';
+
+  @override
+  String get cqSavePreview => '保存并预览';
+
+  @override
+  String get cqGenerate => '生成 PDF';
+
+  @override
+  String get cqDownload => '打开 PDF';
+
+  @override
+  String get cqWhatsapp => 'WhatsApp';
+
+  @override
+  String get cqEmail => '邮件';
+
+  @override
+  String get cqShare => '分享';
+
+  @override
+  String get cqMarkSent => '标记已发送';
+
+  @override
+  String get cqAccept => '客户已接受';
+
+  @override
+  String get cqReject => '客户已拒绝';
+
+  @override
+  String get cqReason => '原因（必填）';
+
+  @override
+  String get cqCreateOrder => '创建订单';
+
+  @override
+  String get cqOrderCreated => '订单已创建';
+
+  @override
+  String get cqErr => '请输入数量和价格';
+
+  @override
+  String get orTitle => '订单';
+
+  @override
+  String get orNone => '暂无订单';
+
+  @override
+  String get orProduction => '生产';
+
+  @override
+  String get orShipment => '印度到货';
+
+  @override
+  String get orPayment => '付款';
+
+  @override
+  String get orAdvance => '预付款（₹）';
+
+  @override
+  String get orTracking => '运单号';
+
+  @override
+  String get orContainer => '集装箱号';
+
+  @override
+  String get orEtd => 'ETD（YYYY-MM-DD）';
+
+  @override
+  String get orEta => 'ETA（YYYY-MM-DD）';
+
+  @override
+  String get orExpectedShip => '预计发货（YYYY-MM-DD）';
+
+  @override
+  String get orCustomer => '客户';
+
+  @override
+  String get orSupplier => '供应商';
+
+  @override
+  String get orCost => '中国成本';
+
+  @override
+  String get orTotal => '订单金额';
+
+  @override
+  String get orSaved => '已保存';
+
+  @override
+  String notifQuoteAccepted(String ref, String product, String by) {
+    return '$ref · $product：客户已接受报价$by';
+  }
+
+  @override
+  String notifQuoteRejected(String ref, String product, String by) {
+    return '$ref · $product：客户已拒绝报价$by';
+  }
+
+  @override
+  String notifOrderNew(String ref, String product, String by) {
+    return '$ref · $product：新订单$by';
+  }
+
+  @override
+  String notifOrderUpdate(String ref, String product, String by) {
+    return '$ref · $product：订单已更新$by';
+  }
+
+  @override
+  String get prodNew => '新建';
+
+  @override
+  String get prodDepositPaid => '已付定金';
+
+  @override
+  String get prodInProduction => '生产中';
+
+  @override
+  String get prodReady => '已完成';
+
+  @override
+  String get prodShipped => '已发货';
+
+  @override
+  String get indNone => '未发货';
+
+  @override
+  String get indInTransit => '运输中';
+
+  @override
+  String get indCustoms => '清关中';
+
+  @override
+  String get indDelivered => '已送达';
+
+  @override
+  String get payPending => '待付款';
+
+  @override
+  String get payPartial => '部分付款';
+
+  @override
+  String get payPaid => '已付款';
+
+  @override
+  String get termExw => 'EXW 工厂交货';
+
+  @override
+  String get termFob => 'FOB 离岸价';
+
+  @override
+  String get termCif => 'CIF 到岸价';
+
+  @override
+  String get termCfr => 'CFR 成本加运费';
+
+  @override
+  String get termDdp => 'DDP 完税交货';
+
+  @override
+  String get termDap => 'DAP 目的地交货';
+
+  @override
+  String get termDoor => '门到门';
+
+  @override
+  String get modeAir => '空运';
+
+  @override
+  String get modeSea => '海运';
+
+  @override
+  String get modeExpress => '快递';
+
+  @override
+  String get modeRoad => '陆运';
 }

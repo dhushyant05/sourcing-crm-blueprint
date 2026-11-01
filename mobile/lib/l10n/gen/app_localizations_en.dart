@@ -948,4 +948,273 @@ class AppLocalizationsEn extends AppLocalizations {
   String lqBy(String name) {
     return 'Added by $name';
   }
+
+  @override
+  String get quotesTab => 'Quotes';
+
+  @override
+  String get ordersTab => 'Orders';
+
+  @override
+  String get more => 'More';
+
+  @override
+  String get qlTitle => 'All quotes';
+
+  @override
+  String get qlNone => 'No quotes yet';
+
+  @override
+  String get qlMine => 'Assigned to me';
+
+  @override
+  String get qlAll => 'All';
+
+  @override
+  String get shipTitle => 'Shipping';
+
+  @override
+  String get shipCost => 'Shipping cost';
+
+  @override
+  String get shipCostInr => 'Shipping (₹ INR)';
+
+  @override
+  String get shipTerm => 'Incoterm';
+
+  @override
+  String get shipMode => 'Mode';
+
+  @override
+  String get shipPort => 'Port / destination';
+
+  @override
+  String get shipTransit => 'Transit time';
+
+  @override
+  String get shipNone => '—';
+
+  @override
+  String get qsDRAFT => 'Draft';
+
+  @override
+  String get qsSENT => 'Sent';
+
+  @override
+  String get qsACCEPTED => 'Accepted';
+
+  @override
+  String get qsREJECTED => 'Rejected';
+
+  @override
+  String get cqPrepare => 'Prepare customer quote';
+
+  @override
+  String get cqTitle => 'Customer quote';
+
+  @override
+  String get cqUnit => 'Price per unit (₹ INR)';
+
+  @override
+  String get cqQty => 'Quantity';
+
+  @override
+  String get cqGst => 'GST %';
+
+  @override
+  String get cqOther => 'Other charges (₹)';
+
+  @override
+  String get cqOtherLabel => 'Other charges label';
+
+  @override
+  String get cqValidity => 'Valid for';
+
+  @override
+  String get cqTerms => 'Terms';
+
+  @override
+  String get cqSubtotal => 'Product subtotal';
+
+  @override
+  String get cqGstAmt => 'GST';
+
+  @override
+  String get cqTotal => 'Total';
+
+  @override
+  String get cqSavePreview => 'Save & preview';
+
+  @override
+  String get cqGenerate => 'Generate PDF';
+
+  @override
+  String get cqDownload => 'Open PDF';
+
+  @override
+  String get cqWhatsapp => 'WhatsApp';
+
+  @override
+  String get cqEmail => 'Email';
+
+  @override
+  String get cqShare => 'Share';
+
+  @override
+  String get cqMarkSent => 'Mark sent';
+
+  @override
+  String get cqAccept => 'Customer accepted';
+
+  @override
+  String get cqReject => 'Customer rejected';
+
+  @override
+  String get cqReason => 'Reason (required)';
+
+  @override
+  String get cqCreateOrder => 'Create order';
+
+  @override
+  String get cqOrderCreated => 'Order created';
+
+  @override
+  String get cqErr => 'Enter quantity and price';
+
+  @override
+  String get orTitle => 'Orders';
+
+  @override
+  String get orNone => 'No orders yet';
+
+  @override
+  String get orProduction => 'Production';
+
+  @override
+  String get orShipment => 'Shipment (India)';
+
+  @override
+  String get orPayment => 'Payment';
+
+  @override
+  String get orAdvance => 'Advance (₹)';
+
+  @override
+  String get orTracking => 'Tracking no.';
+
+  @override
+  String get orContainer => 'Container no.';
+
+  @override
+  String get orEtd => 'ETD (YYYY-MM-DD)';
+
+  @override
+  String get orEta => 'ETA (YYYY-MM-DD)';
+
+  @override
+  String get orExpectedShip => 'Expected ship (YYYY-MM-DD)';
+
+  @override
+  String get orCustomer => 'Customer';
+
+  @override
+  String get orSupplier => 'Supplier';
+
+  @override
+  String get orCost => 'China cost';
+
+  @override
+  String get orTotal => 'Order value';
+
+  @override
+  String get orSaved => 'Saved';
+
+  @override
+  String notifQuoteAccepted(String ref, String product, String by) {
+    return '$ref · $product: customer accepted the quote$by';
+  }
+
+  @override
+  String notifQuoteRejected(String ref, String product, String by) {
+    return '$ref · $product: customer rejected the quote$by';
+  }
+
+  @override
+  String notifOrderNew(String ref, String product, String by) {
+    return '$ref · $product: new order$by';
+  }
+
+  @override
+  String notifOrderUpdate(String ref, String product, String by) {
+    return '$ref · $product: order updated$by';
+  }
+
+  @override
+  String get prodNew => 'New';
+
+  @override
+  String get prodDepositPaid => 'Deposit paid';
+
+  @override
+  String get prodInProduction => 'In production';
+
+  @override
+  String get prodReady => 'Ready';
+
+  @override
+  String get prodShipped => 'Shipped';
+
+  @override
+  String get indNone => 'Not shipped';
+
+  @override
+  String get indInTransit => 'In transit';
+
+  @override
+  String get indCustoms => 'At customs';
+
+  @override
+  String get indDelivered => 'Delivered';
+
+  @override
+  String get payPending => 'Pending';
+
+  @override
+  String get payPartial => 'Partly paid';
+
+  @override
+  String get payPaid => 'Paid';
+
+  @override
+  String get termExw => 'EXW';
+
+  @override
+  String get termFob => 'FOB';
+
+  @override
+  String get termCif => 'CIF';
+
+  @override
+  String get termCfr => 'CFR';
+
+  @override
+  String get termDdp => 'DDP';
+
+  @override
+  String get termDap => 'DAP';
+
+  @override
+  String get termDoor => 'Door to door';
+
+  @override
+  String get modeAir => 'Air';
+
+  @override
+  String get modeSea => 'Sea';
+
+  @override
+  String get modeExpress => 'Express / courier';
+
+  @override
+  String get modeRoad => 'Road';
 }

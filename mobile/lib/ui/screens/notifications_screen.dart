@@ -15,6 +15,10 @@ String notifText(BuildContext context, AppNotification n) {
   final by = n.byName == null ? '' : l.notifBy(n.byName!);
   switch (n.kind) {
     case 'RETURNED': return l.notifReturned(ref, product, by);
+    case 'QUOTE_ACCEPTED': return l.notifQuoteAccepted(ref, product, by);
+    case 'QUOTE_REJECTED': return l.notifQuoteRejected(ref, product, by);
+    case 'ORDER_NEW': return l.notifOrderNew(ref, product, by);
+    case 'ORDER_UPDATE': return l.notifOrderUpdate(ref, product, by);
     case 'QUEUE': return l.notifQueue(ref, product, codeLabel(context, n.office ?? 'INDIA'), by);
     default: return l.notifAssigned(ref, product, by);
   }
