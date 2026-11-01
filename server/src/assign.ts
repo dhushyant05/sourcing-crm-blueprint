@@ -49,8 +49,21 @@ export class AssignStore {
   notify(userIds: string[], n: Omit<Notification, 'id' | 'createdAt' | 'read'>) {
     const st = this.db.prepare('INSERT INTO notifications (id,user_id,lead_id,lead_ref,product,kind,office,by_name,created_at) VALUES (?,?,?,?,?,?,?,?,?)');
     const at = new Date().toISOString();
-    for (const u of new Set(userIds)) st.run(randomUUID(), u, n.leadId, n.leadRef, n.product?.slice(0, 120) ?? null, n.kind, n.office, n.byName, at);
+    for (const u of new Set(userIds)) {
+      const id = randomUUID(); const product = n.product?.slice(0, 120) ?? null;
+      st.run(id, u, n.leadId, n.leadRef, product, n.kind, n.office, n.byName, at);
+      const subs = this.subs.get(u);
+      if (subs?.size) { const unread = this.unreadOf(u); const ev = { id, leadId: n.leadId, leadRef: n.leadRef, product, kind: n.kind, office: n.office, byName: n.byName, createdAt: at, read: false };
+        for (const f of subs) { try { f(ev, unread); } catch { /* ignore a broken stream */ } } }
+    }
   }
+  /** Live listeners (SSE streams) per user. */
+  private subs = new Map<string, Set<(n: Notification, unread: number) => void>>();
+  subscribe(userId: string, f: (n: Notification, unread: number) => void) {
+    let s = this.subs.get(userId); if (!s) this.subs.set(userId, (s = new Set()));
+    s.add(f); return () => { s!.delete(f); if (!s!.size) this.subs.delete(userId); };
+  }
+  unreadOf(userId: string) { return (this.db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL').get(userId) as any).c as number; }
   list(userId: string, limit = 50): { data: Notification[]; unread: number } {
     const rows = this.db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?').all(userId, limit) as any[];
     const unread = (this.db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL').get(userId) as any).c as number;

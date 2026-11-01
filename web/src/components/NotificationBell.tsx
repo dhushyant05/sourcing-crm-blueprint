@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
 import type { AppNotification } from '../lib/types';
 import { fmtDate } from '../i18n';
+import { desktopNotify, playBell, setupAlerts } from '../lib/live';
 
 /** Text uses only the SE reference + product summary (never customer details), so it is safe for China recipients. */
 export function notifText(t: (k: string, o?: any) => string, n: AppNotification) {
@@ -14,17 +15,60 @@ export function notifText(t: (k: string, o?: any) => string, n: AppNotification)
 }
 
 export function NotificationBell({ openLead }: { openLead: (id: string) => void }) {
-  const { api } = useApp();
+  const { api, session } = useApp();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false), [data, setData] = useState<{ data: AppNotification[]; unread: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const load = useCallback(() => { api.notifications().then(setData).catch(() => {}); }, [api]);
+  const seen = useRef<Set<string> | null>(null);
+  const alertRef = useRef<(n: AppNotification) => void>(() => {});
+  // Poll fallback: anything unread we have not seen yet (stream was down) still rings once.
+  const load = useCallback(() => { api.notifications().then((d) => {
+    const first = !seen.current; seen.current ??= new Set();
+    const fresh = d.data.filter((n) => !n.read && !seen.current!.has(n.id));
+    d.data.forEach((n) => seen.current!.add(n.id));
+    if (!first && fresh.length) alertRef.current(fresh[0]);
+    setData(d);
+  }).catch(() => {}); }, [api]);
+  const openRef = useRef(openLead); openRef.current = openLead;
+  const tRef = useRef(t); tRef.current = t;
+  const china = session?.role?.startsWith('CHINA') ?? false;
+  // Real-time: SSE stream, with a 15 s poll + reload on tab focus as the fallback.
   useEffect(() => {
-    load(); const i = setInterval(load, 30_000);
+    setupAlerts();
+    load(); const i = setInterval(load, 15_000);
     const vis = () => { if (!document.hidden) load(); };
-    document.addEventListener('visibilitychange', vis);
-    return () => { clearInterval(i); document.removeEventListener('visibilitychange', vis); };
-  }, [load]);
+    document.addEventListener('visibilitychange', vis); addEventListener('focus', vis);
+    const ac = new AbortController(); let stop = false;
+    const onEv = (ev: string, d: any) => {
+      if (ev === 'hello') { setData((x) => (x ? { ...x, unread: d.unread } : x)); return; }
+      if (ev !== 'notification') return;
+      const n = d.notification as AppNotification;
+      if (seen.current?.has(n.id)) return;
+      (seen.current ??= new Set()).add(n.id);
+      setData((x) => ({ unread: d.unread, data: [n, ...(x?.data ?? []).filter((y) => y.id !== n.id)].slice(0, 50) }));
+      alert(n);
+    };
+    const alert = (n: AppNotification) => {
+      (window as any).__seLive = ((window as any).__seLive ?? 0) + 1;
+      playBell();
+      // Privacy: China users see only the SE reference + product; India sees the usual message.
+      const ref = n.leadRef ?? 'Source Easy';
+      const body = china ? [ref, n.product].filter(Boolean).join(' · ') : [notifText(tRef.current, n), n.product].filter(Boolean).join('\n');
+      desktopNotify(china ? ref : 'Source Easy', body, n.id, () => openRef.current(n.leadId));
+    };
+    alertRef.current = alert;
+    (async () => {
+      let delay = 2000;
+      while (!stop && api.streamNotifications) {
+        const t0 = Date.now();
+        try { await api.streamNotifications(onEv, ac.signal); } catch { /* reconnect below */ }
+        if (stop) break;
+        if (Date.now() - t0 > 30_000) delay = 2000;
+        load(); await new Promise((r) => setTimeout(r, delay)); delay = Math.min(delay * 2, 30_000);
+      }
+    })();
+    return () => { stop = true; ac.abort(); clearInterval(i); document.removeEventListener('visibilitychange', vis); removeEventListener('focus', vis); };
+  }, [load, api, china]);
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };

@@ -87,6 +87,24 @@ class ServerClient {
   }
 
   /// Absolute URL + auth header, for streaming players (Range requests).
+  /// Server-Sent Events stream (JWT in the Authorization header). Ends when the connection drops.
+  Stream<({String event, Map<String, dynamic> data})> sse(String path) async* {
+    final c = http.Client();
+    try {
+      final req = http.Request('GET', _uri(path))..headers.addAll({'Accept': 'text/event-stream', if (token != null) 'Authorization': 'Bearer $token'});
+      final res = await c.send(req).timeout(const Duration(seconds: 20));
+      if (res.statusCode != 200) throw ApiException('stream ${res.statusCode}', statusCode: res.statusCode);
+      var ev = 'message'; final data = StringBuffer();
+      await for (final line in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+        if (line.isEmpty) {
+          if (data.isNotEmpty) { try { yield (event: ev, data: jsonDecode(data.toString()) as Map<String, dynamic>); } catch (_) {} }
+          ev = 'message'; data.clear();
+        } else if (line.startsWith('event:')) { ev = line.substring(6).trim(); }
+        else if (line.startsWith('data:')) { data.write(line.substring(5).trim()); }
+      }
+    } finally { c.close(); }
+  }
+
   ({Uri uri, Map<String, String> headers}) authed(String path) =>
       (uri: _uri(path), headers: {if (token != null) 'Authorization': 'Bearer $token'});
 

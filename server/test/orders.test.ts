@@ -114,3 +114,25 @@ describe('customer quote, PDF and orders', () => {
     expect(r).toMatchObject({ status: 'REJECTED', rejectReason: 'Too expensive', leadStatus: 'LOST' });
   });
 });
+
+describe('notification stream', () => {
+  it('pushes a notification to a connected user and rejects unauthenticated clients', async () => {
+    const { app, call, ids } = await setup();
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (app.server.address() as any).port;
+    expect((await fetch(`http://127.0.0.1:${port}/api/notifications/stream`)).status).toBe(401);
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'cs@x.in', password: PW } });
+    const t = login.json().token;
+    const ac = new AbortController();
+    const r = await fetch(`http://127.0.0.1:${port}/api/notifications/stream`, { headers: { authorization: `Bearer ${t}` }, signal: ac.signal });
+    expect(r.headers.get('content-type')).toContain('text/event-stream');
+    const rd = r.body!.getReader(); const dec = new TextDecoder(); let buf = '';
+    const until = async (s: string) => { while (!buf.includes(s)) { const { value } = await rd.read(); buf += dec.decode(value); } };
+    await until('event: hello');
+    const lead = (await call('is', 'POST', '/api/records/leads', { name: 'L', clientName: 'Secret Client', productInterest: 'Bottles' })).json().data;
+    await call('is', 'POST', `/api/leads/${lead.id}/assign`, { office: 'CHINA', assignedTo: ids.cs });
+    await until('event: notification');
+    expect(buf).toContain(lead.leadRef); expect(buf).not.toContain('Secret Client');
+    ac.abort(); await app.close();
+  });
+});

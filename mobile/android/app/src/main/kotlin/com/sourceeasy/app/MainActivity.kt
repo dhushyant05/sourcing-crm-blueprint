@@ -30,17 +30,25 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "show" -> try {
+                    val bell = Uri.parse("android.resource://$packageName/" + R.raw.bell)
                     val nm = getSystemService(NotificationManager::class.java)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        nm.createNotificationChannel(NotificationChannel("leads", call.argument<String>("channel") ?: "Leads", NotificationManager.IMPORTANCE_DEFAULT))
+                        // Channel sound is fixed at creation, so the bell uses a new channel id.
+                        nm.createNotificationChannel(NotificationChannel("alerts_bell", call.argument<String>("channel") ?: "Leads", NotificationManager.IMPORTANCE_HIGH).apply {
+                            setSound(bell, android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                            enableVibration(true)
+                        })
+                        nm.deleteNotificationChannel("leads")
                     }
                     val open = PendingIntent.getActivity(this, 0,
                         packageManager.getLaunchIntentForPackage(packageName)!!.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                    val n = NotificationCompat.Builder(this, "leads")
+                    val n = NotificationCompat.Builder(this, "alerts_bell")
                         .setSmallIcon(R.mipmap.ic_launcher)
                         .setContentTitle(call.argument<String>("title"))
                         .setContentText(call.argument<String>("body"))
+                        .setPriority(NotificationCompat.PRIORITY_HIGH).setSound(bell)
                         .setAutoCancel(true).setContentIntent(open).build()
                     if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                         NotificationManagerCompat.from(this).notify(call.argument<Int>("id") ?: 1, n)

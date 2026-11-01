@@ -193,6 +193,12 @@ class SourceEasyRepository {
     return Lead.fromJson((j['data'] ?? j) as Map<String, dynamic>);
   }
 
+  /// Live notification events: ('hello', unread) on connect, then ('notification', item + unread).
+  Stream<({AppNotification? item, int unread})> notificationStream() =>
+      api.sse('/api/notifications/stream').where((e) => e.event == 'hello' || e.event == 'notification').map((e) => (
+            item: e.event == 'notification' ? AppNotification.fromJson((e.data['notification'] as Map).cast<String, dynamic>()) : null,
+            unread: (e.data['unread'] as num?)?.toInt() ?? 0));
+
   Future<({List<AppNotification> items, int unread})> notifications() async {
     final j = await api.send('GET', '/api/notifications') as Map<String, dynamic>;
     return (items: (j['data'] as List).cast<Map<String, dynamic>>().map(AppNotification.fromJson).toList(), unread: (j['unread'] as num?)?.toInt() ?? 0);

@@ -27,6 +27,7 @@ export interface Api {
   staff(office: Office): Promise<StaffLite[]>;
   notifications(): Promise<{ data: AppNotification[]; unread: number }>;
   markNotificationRead(id?: string): Promise<void>;
+  streamNotifications?(onEvent: (ev: string, data: any) => void, signal: AbortSignal): Promise<void>;
   /** India side: upload product photos / videos / documents to a lead. */
   uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void): Promise<Attachment[]>;
   deleteAttachment(leadId: string, id: string): Promise<void>;
@@ -114,6 +115,23 @@ export class ServerApi implements Api {
     if (res.status === 401) this.onAuthError();
     if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
     return res.json() as Promise<{ data: AppNotification[]; unread: number }>;
+  }
+  /** Opens the real-time notification stream (SSE over fetch so the JWT stays in the Authorization header). Resolves when it ends. */
+  async streamNotifications(onEvent: (ev: string, data: any) => void, signal: AbortSignal) {
+    const res = await fetch('/api/notifications/stream', { headers: { authorization: `Bearer ${this.token}`, accept: 'text/event-stream' }, signal, cache: 'no-store' });
+    if (res.status === 401) { this.onAuthError(); return; }
+    if (!res.ok || !res.body) throw new HttpError(`HTTP ${res.status}`, res.status);
+    const rd = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) {
+      const { value, done } = await rd.read(); if (done) return;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        let ev = 'message', data = '';
+        for (const line of block.split('\n')) { if (line.startsWith('event:')) ev = line.slice(6).trim(); else if (line.startsWith('data:')) data += line.slice(5).trim(); }
+        if (data) { try { onEvent(ev, JSON.parse(data)); } catch { /* ignore */ } }
+      }
+    }
   }
   async markNotificationRead(id?: string) { await this.req('POST', id ? `/notifications/${encodeURIComponent(id)}/read` : '/notifications/read-all', {}); }
   async attachments(leadId: string) { return this.req<Attachment[]>('GET', `/leads/${encodeURIComponent(leadId)}/attachments`); }

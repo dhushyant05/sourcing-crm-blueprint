@@ -1,6 +1,19 @@
 # Only the Source Easy server is public. Twenty stays on the internal docker network.
 {$DOMAIN} {
-	encode gzip
+	# Real-time notifications (SSE): no compression, flush every write, keep the stream open for hours.
+	@sse path /api/notifications/stream
+	handle @sse {
+		reverse_proxy api:8080 {
+			flush_interval -1
+			transport http {
+				read_timeout 0
+				write_timeout 0
+				keepalive 2h
+			}
+		}
+	}
+	@compress not path /api/notifications/stream
+	encode @compress gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff

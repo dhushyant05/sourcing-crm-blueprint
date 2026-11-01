@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
+import '../core/roles.dart';
 import '../services/notifications.dart';
 import '../services/session.dart';
 import 'screens/notifications_screen.dart';
@@ -45,7 +46,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
-    _nc.describe = (n) => notifText(context, n);
+    // Privacy: China users' system notifications show only the SE reference + product.
+    final china = s.role.office == Office.china;
+    _nc.describe = china ? (n) => [n.leadRef ?? '', n.product ?? ''].where((x) => x.isNotEmpty).join(' · ') : (n) => notifText(context, n);
     _nc.title = context.l10n.newLeadNotif;
     return ChangeNotifierProvider.value(value: _nc, child: Builder(builder: (context) { final nc = context.watch<NotificationCenter>(); return Scaffold(
       body: Column(children: [

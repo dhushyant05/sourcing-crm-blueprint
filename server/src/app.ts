@@ -641,6 +641,20 @@ export async function buildApp(o: AppOptions) {
       return { data: staffOf(office).map((u) => ({ id: u.id, name: u.name, role: u.role })) };
     });
     api.get('/api/notifications', async (req) => assign.list(req.user!.id));
+    // Real-time stream (Server-Sent Events). Sends `notification` events with the same privacy-safe payload as the list.
+    api.get('/api/notifications/stream', (req, reply) => {
+      const uid = req.user!.id;
+      reply.hijack();
+      const res = reply.raw;
+      res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+      const send = (ev: string, data: unknown) => res.write(`event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`);
+      res.write('retry: 3000\n\n');
+      send('hello', { unread: assign.unreadOf(uid) });
+      const off = assign.subscribe(uid, (n, unread) => send('notification', { notification: n, unread }));
+      const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+      const close = () => { clearInterval(ping); off(); };
+      req.raw.on('close', close); res.on('error', close);
+    });
     api.post<{ Params: { id: string } }>('/api/notifications/:id/read', async (req) => ({ ok: assign.markRead(req.user!.id, req.params.id) }));
     api.post('/api/notifications/read-all', async (req) => ({ ok: assign.markRead(req.user!.id) }));
 
