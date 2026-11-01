@@ -4,7 +4,8 @@ import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play,
 import { useEffect, useRef, useState } from 'react';
 import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
-import { PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
+import { LostActions } from '../components/LostActions';
+import { BigSla, PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
 import { LeadQuotes } from '../components/LeadQuotes';
 import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
@@ -26,7 +27,8 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   const [creating, setCreating] = useState(false);
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
   const [drag, setDrag] = useState<string | null>(null), [moveErr, setMoveErr] = useState<string | null>(null);
-  const leads = data?.filter((l) => matches(l, search));
+  const [showClosed, setShowClosed] = useState(false);
+  const leads = data?.filter((l) => matches(l, search) && (showClosed ? l.status === 'CLOSED' : l.status !== 'CLOSED'));
   const pick = (v: 'board' | 'table') => { setView(v); localStorage.leadView = v; };
 
   const move = async (id: string, status: LeadStatus) => {
@@ -47,6 +49,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
               <button key={String(v)} onClick={() => { setMine(v); localStorage.leadMine = v ? '1' : '0'; }} className={clsx('rounded-lg px-2.5 py-1.5 transition', mine === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}>{label}</button>
             ))}
           </div>
+          <button data-testid="show-closed" onClick={() => { setShowClosed((v) => !v); if (!showClosed) pick('table'); }} className={clsx('rounded-xl border px-2.5 py-1.5 text-sm', showClosed ? 'border-ink-700 bg-ink-800 text-white' : 'border-ink-200 bg-white text-ink-500 dark:border-ink-700 dark:bg-ink-900')}>{showClosed ? t('lost.hideClosed') : t('lost.showClosed', { n: data?.filter((l) => l.status === 'CLOSED').length ?? 0 })}</button>
           <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 dark:border-ink-700 dark:bg-ink-900">
             {([['board', KanbanSquare], ['table', Rows3]] as const).map(([v, I]) => (
               <button key={v} onClick={() => pick(v)} className={clsx('rounded-lg px-2.5 py-1.5 text-sm transition', view === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}><I size={16} /></button>
@@ -58,7 +61,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
       {mine && data && !data.length && <p className="mb-4 rounded-xl border border-dashed border-ink-200 px-4 py-3 text-sm text-ink-500 dark:border-ink-800">{t('assign.noneMine')}</p>}
       {view === 'board' ? (
         <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-4 md:snap-none">
-          {PIPELINE.map((s) => {
+          {[...PIPELINE, 'LOST' as LeadStatus].map((s) => {
             const col = leads?.filter((l) => l.status === s) ?? [];
             return (
               <div key={s} onDragOver={(e) => e.preventDefault()} onDrop={() => drag && move(drag, s)}
@@ -91,7 +94,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
           {!data ? <TableSkeleton /> : !leads?.length ? <Empty title={t('leads.noMatch')} hint={t('leads.tryOther')} /> : (
             <div className="md:max-h-[calc(100vh-220px)] md:overflow-auto">
               <table className="rtable w-full text-sm">
-                <thead><tr><th className="th">{perms.customers ? t('common.client') : t('common.lead')}</th><th className="th">{t('common.product')}</th><th className="th text-right">{t('common.qty')}</th>{perms.clientPricing && <th className="th text-right">{t('leads.target')}</th>}<th className="th">{t('common.status')}</th><th className="th">{t('common.chinaAgent')}</th><th className="th">{t('common.created')}</th></tr></thead>
+                <thead><tr><th className="th">{perms.customers ? t('common.client') : t('common.lead')}</th><th className="th">{t('common.product')}</th><th className="th text-right">{t('common.qty')}</th>{perms.clientPricing && <th className="th text-right">{t('leads.target')}</th>}<th className="th">{t('common.status')}</th><th className="th">{t('sla.col')}</th><th className="th">{t('common.chinaAgent')}</th><th className="th">{t('common.created')}</th></tr></thead>
                 <tbody>
                   {leads.map((l) => (
                     <tr key={l.id} onClick={() => openLead(l)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
@@ -99,7 +102,8 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
                       {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
-                      <td className="td"><Chip value={l.status} />{l.rejection?.actionNeeded && <RejChip />}{l.priority && <span className="ml-1"><PriorityBadge /></span>}{l.sla && <span className="ml-1"><SlaChip sla={l.sla} compact /></span>}</td>
+                      <td className="td"><Chip value={l.status} />{l.rejection?.actionNeeded && <RejChip />}{l.priority && <span className="ml-1"><PriorityBadge /></span>}</td>
+                      <td className="td" data-testid="sla-cell">{l.sla ? <SlaChip sla={l.sla} /> : <span className="text-ink-400">—</span>}</td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.assignedToName ?? l.assignedChinaAgent ?? '—'}</td>
                       <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
                     </tr>
@@ -209,6 +213,13 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const [staff, setStaff] = useState<StaffLite[] | null>(null), [pickTo, setPickTo] = useState('');
   const [editSum, setEditSum] = useState<string | null>(null), [msg, setMsg] = useState<string | null>(null);
   useEffect(() => { setLead(initial); setMode(null); setEditSum(null); setMsg(null); }, [initial]);
+  // Live: refresh the open lead when the server reports a change on it.
+  useEffect(() => {
+    const id = initial?.id; if (!id) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.leadId && d.leadId !== id) return; if (t) clearTimeout(t); t = setTimeout(() => { void api.lead(id).then((l) => l && setLead((cur) => (cur?.id === id ? l : cur))).catch(() => {}); }, 300); };
+    addEventListener('se:data', h); return () => { if (t) clearTimeout(t); removeEventListener('se:data', h); };
+  }, [initial?.id, api]);
   const officeName = (o?: Office | null) => (o === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia'));
   const openPicker = (o: Office) => {
     setMode(o); setStaff(null); setPickTo(o === 'INDIA' && lead?.ownerOffice === 'CHINA' ? 'default' : '');
@@ -241,7 +252,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const canTake = !isAdmin && myOffice === owner && !!session?.id && lead?.assignedTo !== session.id;
   return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
-      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.rejection?.actionNeeded && <RejChip />}<span>{lead.productInterest}</span></div>}
+      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.rejection?.actionNeeded && <RejChip />}{lead.priority && <PriorityBadge />}<span>{lead.productInterest}</span>{lead.sla && <div className="basis-full"><BigSla sla={lead.sla} /></div>}</div>}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{role === 'SUPER_ADMIN' && <button className="btn-outline text-rose-600" data-testid="lead-delete" disabled={busy} onClick={() => void delLead()}><Trash2 size={15} />{t('common.delete')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
@@ -297,6 +308,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
             {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
           </>)}
           <Attachments leadId={lead.id} canEdit={perms.customers} />
+          <LostActions lead={lead} onChange={(l) => setLead({ ...lead, ...l })} openLead={(l) => setLead(l)} />
           <RejectionPanel lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
           <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
           <WorkflowPanel lead={lead} onPriority={(on) => setLead({ ...lead, priority: on })} />

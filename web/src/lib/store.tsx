@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DemoApi, ServerApi, type Api, type Me } from './api';
 import { perms, type Role } from './roles';
 import { deviceLang, LANGS, setLang, type Lang } from '../i18n';
@@ -62,5 +62,13 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
+  // Live data: silently refetch (no spinner/flicker) when the server says something changed.
+  const fnRef = useRef(fn); fnRef.current = fn;
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null, live = true;
+    const h = () => { if (t) clearTimeout(t); t = setTimeout(() => { fnRef.current().then((d) => live && setData(d), () => {}); }, 300); };
+    addEventListener('se:data', h);
+    return () => { live = false; if (t) clearTimeout(t); removeEventListener('se:data', h); };
+  }, []);
   return { data, error, reload: () => setTick((t) => t + 1), setData };
 }

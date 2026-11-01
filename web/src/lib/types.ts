@@ -1,4 +1,4 @@
-export type LeadStatus = 'NEW' | 'ASSIGNED' | 'SOURCING' | 'QUOTED' | 'APPROVED' | 'SHIPPING' | 'WON' | 'LOST';
+export type LeadStatus = 'NEW' | 'ASSIGNED' | 'SOURCING' | 'QUOTED' | 'APPROVED' | 'SHIPPING' | 'WON' | 'LOST' | 'CLOSED';
 export type Currency = 'CNY' | 'USD' | 'INR';
 
 export interface Rejection { id: string; quoteId: string; reasonCode: string; reasonText: string | null; byName: string | null; at: string; resolution: 'REVISE' | 'CLOSED' | null;
@@ -16,7 +16,7 @@ export interface Lead {
   /** Staff user who raised the lead (null for public enquiries) and the current owner (null = office queue). */
   raisedBy?: string | null; raisedByName?: string | null; assignedTo?: string | null; assignedToName?: string | null; ownerOffice?: Office;
   /** Priority lead (2 h SLA) and the running SLA clock of the office that holds it. */
-  priority?: boolean; sla?: Sla | null;
+  priority?: boolean; sla?: Sla | null; followUp?: string | null; createdFromRef?: string | null; createdFromId?: string | null; closedAt?: string; closedByName?: string | null;
 }
 export interface Sla { office: Office; startedAt: string; dueAt: string; breached: boolean; assignee?: string | null; assigneeName?: string | null }
 export interface SlaSettings { normalMinutes: number; priorityMinutes: number }
@@ -28,7 +28,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;

@@ -24,6 +24,14 @@ export function SlaChip({ sla, compact }: { sla?: Sla | null; compact?: boolean 
   return <span data-testid="sla-chip" data-level={level} title={t('sla.due', { d: new Date(sla.dueAt).toLocaleString() })} className={clsx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium', tone[level])}>
     <Timer className="h-3 w-3" />{compact ? '' : `${t(`sla.office.${sla.office}`)} · `}{level === 'breach' ? t('sla.overdue', { t: fmtLeft(left) }) : t('sla.left', { t: fmtLeft(left) })}</span>;
 }
+/** Big clock for the lead panel header: "China SLA 3h 12m left" / "China SLA overdue by 40m" (red). */
+export function BigSla({ sla }: { sla?: Sla | null }) {
+  const { t } = useTranslation(); const now = useNow();
+  if (!sla) return null;
+  const { left, level } = slaState(sla, now);
+  return <div data-testid="sla-big" data-level={level} className={clsx('inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold', tone[level], level === 'breach' && 'animate-pulse')}>
+    <Timer className="h-4 w-4" />{t('sla.bigLabel', { office: t(`sla.office.${sla.office}`) })} · {level === 'breach' ? t('sla.overdueBy', { t: fmtLeft(left) }) : t('sla.left', { t: fmtLeft(left) })}</div>;
+}
 export const PriorityBadge = () => { const { t } = useTranslation(); return <span data-testid="priority-badge" className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"><Flame className="h-3 w-3" />{t('sla.priority')}</span>; };
 
 /** Progress bar across the whole workflow. */
@@ -39,9 +47,9 @@ const evText = (t: (k: string, o?: any) => string, kind: string, d: Record<strin
   const office = d.office ? t(`sla.office.${d.office}`) : '';
   const extra: Record<string, string> = {
     QUOTE_ADDED: d.supplier ? ` · ${d.supplier}` : '', CQ_REJECTED: d.reason ? ` — “${d.reason}”` : '', REVISE_REQUESTED: [d.reason && `“${d.reason}”`, d.targetPrice && `${t('wf.target')} ${d.targetPrice} ${d.targetCurrency ?? ''}`, d.notes].filter(Boolean).join(' · '),
-    LEAD_CLOSED: d.reason ? ` — “${d.reason}”` : '', SHIPPED: [d.tracking || d.container, d.etd && `ETD ${d.etd}`].filter(Boolean).join(' · '),
+    LEAD_CLOSED: d.reason ? ` — “${d.reason}”` : '', CLOSED_PERMANENT: [d.reason && ` — “${d.reason}”`, d.followUp && ` · ${t('lost.followUp')} ${d.followUp}`].filter(Boolean).join(''), SHIPPED: [d.tracking || d.container, d.etd && `ETD ${d.etd}`].filter(Boolean).join(' · '),
   };
-  const base = t(`wf.ev.${kind}`, { n: d.n ?? '', office, to: d.to ?? office, from: d.from ? t(`status.${d.from}`) : '', st: d.to && kind === 'STATUS' ? t(`status.${d.to}`) : '', ship: d.status ? t(`ship.st.${d.status}`, { defaultValue: d.status }) : '', on: d.on ? t('wf.on') : t('wf.off'), defaultValue: kind });
+  const base = t(`wf.ev.${kind}`, { n: d.n ?? '', office, to: d.to ?? office, from: d.from ? t(`status.${d.from}`) : '', st: d.to && kind === 'STATUS' ? t(`status.${d.to}`) : '', ship: d.status ? t(`ship.st.${d.status}`, { defaultValue: d.status }) : '', on: d.on ? t('wf.on') : t('wf.off'), ref: d.ref ?? '', date: d.date ?? '—', defaultValue: kind });
   const x = extra[kind]; return x ? (kind === 'REVISE_REQUESTED' || kind === 'SHIPPED' ? `${base} — ${x}` : base + x) : base;
 };
 
@@ -59,7 +67,7 @@ export function WorkflowPanel({ lead, onPriority }: { lead: Lead; onPriority?: (
   return <section data-testid="workflow" className="mt-6">
     <div className="flex flex-wrap items-center gap-2"><h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
       {data?.priority && <PriorityBadge />}{data?.sla && <SlaChip sla={data.sla} />}
-      {s.india && data && <button data-testid="priority-toggle" disabled={busy} onClick={() => void toggle()} className={clsx('ml-auto rounded-lg border px-2 py-0.5 text-xs', data.priority ? 'border-orange-300 text-orange-700' : 'border-ink-200 text-ink-600 dark:border-ink-700 dark:text-ink-300')}>{data.priority ? t('sla.unmark') : t('sla.mark', { h: Math.round((data.settings.priorityMinutes / 60) * 10) / 10 })}</button>}</div>
+      {s.india && data && <button data-testid="priority-toggle" disabled={busy} onClick={() => void toggle()} className={clsx('ml-auto inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm font-semibold', data.priority ? 'border-orange-300 bg-white text-orange-700' : 'border-orange-500 bg-orange-500 text-white hover:bg-orange-600')}><Flame className="h-4 w-4" />{data.priority ? t('sla.unmark') : t('sla.mark', { h: Math.round((data.settings.priorityMinutes / 60) * 10) / 10 })}</button>}</div>
     {err && <p role="alert" className="mt-1 text-xs text-rose-600">{err}</p>}
     {!data ? <div className="mt-3 h-16 skeleton" /> : <>
       <div className="mt-3"><Progress p={data.progress} /></div>

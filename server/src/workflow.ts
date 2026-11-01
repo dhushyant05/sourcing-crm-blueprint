@@ -11,13 +11,14 @@ export type Vis = 'ALL' | 'INDIA' | 'CHINA';
 export type EventKind =
   | 'CREATED' | 'SUMMARY' | 'MEDIA_ADDED' | 'ASSIGNED' | 'REASSIGNED' | 'QUEUED' | 'RETURNED' | 'STATUS'
   | 'QUOTE_ADDED' | 'QUOTE_EDITED' | 'CQ_PREPARED' | 'CQ_SENT' | 'CQ_ACCEPTED' | 'CQ_REJECTED'
-  | 'ORDER_CREATED' | 'ORDER_UPDATE' | 'SHIPPED' | 'SHIPMENT_UPDATE' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'PRIORITY' | 'SLA_WARN' | 'SLA_BREACH';
+  | 'ORDER_CREATED' | 'ORDER_UPDATE' | 'SHIPPED' | 'SHIPMENT_UPDATE' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'REOPENED' | 'COPIED_TO' | 'CREATED_FROM' | 'CLOSED_PERMANENT' | 'FOLLOW_UP_SET' | 'FOLLOW_UP_DUE' | 'PRIORITY' | 'SLA_WARN' | 'SLA_BREACH';
 export interface LeadEvent { id: string; leadId: string; at: string; kind: EventKind; actorId: string | null; actorName: string | null; actorOffice: Office | 'ADMIN' | null; data: Record<string, unknown>; vis: Vis }
 export interface Clock { leadId: string; office: Office; assignee: string | null; startedAt: string; dueAt: string; priority: boolean; warned: boolean; breached: boolean }
 export interface ClockRun { leadId: string; office: Office; assignee: string | null; startedAt: string; dueAt: string; endedAt: string; breached: boolean }
 export interface SlaSettings { normalMinutes: number; priorityMinutes: number }
 export const SLA_DEFAULT: SlaSettings = { normalMinutes: 5 * 60, priorityMinutes: 2 * 60 };
 
+export interface LeadMeta { closedAt: string | null; closedBy: string | null; followUp: string | null; followUpBy: string | null; fromId: string | null; fromRef: string | null }
 export class WorkflowStore {
   constructor(private db: DatabaseSync, private now: () => number = Date.now) {
     db.exec(`CREATE TABLE IF NOT EXISTS lead_events (
@@ -28,6 +29,7 @@ export class WorkflowStore {
     CREATE TABLE IF NOT EXISTS lead_clock_runs (
       id TEXT PRIMARY KEY, lead_id TEXT NOT NULL, office TEXT NOT NULL, assignee TEXT, started_at TEXT NOT NULL, due_at TEXT NOT NULL, ended_at TEXT NOT NULL, breached INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS lead_priority (lead_id TEXT PRIMARY KEY, priority INTEGER NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS lead_meta (lead_id TEXT PRIMARY KEY, closed_at TEXT, closed_by TEXT, follow_up TEXT, follow_up_by TEXT, follow_up_sent INTEGER NOT NULL DEFAULT 0, from_id TEXT, from_ref TEXT);
     CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
   }
   private iso(ms = this.now()) { return new Date(ms).toISOString(); }
@@ -59,6 +61,29 @@ export class WorkflowStore {
     return n;
   }
 
+  /** True the first time it is called for `key` (one-off migrations). */
+  once(key: string) { const k = 'once:' + key; if (this.db.prepare('SELECT 1 FROM app_settings WHERE key = ?').get(k)) return false; this.db.prepare('INSERT INTO app_settings (key,value) VALUES (?,?)').run(k, this.iso()); return true; }
+  // ---- lost-lead meta: permanent close, follow-up reminder, copied-from link ----
+  meta(leadId: string): LeadMeta {
+    const r = this.db.prepare('SELECT * FROM lead_meta WHERE lead_id = ?').get(leadId) as any;
+    return { closedAt: r?.closed_at ?? null, closedBy: r?.closed_by ?? null, followUp: r?.follow_up ?? null, followUpBy: r?.follow_up_by ?? null, fromId: r?.from_id ?? null, fromRef: r?.from_ref ?? null };
+  }
+  private setMeta(leadId: string, cols: Record<string, unknown>) {
+    this.db.prepare('INSERT INTO lead_meta (lead_id) VALUES (?) ON CONFLICT(lead_id) DO NOTHING').run(leadId);
+    for (const [k, v] of Object.entries(cols)) this.db.prepare(`UPDATE lead_meta SET ${k} = ? WHERE lead_id = ?`).run(v as any, leadId);
+  }
+  closeLead(leadId: string, by: string) { this.setMeta(leadId, { closed_at: this.iso(), closed_by: by }); }
+  reopenLead(leadId: string) { this.setMeta(leadId, { closed_at: null, closed_by: null }); }
+  closedIds(): Set<string> { return new Set((this.db.prepare('SELECT lead_id FROM lead_meta WHERE closed_at IS NOT NULL').all() as any[]).map((r) => r.lead_id)); }
+  setFollowUp(leadId: string, date: string | null, by: string) { this.setMeta(leadId, { follow_up: date, follow_up_by: date ? by : null, follow_up_sent: 0 }); }
+  linkFrom(leadId: string, fromId: string, fromRef: string | null) { this.setMeta(leadId, { from_id: fromId, from_ref: fromRef }); }
+  /** Follow-ups whose date has arrived (each reported once). */
+  dueFollowUps(): { leadId: string; by: string | null; date: string }[] {
+    const today = this.iso().slice(0, 10);
+    const rows = this.db.prepare('SELECT * FROM lead_meta WHERE follow_up IS NOT NULL AND follow_up_sent = 0 AND follow_up <= ?').all(today) as any[];
+    for (const r of rows) this.db.prepare('UPDATE lead_meta SET follow_up_sent = 1 WHERE lead_id = ?').run(r.lead_id);
+    return rows.map((r) => ({ leadId: r.lead_id, by: r.follow_up_by, date: r.follow_up }));
+  }
   // ---- priority ----
   priority(leadId: string) { return !!(this.db.prepare('SELECT priority FROM lead_priority WHERE lead_id = ?').get(leadId) as any)?.priority; }
   priorities(): Set<string> { return new Set((this.db.prepare('SELECT lead_id FROM lead_priority WHERE priority = 1').all() as any[]).map((r) => r.lead_id)); }
@@ -114,6 +139,6 @@ export class WorkflowStore {
       leadId: r.lead_id, office: r.office, assignee: r.assignee, startedAt: r.started_at, dueAt: r.due_at, endedAt: r.ended_at, breached: !!r.breached }));
   }
   forgetLead(leadId: string) {
-    for (const t of ['lead_events', 'lead_clock', 'lead_clock_runs', 'lead_priority']) this.db.prepare(`DELETE FROM ${t} WHERE lead_id = ?`).run(leadId);
+    for (const t of ['lead_events', 'lead_clock', 'lead_clock_runs', 'lead_priority', 'lead_meta']) this.db.prepare(`DELETE FROM ${t} WHERE lead_id = ?`).run(leadId);
   }
 }

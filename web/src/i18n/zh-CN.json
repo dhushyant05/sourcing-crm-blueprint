@@ -62,7 +62,8 @@
     "OUT_FOR_DELIVERY": "派送中",
     "DELIVERED": "已送达",
     "ACTIVE": "启用",
-    "DISABLED": "停用"
+    "DISABLED": "停用",
+    "CLOSED": "已关闭"
   },
   "common": {
     "close": "关闭",
@@ -454,7 +455,10 @@
     "SLA_BREACH": "{{ref}} 已超时",
     "SLA_BREACH_nobody": "{{ref}} 已超时",
     "PRIORITY": "{{by}} 将 {{ref}} 标记为优先",
-    "PRIORITY_nobody": "{{ref}} 已设为优先线索"
+    "PRIORITY_nobody": "{{ref}} 已设为优先线索",
+    "payment": "付款",
+    "FOLLOW_UP": "{{ref}} 跟进提醒到期",
+    "FOLLOW_UP_nobody": "{{ref}} 跟进提醒到期"
   },
   "lq": {
     "title": "供应商报价",
@@ -714,7 +718,10 @@
     "settings": "时限（小时）",
     "settingsHint": "各办公室处理所持线索的时间。用到 80% 提醒，超时通知管理员。",
     "normalH": "普通线索（小时）",
-    "priorityH": "优先线索（小时）"
+    "priorityH": "优先线索（小时）",
+    "col": "时限",
+    "bigLabel": "{{office}} 时限",
+    "overdueBy": "已超时 {{t}}"
   },
   "wf": {
     "stageN": "第 {{n}}/{{of}} 步",
@@ -756,7 +763,29 @@
       "SHIPMENT_UPDATE": "物流：{{ship}}",
       "PRIORITY": "优先 {{on}}",
       "SLA_WARN": "时限 80% 提醒",
-      "SLA_BREACH": "超时（{{office}}）"
+      "SLA_BREACH": "超时（{{office}}）",
+      "REOPENED": "重新打开 → {{office}}",
+      "COPIED_TO": "已复制为新线索 {{ref}}",
+      "CREATED_FROM": "由 {{ref}} 创建",
+      "CLOSED_PERMANENT": "永久关闭",
+      "FOLLOW_UP_SET": "跟进提醒：{{date}}",
+      "FOLLOW_UP_DUE": "跟进到期（{{date}}）"
     }
+  },
+  "lost": {
+    "title": "已流失线索",
+    "reopenIndia": "重新打开 → 印度负责人",
+    "reopenChina": "重新打开 → 中国（重新报价）",
+    "copy": "复制为新线索",
+    "close": "永久关闭",
+    "closeConfirm": "确定永久关闭此线索？只有超级管理员可以重新打开。",
+    "followUp": "跟进提醒",
+    "save": "保存",
+    "closedOn": "{{who}} 于 {{when}} 永久关闭",
+    "createdFrom": "由 {{ref}} 创建",
+    "showClosed": "显示已关闭（{{n}}）",
+    "hideClosed": "隐藏已关闭",
+    "onlySa": "只有超级管理员可以重新打开已关闭的线索。",
+    "copied": "已创建新线索 {{ref}}"
   }
 }

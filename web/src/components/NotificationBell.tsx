@@ -12,7 +12,11 @@ import { desktopNotify, playBell, setupAlerts } from '../lib/live';
 export function notifText(t: (k: string, o?: any) => string, n: AppNotification) {
   const ref = n.leadRef ?? '—', office = n.office === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia');
   if (n.kind === 'QUEUE') return n.byName ? t('notif.QUEUE', { ref, office }) : t('notif.newEnquiry', { ref });
-  return t(n.byName ? `notif.${n.kind}` : `notif.${n.kind}_nobody`, { by: n.byName, ref });
+  const base = t(n.byName ? `notif.${n.kind}` : `notif.${n.kind}_nobody`, { by: n.byName, ref });
+  const d = n.detail ? String(n.detail) : '';
+  const [k, v] = d.split(':');
+  const extra = k === 'production' ? t(`orders.prod.${v}`) : k === 'ship' ? t(`ship.st.${v}`) : k === 'payment' ? `${t('notif.payment')}: ${t(`orders.pay.${v}`)}` : '';
+  return extra ? `${base} — ${extra}` : base;
 }
 
 export function NotificationBell({ openLead }: { openLead: (id: string) => void }) {
@@ -42,6 +46,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     const ac = new AbortController(); let stop = false;
     const onEv = (ev: string, d: any) => {
       if (ev === 'hello') { setData((x) => (x ? { ...x, unread: d.unread } : x)); return; }
+      if (ev === 'change') { window.dispatchEvent(new CustomEvent('se:data', { detail: d })); return; }
       if (ev !== 'notification') return;
       const n = d.notification as AppNotification;
       if (seen.current?.has(n.id)) return;

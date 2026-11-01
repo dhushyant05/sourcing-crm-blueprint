@@ -62,7 +62,8 @@
     "OUT_FOR_DELIVERY": "Out for delivery",
     "DELIVERED": "Delivered",
     "ACTIVE": "Active",
-    "DISABLED": "Disabled"
+    "DISABLED": "Disabled",
+    "CLOSED": "Closed"
   },
   "common": {
     "close": "Close",
@@ -454,7 +455,10 @@
     "SLA_BREACH": "{{ref}} SLA breached",
     "SLA_BREACH_nobody": "{{ref}} SLA breached",
     "PRIORITY": "{{by}} marked {{ref}} as priority",
-    "PRIORITY_nobody": "{{ref}} is now a priority lead"
+    "PRIORITY_nobody": "{{ref}} is now a priority lead",
+    "payment": "Payment",
+    "FOLLOW_UP": "Follow-up due for {{ref}}",
+    "FOLLOW_UP_nobody": "Follow-up due for {{ref}}"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -714,7 +718,10 @@
     "settings": "SLA hours",
     "settingsHint": "Time each office has to act on a lead it holds. Warning at 80%, admins alerted on breach.",
     "normalH": "Normal lead (hours)",
-    "priorityH": "Priority lead (hours)"
+    "priorityH": "Priority lead (hours)",
+    "col": "SLA",
+    "bigLabel": "{{office}} SLA",
+    "overdueBy": "Overdue by {{t}}"
   },
   "wf": {
     "stageN": "Step {{n}} of {{of}}",
@@ -756,7 +763,29 @@
       "SHIPMENT_UPDATE": "Shipment: {{ship}}",
       "PRIORITY": "Priority {{on}}",
       "SLA_WARN": "SLA 80% warning",
-      "SLA_BREACH": "SLA breached ({{office}})"
+      "SLA_BREACH": "SLA breached ({{office}})",
+      "REOPENED": "Reopened → {{office}}",
+      "COPIED_TO": "Copied to new lead {{ref}}",
+      "CREATED_FROM": "Created from {{ref}}",
+      "CLOSED_PERMANENT": "Closed permanently",
+      "FOLLOW_UP_SET": "Follow-up reminder: {{date}}",
+      "FOLLOW_UP_DUE": "Follow-up due ({{date}})"
     }
+  },
+  "lost": {
+    "title": "Lost lead",
+    "reopenIndia": "Reopen → India owner",
+    "reopenChina": "Reopen → China (fresh quote)",
+    "copy": "Copy to new lead",
+    "close": "Close permanently",
+    "closeConfirm": "Close this lead permanently? Only the super admin can reopen it.",
+    "followUp": "Follow-up reminder",
+    "save": "Save",
+    "closedOn": "Closed permanently {{when}} by {{who}}",
+    "createdFrom": "Created from {{ref}}",
+    "showClosed": "Show closed ({{n}})",
+    "hideClosed": "Hide closed",
+    "onlySa": "Only the super admin can reopen a closed lead.",
+    "copied": "New lead {{ref}} created"
   }
 }

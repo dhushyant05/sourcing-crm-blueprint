@@ -16,12 +16,13 @@ const tone: Record<string, string> = {
   WON: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
   ACCEPTED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
   DELIVERED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
+  CLOSED: 'bg-ink-100 text-ink-600 ring-ink-500/15 dark:bg-ink-800 dark:text-ink-300',
   LOST: 'bg-rose-50 text-rose-700 ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-300',
   AT_PORT: 'bg-amber-50 text-amber-700 ring-amber-600/15 dark:bg-amber-500/10 dark:text-amber-300',
 };
 export const dot: Record<string, string> = {
   NEW: 'bg-sky-500', ASSIGNED: 'bg-violet-500', SOURCING: 'bg-amber-500', QUOTED: 'bg-brand-500',
-  APPROVED: 'bg-teal-500', SHIPPING: 'bg-cyan-500', WON: 'bg-emerald-500', LOST: 'bg-rose-500',
+  APPROVED: 'bg-teal-500', SHIPPING: 'bg-cyan-500', WON: 'bg-emerald-500', LOST: 'bg-rose-500', CLOSED: 'bg-ink-400',
 };
 /** Translated label for a status enum (falls back to "In transit"-style prettifying). */
 export const pretty = (s: string) => i18n.t(`status.${s}`, { defaultValue: s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ') });

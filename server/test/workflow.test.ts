@@ -93,3 +93,29 @@ describe('timeline + SLA + priority', () => {
     expect((await call('sa', 'PUT', '/api/settings/sla', { normalMinutes: 0 })).json().data.normalMinutes).toBe(3);
   });
 });
+
+describe('lost leads', () => {
+  it('reopens, copies, closes permanently (SA-only reopen) and sets follow-ups', async () => {
+    const { app, call, ids } = await setup();
+    const lead = (await call('is', 'POST', '/api/records/leads', { name: 'L', clientName: 'Acme', productInterest: 'Cups', quantity: 50 })).json().data;
+    expect((await call('is', 'POST', `/api/leads/${lead.id}/reopen`, {})).statusCode).toBe(409);
+    await call('is', 'PATCH', `/api/records/leads/${lead.id}`, { status: 'LOST' });
+    expect((await call('cs', 'POST', `/api/leads/${lead.id}/copy`)).statusCode).toBe(403);
+    const r = await call('is', 'POST', `/api/leads/${lead.id}/reopen`, { office: 'CHINA' });
+    expect(r.statusCode).toBe(200); expect(r.json().data.status).toBe('ASSIGNED');
+    await call('is', 'PATCH', `/api/records/leads/${lead.id}`, { status: 'LOST' });
+    const c = await call('is', 'POST', `/api/leads/${lead.id}/copy`);
+    expect(c.statusCode).toBe(201);
+    const nl = c.json().data;
+    expect(nl).toMatchObject({ status: 'NEW', clientName: 'Acme', productInterest: 'Cups', createdFromRef: lead.leadRef ?? null, createdFromId: lead.id });
+    expect(nl.id).not.toBe(lead.id);
+    const k = await call('is', 'POST', `/api/leads/${lead.id}/close-permanent`, { followUp: '2026-11-05' });
+    expect(k.json().data).toMatchObject({ status: 'CLOSED', followUp: '2026-11-05' });
+    expect((await call('is', 'POST', `/api/leads/${lead.id}/reopen`, {})).statusCode).toBe(403);
+    expect((await call('is', 'PATCH', `/api/records/leads/${lead.id}`, { status: 'NEW' })).statusCode).toBe(403);
+    expect((await call('sa', 'POST', `/api/leads/${lead.id}/reopen`, {})).json().data.status).toBe('NEW');
+    const kinds = (await call('sa', 'GET', `/api/leads/${lead.id}/timeline`)).json().data.events.map((e: any) => e.kind);
+    expect(kinds).toEqual(expect.arrayContaining(['REOPENED', 'COPIED_TO', 'CLOSED_PERMANENT']));
+    void ids; await app.close();
+  });
+});

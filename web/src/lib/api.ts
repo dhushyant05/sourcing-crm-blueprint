@@ -73,6 +73,10 @@ export interface Api {
   /** Workflow timeline (role-filtered on the server), progress stage and SLA clock. */
   timeline?(leadId: string): Promise<Timeline>;
   setPriority?(leadId: string, priority: boolean): Promise<{ priority: boolean; sla: Sla | null }>;
+  reopenLead?(leadId: string, office: 'INDIA' | 'CHINA'): Promise<Lead>;
+  copyLead?(leadId: string): Promise<Lead>;
+  closeLeadPermanently?(leadId: string, followUp: string | null, reason?: string): Promise<Lead>;
+  setFollowUp?(leadId: string, date: string | null): Promise<Lead>;
   slaSettings?(): Promise<SlaSettings>;
   saveSlaSettings?(s: SlaSettings): Promise<SlaSettings>;
   slaReport?(days?: number): Promise<SlaReport>;
@@ -142,6 +146,10 @@ export class ServerApi implements Api {
   }
   staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
   timeline(id: string) { return this.req<Timeline>('GET', `/leads/${encodeURIComponent(id)}/timeline`); }
+  async reopenLead(id: string, office: 'INDIA' | 'CHINA') { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/reopen`, { office })).data; }
+  async copyLead(id: string) { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/copy`, {})).data; }
+  async closeLeadPermanently(id: string, followUp: string | null, reason?: string) { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/close-permanent`, { followUp, reason })).data; }
+  async setFollowUp(id: string, date: string | null) { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/follow-up`, { date })).data; }
   setPriority(id: string, priority: boolean) { return this.req<{ priority: boolean; sla: Sla | null }>('POST', `/leads/${encodeURIComponent(id)}/priority`, { priority }); }
   slaSettings() { return this.req<SlaSettings>('GET', '/settings/sla'); }
   saveSlaSettings(s: SlaSettings) { return this.req<SlaSettings>('PUT', '/settings/sla', s); }

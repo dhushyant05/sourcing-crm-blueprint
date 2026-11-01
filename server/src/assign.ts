@@ -9,8 +9,8 @@ import { randomUUID } from 'node:crypto';
 
 export type Office = 'INDIA' | 'CHINA';
 export interface Assignment { leadId: string; raisedBy: string | null; assignedTo: string | null; ownerOffice: Office | null; updatedAt: string }
-export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY';
-export interface Notification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: NotifKind; office: Office; byName: string | null; createdAt: string; read: boolean }
+export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'FOLLOW_UP' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY';
+export interface Notification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: NotifKind; office: Office; byName: string | null; detail?: string | null; createdAt: string; read: boolean }
 
 export class AssignStore {
   constructor(private db: DatabaseSync) {
@@ -21,6 +21,7 @@ export class AssignStore {
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, lead_id TEXT NOT NULL, lead_ref TEXT, product TEXT, kind TEXT NOT NULL,
       office TEXT NOT NULL, by_name TEXT, created_at TEXT NOT NULL, read_at TEXT);
     CREATE INDEX IF NOT EXISTS n_user ON notifications(user_id, created_at);`);
+    try { db.exec('ALTER TABLE notifications ADD COLUMN detail TEXT'); } catch { /* already there */ }
   }
   get(leadId: string): Assignment | null {
     const r = this.db.prepare('SELECT * FROM lead_assignments WHERE lead_id = ?').get(leadId) as any;
@@ -47,13 +48,13 @@ export class AssignStore {
     this.db.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId);
   }
   notify(userIds: string[], n: Omit<Notification, 'id' | 'createdAt' | 'read'>) {
-    const st = this.db.prepare('INSERT INTO notifications (id,user_id,lead_id,lead_ref,product,kind,office,by_name,created_at) VALUES (?,?,?,?,?,?,?,?,?)');
+    const st = this.db.prepare('INSERT INTO notifications (id,user_id,lead_id,lead_ref,product,kind,office,by_name,created_at,detail) VALUES (?,?,?,?,?,?,?,?,?,?)');
     const at = new Date().toISOString();
     for (const u of new Set(userIds)) {
       const id = randomUUID(); const product = n.product?.slice(0, 120) ?? null;
-      st.run(id, u, n.leadId, n.leadRef, product, n.kind, n.office, n.byName, at);
+      st.run(id, u, n.leadId, n.leadRef, product, n.kind, n.office, n.byName, at, n.detail ?? null);
       const subs = this.subs.get(u);
-      if (subs?.size) { const unread = this.unreadOf(u); const ev = { id, leadId: n.leadId, leadRef: n.leadRef, product, kind: n.kind, office: n.office, byName: n.byName, createdAt: at, read: false };
+      if (subs?.size) { const unread = this.unreadOf(u); const ev = { id, leadId: n.leadId, leadRef: n.leadRef, product, kind: n.kind, office: n.office, byName: n.byName, detail: n.detail ?? null, createdAt: at, read: false };
         for (const f of subs) { try { f(ev, unread); } catch { /* ignore a broken stream */ } } }
     }
   }
@@ -67,7 +68,7 @@ export class AssignStore {
   list(userId: string, limit = 50): { data: Notification[]; unread: number } {
     const rows = this.db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?').all(userId, limit) as any[];
     const unread = (this.db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL').get(userId) as any).c as number;
-    return { unread, data: rows.map((r) => ({ id: r.id, leadId: r.lead_id, leadRef: r.lead_ref, product: r.product, kind: r.kind, office: r.office, byName: r.by_name, createdAt: r.created_at, read: !!r.read_at })) };
+    return { unread, data: rows.map((r) => ({ id: r.id, leadId: r.lead_id, leadRef: r.lead_ref, product: r.product, kind: r.kind, office: r.office, byName: r.by_name, detail: r.detail ?? null, createdAt: r.created_at, read: !!r.read_at })) };
   }
   markRead(userId: string, id?: string) {
     const at = new Date().toISOString();
