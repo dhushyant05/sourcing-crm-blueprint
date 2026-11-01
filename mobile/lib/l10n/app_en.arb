@@ -313,5 +313,52 @@
   "enquiryMessage": "Message",
   "contactPerson": "Contact person",
   "openFile": "Open / share",
-  "searchRef": "Search reference, product…"
+  "searchRef": "Search reference, product…",
+  "updateAvailable": "Update available",
+  "updateRequired": "Update required",
+  "updateRequiredHint": "This version is no longer supported. Please update to keep using Source Easy.",
+  "updateVersion": "Version {version} (build {build})",
+  "@updateVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "updateNotes": "What's new",
+  "updateDownloading": "Downloading… {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "updateInstalling": "The installer has opened. Tap Install to finish.",
+  "updatePermissionTitle": "Allow installs from Source Easy",
+  "updatePermissionSteps": "Android needs your permission once:\n1. Tap “Open settings”.\n2. Turn on “Allow from this source”.\n3. Come back and tap “Install”.",
+  "updateOpenSettings": "Open settings",
+  "updateInstall": "Install",
+  "updateNow": "Update now",
+  "updateLater": "Later",
+  "updateCheck": "Check for updates",
+  "updateChecking": "Checking for updates…",
+  "updateNone": "You have the latest version.",
+  "updateCheckFailed": "Couldn't check for updates. Check your connection and try again.",
+  "updateDownloadFailed": "Download failed. Please try again.",
+  "updateChecksumFailed": "The downloaded file is damaged (checksum mismatch). Please try again.",
+  "updateInstalled": "Installed version {version} (build {build})",
+  "@updateInstalled": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  }
 }

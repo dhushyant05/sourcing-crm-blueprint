@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 
 import '../../services/session.dart';
 import '../widgets/language_switch.dart';
+import '../update_dialog.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -50,7 +52,20 @@ class SettingsScreen extends StatelessWidget {
           ),
         const Divider(),
         ListTile(leading: Icon(Icons.logout), title: Text(context.l10n.signOut), onTap: s.signOut),
-        const AboutListTile(applicationName: 'Source Easy', applicationVersion: '1.0.0', icon: Icon(Icons.info_outline)),
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (c, snap) => ListTile(
+            key: const Key('check-updates'),
+            leading: const Icon(Icons.system_update),
+            title: Text(context.l10n.updateCheck),
+            subtitle: snap.hasData ? Text(context.l10n.updateInstalled(snap.data!.version, snap.data!.buildNumber)) : null,
+            onTap: () => checkForUpdatesManually(context),
+          ),
+        ),
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (c, snap) => AboutListTile(applicationName: 'Source Easy', applicationVersion: snap.hasData ? '${snap.data!.version} (${snap.data!.buildNumber})' : '', icon: const Icon(Icons.info_outline)),
+        ),
       ]),
     );
   }

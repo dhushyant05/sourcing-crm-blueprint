@@ -633,4 +633,75 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchRef => 'Search reference, product…';
+
+  @override
+  String get updateAvailable => 'Update available';
+
+  @override
+  String get updateRequired => 'Update required';
+
+  @override
+  String get updateRequiredHint =>
+      'This version is no longer supported. Please update to keep using Source Easy.';
+
+  @override
+  String updateVersion(String version, String build) {
+    return 'Version $version (build $build)';
+  }
+
+  @override
+  String get updateNotes => 'What\'s new';
+
+  @override
+  String updateDownloading(String percent) {
+    return 'Downloading… $percent%';
+  }
+
+  @override
+  String get updateInstalling =>
+      'The installer has opened. Tap Install to finish.';
+
+  @override
+  String get updatePermissionTitle => 'Allow installs from Source Easy';
+
+  @override
+  String get updatePermissionSteps =>
+      'Android needs your permission once:\n1. Tap “Open settings”.\n2. Turn on “Allow from this source”.\n3. Come back and tap “Install”.';
+
+  @override
+  String get updateOpenSettings => 'Open settings';
+
+  @override
+  String get updateInstall => 'Install';
+
+  @override
+  String get updateNow => 'Update now';
+
+  @override
+  String get updateLater => 'Later';
+
+  @override
+  String get updateCheck => 'Check for updates';
+
+  @override
+  String get updateChecking => 'Checking for updates…';
+
+  @override
+  String get updateNone => 'You have the latest version.';
+
+  @override
+  String get updateCheckFailed =>
+      'Couldn\'t check for updates. Check your connection and try again.';
+
+  @override
+  String get updateDownloadFailed => 'Download failed. Please try again.';
+
+  @override
+  String get updateChecksumFailed =>
+      'The downloaded file is damaged (checksum mismatch). Please try again.';
+
+  @override
+  String updateInstalled(String version, String build) {
+    return 'Installed version $version (build $build)';
+  }
 }

@@ -6,6 +6,7 @@ import 'l10n/l10n.dart';
 import 'services/session.dart';
 import 'ui/home_shell.dart';
 import 'ui/screens/login_screen.dart';
+import 'ui/update_dialog.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,7 +105,7 @@ class SourceEasyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       home: Consumer<Session>(builder: (context, s, _) {
         if (s.restoring) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        return s.signedIn ? const HomeShell() : const LoginScreen();
+        return UpdateGate(child: s.signedIn ? const HomeShell() : const LoginScreen());
       }),
     );
   }

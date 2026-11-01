@@ -628,4 +628,71 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get searchRef => '搜索参考编号、产品…';
+
+  @override
+  String get updateAvailable => '有可用更新';
+
+  @override
+  String get updateRequired => '需要更新';
+
+  @override
+  String get updateRequiredHint => '此版本已不再受支持，请更新后继续使用 Source Easy。';
+
+  @override
+  String updateVersion(String version, String build) {
+    return '版本 $version（构建 $build）';
+  }
+
+  @override
+  String get updateNotes => '更新内容';
+
+  @override
+  String updateDownloading(String percent) {
+    return '正在下载… $percent%';
+  }
+
+  @override
+  String get updateInstalling => '安装程序已打开，请点击“安装”完成更新。';
+
+  @override
+  String get updatePermissionTitle => '允许 Source Easy 安装应用';
+
+  @override
+  String get updatePermissionSteps =>
+      '安卓需要您授权一次：\n1. 点击“打开设置”。\n2. 打开“允许来自此来源的应用”。\n3. 返回并点击“安装”。';
+
+  @override
+  String get updateOpenSettings => '打开设置';
+
+  @override
+  String get updateInstall => '安装';
+
+  @override
+  String get updateNow => '立即更新';
+
+  @override
+  String get updateLater => '稍后';
+
+  @override
+  String get updateCheck => '检查更新';
+
+  @override
+  String get updateChecking => '正在检查更新…';
+
+  @override
+  String get updateNone => '已是最新版本。';
+
+  @override
+  String get updateCheckFailed => '无法检查更新，请检查网络后重试。';
+
+  @override
+  String get updateDownloadFailed => '下载失败，请重试。';
+
+  @override
+  String get updateChecksumFailed => '下载的文件已损坏（校验不匹配），请重试。';
+
+  @override
+  String updateInstalled(String version, String build) {
+    return '已安装版本 $version（构建 $build）';
+  }
 }

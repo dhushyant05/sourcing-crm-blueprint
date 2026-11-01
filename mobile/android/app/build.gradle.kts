@@ -63,3 +63,7 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1") // FileProvider for OTA installs
+}

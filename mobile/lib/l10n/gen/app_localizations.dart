@@ -1279,6 +1279,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search reference, product…'**
   String get searchRef;
+
+  /// No description provided for @updateAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Update available'**
+  String get updateAvailable;
+
+  /// No description provided for @updateRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Update required'**
+  String get updateRequired;
+
+  /// No description provided for @updateRequiredHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This version is no longer supported. Please update to keep using Source Easy.'**
+  String get updateRequiredHint;
+
+  /// No description provided for @updateVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} (build {build})'**
+  String updateVersion(String version, String build);
+
+  /// No description provided for @updateNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s new'**
+  String get updateNotes;
+
+  /// No description provided for @updateDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading… {percent}%'**
+  String updateDownloading(String percent);
+
+  /// No description provided for @updateInstalling.
+  ///
+  /// In en, this message translates to:
+  /// **'The installer has opened. Tap Install to finish.'**
+  String get updateInstalling;
+
+  /// No description provided for @updatePermissionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow installs from Source Easy'**
+  String get updatePermissionTitle;
+
+  /// No description provided for @updatePermissionSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'Android needs your permission once:\n1. Tap “Open settings”.\n2. Turn on “Allow from this source”.\n3. Come back and tap “Install”.'**
+  String get updatePermissionSteps;
+
+  /// No description provided for @updateOpenSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get updateOpenSettings;
+
+  /// No description provided for @updateInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Install'**
+  String get updateInstall;
+
+  /// No description provided for @updateNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Update now'**
+  String get updateNow;
+
+  /// No description provided for @updateLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Later'**
+  String get updateLater;
+
+  /// No description provided for @updateCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get updateCheck;
+
+  /// No description provided for @updateChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking for updates…'**
+  String get updateChecking;
+
+  /// No description provided for @updateNone.
+  ///
+  /// In en, this message translates to:
+  /// **'You have the latest version.'**
+  String get updateNone;
+
+  /// No description provided for @updateCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t check for updates. Check your connection and try again.'**
+  String get updateCheckFailed;
+
+  /// No description provided for @updateDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed. Please try again.'**
+  String get updateDownloadFailed;
+
+  /// No description provided for @updateChecksumFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The downloaded file is damaged (checksum mismatch). Please try again.'**
+  String get updateChecksumFailed;
+
+  /// No description provided for @updateInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed version {version} (build {build})'**
+  String updateInstalled(String version, String build);
 }
 
 class _AppLocalizationsDelegate
