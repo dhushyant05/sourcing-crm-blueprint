@@ -290,7 +290,10 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
   const [pct, setPct] = useState<number | null>(null), [err, setErr] = useState<string | null>(null);
   const upload = async (fs: File[]) => {
     setPct(0); setErr(null);
-    try { setList(await api.uploadAttachments(leadId, fs, setPct)); } catch (e) { setErr((e as Error).message); } finally { setPct(null); }
+    try {
+      const as = await api.uploadAttachments(leadId, fs, setPct); setList(as);
+      for (const x of as.filter((y) => !thumbs[y.id] && /^image\/(jpeg|png|webp)$/.test(y.mime))) { const u = await api.attachmentUrl(leadId, x).catch(() => ''); if (u) setThumbs((t0) => ({ ...t0, [x.id]: u })); }
+    } catch (e) { setErr((e as Error).message); } finally { setPct(null); }
   };
   const del = async (a: Attachment) => {
     if (!confirm(t('leads.deleteFile', { name: a.name }))) return;
