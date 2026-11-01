@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Languages, Mail, MapPin, MessageCircle, Phone, Radar, Receipt, Ship, ShieldCheck, Sofa, Shirt, Package, Plug, Wrench, Cog, Gift, CookingPot } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
+import { AppDownloadButton } from './Download';
 import { EnquiryForm } from '../components/EnquiryForm';
 
 const PHONE = '+91 9094124755', TEL = '+919094124755', EMAIL = 'fortuneengineering05@gmail.com';
@@ -25,6 +26,7 @@ export function Landing() {
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitch />
+            <AppDownloadButton className="hidden sm:inline-flex" />
             <a href="/app" data-testid="staff-login" className="whitespace-nowrap inline-flex min-h-[36px] whitespace-nowrap items-center rounded-lg bg-white px-3 text-sm font-medium text-ink-900 transition hover:bg-brand-50">{l('staffLogin')}</a>
           </div>
         </div>
@@ -44,6 +46,7 @@ export function Landing() {
           <div className="mt-9 flex flex-wrap gap-3">
             <a href="#contact" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-6 font-medium shadow-lg shadow-brand-600/30 transition hover:brightness-110">{l('hero.cta')}<ArrowRight size={18} /></a>
             <a href={WA} target="_blank" rel="noreferrer" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-6 font-medium transition hover:bg-white/10"><MessageCircle size={18} />{l('hero.whatsapp')}</a>
+            <AppDownloadButton className="min-h-[48px] rounded-xl px-6 text-base" />
           </div>
         </div>
       </section>
@@ -105,7 +108,7 @@ export function Landing() {
         </div>
       </Section>
 
-      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-4 h-16 w-auto object-contain" />{t('landing.footer', { year: new Date().getFullYear() })}</footer>
+      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-4 h-16 w-auto object-contain" /><div className="mb-4"><AppDownloadButton variant="outline" /></div>{t('landing.footer', { year: new Date().getFullYear() })}</footer>
     </div>
   );
 }

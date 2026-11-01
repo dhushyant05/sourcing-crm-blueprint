@@ -1,0 +1,19 @@
+# Source Easy website + staff app + API (Fastify on :8080) with the Android app download.
+# The downloads folder is a persistent host volume: /opt/sourceeasy/downloads
+# (mount it into the API container as DOWNLOADS_DIR=/opt/sourceeasy/downloads, read-only is fine).
+sourceeasy.example.com {
+	encode zstd gzip
+
+	# Option A (default): the API serves /download/* itself with the right headers. Nothing extra needed.
+	# Option B: let Caddy serve the APK straight from the volume (uncomment if Caddy can see the folder):
+	# handle /download/source-easy.apk {
+	# 	root * /opt/sourceeasy/downloads
+	# 	rewrite * /source-easy.apk
+	# 	header Content-Type application/vnd.android.package-archive
+	# 	header Content-Disposition "attachment; filename=\"source-easy.apk\""
+	# 	header Cache-Control no-cache
+	# 	file_server
+	# }
+
+	reverse_proxy 127.0.0.1:8080
+}

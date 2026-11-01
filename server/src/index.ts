@@ -22,6 +22,7 @@ if (await users.bootstrap(process.env.SUPER_ADMIN_EMAIL, process.env.SUPER_ADMIN
 const app = await buildApp({
   twenty: new TwentyRest(env('TWENTY_URL', 'http://localhost:3000'), env('TWENTY_API_KEY')),
   users, jwtSecret: secret, jwtTtl: process.env.JWT_TTL,
+  downloadsDir: process.env.DOWNLOADS_DIR ?? '/opt/sourceeasy/downloads',
   webDir: process.env.WEB_DIR ?? new URL('../../web/dist', import.meta.url).pathname,
   backupLinks: process.env.BACKUP_LINKS ? JSON.parse(process.env.BACKUP_LINKS) : [],
   uploadsDir: env('UPLOADS_DIR', './data/uploads'),

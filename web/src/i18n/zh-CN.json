@@ -334,5 +334,28 @@
       "dcity": "交货城市"
     },
     "footer": "© {{year}} Source Easy · Fortune Engineering，金奈"
+  },
+  "download": {
+    "button": "下载安卓应用",
+    "back": "返回 Source Easy",
+    "title": "Source Easy 安卓版",
+    "sub": "在手机上处理线索、报价、发货和聊天——离线可用，联网后自动同步。供印度和中国的 Source Easy 员工使用。",
+    "version": "版本",
+    "size": "大小",
+    "published": "发布日期",
+    "requires": "系统要求",
+    "cta": "下载 APK",
+    "notYet": "安卓应用尚未发布，请稍后再来。",
+    "howTitle": "安装步骤",
+    "steps": [
+      "在安卓手机上点击“下载 APK”（或在电脑上用手机扫描二维码）。",
+      "在通知栏或“下载”文件夹中打开 source-easy.apk。",
+      "如系统提示，请允许浏览器或文件管理器“安装未知应用”（设置 → 应用 → 特殊应用权限 → 安装未知应用）。",
+      "点击“安装”，然后打开 Source Easy，用员工邮箱和密码登录。",
+      "以后更新时，从本页下载新的 APK 直接覆盖安装即可，数据会保留。"
+    ],
+    "safety": "请仅从 Source Easy 官方网站的本页面下载应用。由于不是来自 Play 商店，安卓可能会提示风险，这是正常的。",
+    "scan": "用手机扫码",
+    "scanHint": "在安卓手机上打开本页面"
   }
 }

@@ -28,6 +28,6 @@ new UploadStore(uploadsDir).save(lead.id, [
 ]);
 const refs = new RefCounter();
 await backfill(twenty, refs, false); // same path as production backfill: SE-YYMM-NNNN on leads + related records
-const app = await buildApp({ twenty, users, uploadsDir, refs, jwtSecret: 'd'.repeat(40), webDir: new URL('../../web/dist', import.meta.url).pathname });
+const app = await buildApp({ twenty, users, uploadsDir, refs, downloadsDir: process.env.DOWNLOADS_DIR, jwtSecret: 'd'.repeat(40), webDir: new URL('../../web/dist', import.meta.url).pathname });
 await app.listen({ port: Number(process.env.PORT ?? 8099), host: '127.0.0.1' });
 console.log('demo server ready');

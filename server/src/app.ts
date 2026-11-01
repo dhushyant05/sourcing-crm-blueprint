@@ -1,7 +1,8 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import jwt from 'jsonwebtoken';
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
@@ -21,6 +22,8 @@ export interface AppOptions {
   logger?: boolean;
   /** Private folder for enquiry attachments (default: in-memory temp dir for tests). */
   uploadsDir?: string;
+  /** Persistent folder holding source-easy.apk + version.json (published by infra/app-servers/publish-apk.sh). */
+  downloadsDir?: string;
   /** Lead reference counter (SE-YYMM-NNNN). Default: in-memory (tests). */
   refs?: RefCounter;
 }
@@ -273,6 +276,30 @@ export async function buildApp(o: AppOptions) {
       return { ok: true };
     });
   });
+
+  // Public Android app download. Files live on a persistent volume, not in the web build.
+  const APK = 'source-easy.apk';
+  if (o.downloadsDir) {
+    const dir = o.downloadsDir;
+    app.get('/download/version.json', async (_req, reply) => {
+      const f = join(dir, 'version.json');
+      if (!existsSync(f)) return reply.code(404).send({ error: 'No app published yet' });
+      const v = JSON.parse(readFileSync(f, 'utf8'));
+      const apk = join(dir, APK);
+      return reply.header('cache-control', 'no-cache').send({ ...v, size: existsSync(apk) ? statSync(apk).size : v.size ?? null, url: `/download/${APK}` });
+    });
+    app.get(`/download/${APK}`, async (_req, reply) => {
+      const f = join(dir, APK);
+      if (!existsSync(f)) return reply.code(404).send({ error: 'No app published yet' });
+      return reply
+        .header('content-type', 'application/vnd.android.package-archive')
+        .header('content-disposition', `attachment; filename="${APK}"`)
+        .header('content-length', statSync(f).size)
+        .header('cache-control', 'no-cache')
+        .header('x-content-type-options', 'nosniff')
+        .send(createReadStream(f));
+    });
+  }
 
   app.all('/api/*', async (_r, reply) => reply.code(404).send({ error: 'Not found' }));
 

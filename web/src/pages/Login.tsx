@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
 import { login } from '../lib/api';
 import { LanguageSwitch } from '../components/LanguageSwitch';
+import { AppDownloadButton } from './Download';
 import { deviceLang, LANGS, setLang, type Lang } from '../i18n';
 
 export function Login() {
@@ -40,6 +41,7 @@ export function Login() {
           <button disabled={busy} className="btn-primary mt-6 w-full justify-center py-2.5 disabled:opacity-60">{busy ? t('login.signingIn') : t('login.title')} <ArrowRight size={16} /></button>
           <div className="my-6 flex items-center gap-3 text-xs text-ink-400"><span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" />{t('login.or')}<span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" /></div>
           <button type="button" className="btn-outline w-full justify-center py-2.5" onClick={() => signIn({ name: 'Dhushyanth Kumar', email: 'demo@sourceeasy.app', role: 'SUPER_ADMIN', demo: true })}>{t('login.demo')}</button>
+          <div className="mt-6 text-center"><AppDownloadButton variant="outline" /></div>
         </form>
       </div>
     </div>

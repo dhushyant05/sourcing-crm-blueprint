@@ -334,5 +334,28 @@
       "dcity": "Delivery city"
     },
     "footer": "© {{year}} Source Easy · Fortune Engineering, Chennai"
+  },
+  "download": {
+    "button": "Download Android app",
+    "back": "Back to Source Easy",
+    "title": "Source Easy for Android",
+    "sub": "Leads, quotations, shipments and chat on your phone — works offline and syncs when you are back online. For Source Easy staff in India and China.",
+    "version": "Version",
+    "size": "Size",
+    "published": "Published",
+    "requires": "Requires",
+    "cta": "Download APK",
+    "notYet": "The Android app has not been published yet. Please check back soon.",
+    "howTitle": "How to install",
+    "steps": [
+      "Tap “Download APK” on your Android phone (or scan the QR code from your computer).",
+      "Open the downloaded file source-easy.apk from the notification or your Downloads folder.",
+      "If Android asks, allow your browser or Files app to “Install unknown apps” (Settings → Apps → Special access → Install unknown apps).",
+      "Tap Install, then open Source Easy and sign in with your staff email and password.",
+      "To update later, download the new APK from this page and install it over the old one — your data stays."
+    ],
+    "safety": "Only download the app from this page on the official Source Easy site. Android may warn because the app is not from the Play Store; that is expected.",
+    "scan": "Scan with your phone",
+    "scanHint": "Opens this page on your Android phone"
   }
 }
