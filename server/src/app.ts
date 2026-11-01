@@ -309,13 +309,39 @@ export async function buildApp(o: AppOptions) {
       } catch (e) { req.log.warn(e, 'team member sync failed'); }
       return reply.code(201).send({ data: u });
     });
-    api.patch<{ Params: { id: string }; Body: { name?: string; role?: Role; active?: boolean } }>('/api/users/:id', async (req, reply) => {
+    // Losing the last active super admin would lock everyone out of user management.
+    const lastSuper = (t: User, next: { role?: Role; active?: boolean } | 'delete') =>
+      t.role === 'SUPER_ADMIN' && t.active && (next === 'delete' || (next.role && next.role !== 'SUPER_ADMIN') || next.active === false) &&
+      o.users.activeSuperAdmins() <= 1;
+    const syncTeamMember = async (req: { log: { warn: (...a: unknown[]) => void } }, oldEmail: string, u: User) => {
+      try {
+        const tm = await o.twenty.list('teamMembers', { email: oldEmail });
+        if (tm[0]) await o.twenty.update('teamMembers', String(tm[0].id), { name: u.name, email: u.email, role: u.role });
+      } catch (e) { req.log.warn(e, 'team member sync failed'); }
+    };
+    api.patch<{ Params: { id: string }; Body: { name?: string; email?: string; role?: Role; active?: boolean } }>('/api/users/:id', async (req, reply) => {
       const t = o.users.byId(req.params.id);
       if (!t) return reply.code(404).send({ error: 'Not found' });
+      const b = req.body ?? {};
       assertManage(req.user!, t.role);
-      if (req.body?.role) assertManage(req.user!, req.body.role);
-      if (t.id === req.user!.id && (req.body?.role || req.body?.active === false)) throw new Forbidden('You cannot change your own role or disable yourself');
-      try { return { data: o.users.update(t.id, req.body ?? {}) }; } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+      if (b.role) { if (!isRole(b.role)) return reply.code(400).send({ error: 'Invalid role' }); assertManage(req.user!, b.role); }
+      if (b.email !== undefined && b.email.trim().toLowerCase() !== t.email && req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can change a login email');
+      if (t.id === req.user!.id && ((b.role && b.role !== t.role) || b.active === false)) throw new Forbidden('You cannot change your own role or disable yourself');
+      if (lastSuper(t, b)) return reply.code(409).send({ error: 'This is the last active super admin', code: 'last_super_admin' });
+      let u: User | null;
+      try { u = o.users.update(t.id, { name: b.name, email: b.email, role: b.role, active: b.active }); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+      if (u && (u.name !== t.name || u.email !== t.email || u.role !== t.role)) await syncTeamMember(req, t.email, u);
+      return { data: u };
+    });
+    // Hard delete (super admin only). Leads/quotes keep their references; only the login goes.
+    api.delete<{ Params: { id: string } }>('/api/users/:id', async (req, reply) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can remove staff');
+      const t = o.users.byId(req.params.id);
+      if (!t) return reply.code(404).send({ error: 'Not found' });
+      if (t.id === req.user!.id) throw new Forbidden('You cannot remove yourself');
+      if (lastSuper(t, 'delete')) return reply.code(409).send({ error: 'This is the last active super admin', code: 'last_super_admin' });
+      o.users.remove(t.id);
+      return reply.code(204).send();
     });
     api.post<{ Params: { id: string }; Body: { password: string } }>('/api/users/:id/password', async (req, reply) => {
       const t = o.users.byId(req.params.id);

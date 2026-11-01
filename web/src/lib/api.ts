@@ -26,6 +26,9 @@ export interface Api {
   createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
   resetPassword(id: string, password: string): Promise<void>;
   setUserActive(id: string, active: boolean): Promise<void>;
+  updateUser(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }): Promise<void>;
+  /** Super admin only: hard delete (leads keep their references). */
+  deleteUser(id: string): Promise<void>;
   backups(): Promise<BackupLink[]>;
   /** Enquiry photos/documents of a lead (India side + super admin). */
   attachments(leadId: string): Promise<Attachment[]>;
@@ -146,6 +149,8 @@ export class ServerApi implements Api {
   async createUser(u: { email: string; name: string; role: Role; password: string }) { await this.req('POST', '/users', u); }
   async resetPassword(id: string, password: string) { await this.req('POST', `/users/${id}/password`, { password }); }
   async setUserActive(id: string, active: boolean) { await this.req('PATCH', `/users/${id}`, { active }); }
+  async updateUser(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }) { await this.req('PATCH', `/users/${id}`, patch); }
+  async deleteUser(id: string) { await this.req('DELETE', `/users/${id}`); }
   backups() { return this.req<BackupLink[]>('GET', '/backups'); }
 }
 
@@ -181,5 +186,7 @@ export class DemoApi implements Api {
   }
   async resetPassword() {}
   async setUserActive(id: string, active: boolean) { const u = demo.users.find((x) => x.id === id); if (u) u.active = active; }
+  async updateUser(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }) { const u = demo.users.find((x) => x.id === id); if (u) Object.assign(u, patch); }
+  async deleteUser(id: string) { const i = demo.users.findIndex((x) => x.id === id); if (i >= 0) demo.users.splice(i, 1); }
   backups() { return this.wait([{ label: 'Backup browser (demo)', url: 'https://backups.example.com' }]); }
 }

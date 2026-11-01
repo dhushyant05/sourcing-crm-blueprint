@@ -54,13 +54,29 @@ export class UserStore {
     this.db.prepare('UPDATE users SET language = ? WHERE id = ?').run(language, id);
     return this.byId(id)!;
   }
-  update(id: string, patch: { name?: string; role?: Role; active?: boolean }) {
+  update(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }) {
     const u = this.byId(id); if (!u) return null;
     if (patch.role && !isRole(patch.role)) throw new Error('Invalid role');
-    this.db.prepare('UPDATE users SET name = ?, role = ?, active = ?, token_version = token_version + ? WHERE id = ?')
-      .run(patch.name ?? u.name, patch.role ?? u.role, (patch.active ?? u.active) ? 1 : 0, patch.role || patch.active === false ? 1 : 0, id);
+    const name = patch.name === undefined ? u.name : patch.name.trim().slice(0, 120);
+    if (!name) throw new Error('Name is required');
+    let email = u.email;
+    if (patch.email !== undefined) {
+      email = patch.email.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw new Error('Invalid email');
+      const other = this.row(email);
+      if (other && other.id !== id) throw new Error('A user with that email already exists');
+    }
+    const role = patch.role ?? u.role, active = patch.active ?? u.active;
+    // Any change to who/what this login is revokes its existing sessions.
+    const revoke = role !== u.role || (!active && u.active) || email !== u.email ? 1 : 0;
+    this.db.prepare('UPDATE users SET name = ?, email = ?, role = ?, active = ?, token_version = token_version + ? WHERE id = ?')
+      .run(name, email, role, active ? 1 : 0, revoke, id);
     return this.byId(id);
   }
+  /** Active super admins (used to never lose the last one). */
+  activeSuperAdmins() { return (this.db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'SUPER_ADMIN' AND active = 1").get() as { n: number }).n; }
+  /** Hard delete. Sessions die immediately because the auth check looks the user up on every request. */
+  remove(id: string) { return Number(this.db.prepare('DELETE FROM users WHERE id = ?').run(id).changes) > 0; }
   /** Create the super admin from env on first boot (never overwrites an existing password). */
   async bootstrap(email?: string, password?: string, name = 'Super Admin') {
     if (!email || !password || this.row(email)) return false;
