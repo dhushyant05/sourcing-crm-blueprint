@@ -262,29 +262,29 @@
       "contact": "Contact"
     },
     "hero": {
-      "badge": "India ⇄ China sourcing desk",
+      "badge": "China & global sourcing desk",
       "title": "Source products from China,",
-      "titleAccent": "delivered to your business in India.",
-      "sub": "Tell us what you need. Our team in China finds and checks factories, sends you a clear quotation, and manages shipping and customs all the way to your door.",
+      "titleAccent": "delivered to your business in India and across the globe.",
+      "sub": "Tell us what you need. We find and check factories in China and worldwide, send a clear quotation, and manage shipping and customs to your door — wherever you are.",
       "cta": "Send an enquiry",
       "cta2": "See how it works",
       "whatsapp": "WhatsApp us"
     },
     "how": {
       "title": "How it works",
-      "sub": "Four clear steps from idea to container.",
+      "sub": "Four clear steps from idea to delivery.",
       "s1": "Share your request",
       "d1": "Product, quantity, target price and photos — by form, phone or WhatsApp.",
-      "s2": "Sourcing in China",
-      "d2": "Our China team shortlists verified factories, compares offers and arranges samples.",
+      "s2": "Sourcing in China & beyond",
+      "d2": "Our team shortlists verified factories in China and other countries, compares offers and arranges samples.",
       "s3": "Clear quotation",
       "d3": "One quotation with price, MOQ, lead time and validity — in USD, RMB or INR as agreed.",
-      "s4": "Shipping to India",
-      "d4": "Inspection, freight booking, customs clearance and tracking until delivery."
+      "s4": "Delivery worldwide",
+      "d4": "Inspection, freight booking, customs clearance and tracking until delivery — in India or anywhere in the world."
     },
     "svc": {
       "title": "Why work with us",
-      "sub": "One team on both sides of the border.",
+      "sub": "One team, from factory to your door.",
       "a": "Factory verification",
       "ad": "Visits and checks before you commit.",
       "b": "Samples & quality inspection",
