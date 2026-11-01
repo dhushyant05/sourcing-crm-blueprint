@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/session.dart';
+import '../widgets/language_switch.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,6 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Scaffold(
+      appBar: AppBar(actions: const [LanguageSwitch()]),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -48,24 +52,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 Icon(Icons.hub, size: 64, color: t.colorScheme.primary),
                 const SizedBox(height: 8),
                 Text('Source Easy', textAlign: TextAlign.center, style: t.textTheme.headlineMedium),
-                Text('India ⇄ China sourcing', textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
+                Text(context.l10n.indiaChinaSourcing, textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
                 const SizedBox(height: 32),
                 TextField(controller: _email, keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email], decoration: const InputDecoration(labelText: 'Email')),
+                    autofillHints: [AutofillHints.email], decoration: InputDecoration(labelText: context.l10n.email)),
                 const SizedBox(height: 12),
                 TextField(controller: _pw, obscureText: true, autofillHints: const [AutofillHints.password],
-                    decoration: const InputDecoration(labelText: 'Password'), onSubmitted: (_) => _submit()),
+                    decoration: InputDecoration(labelText: context.l10n.password), onSubmitted: (_) => _submit()),
                 TextButton(onPressed: () => setState(() => _advanced = !_advanced),
-                    child: Text(_advanced ? 'Hide server' : 'Server settings')),
+                    child: Text(_advanced ? context.l10n.hideServer : context.l10n.serverSettings)),
                 if (_advanced)
                   TextField(controller: _url, keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(labelText: 'Source Easy server URL')),
+                      decoration: InputDecoration(labelText: context.l10n.sourceEasyServerURL)),
                 if (_error != null)
                   Padding(padding: const EdgeInsets.only(top: 12),
                       child: Text(_error!, style: TextStyle(color: t.colorScheme.error))),
                 const SizedBox(height: 20),
                 FilledButton(onPressed: _busy ? null : _submit,
-                    child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in')),
+                    child: _busy ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(context.l10n.signIn)),
               ]),
             ),
           ),

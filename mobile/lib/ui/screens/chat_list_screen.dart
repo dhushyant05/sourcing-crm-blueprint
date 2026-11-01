@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
 import '../../services/session.dart';
+import '../widgets/language_switch.dart';
 import '../widgets/common.dart';
 import 'chat_screen.dart';
 
@@ -27,10 +30,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
     return Scaffold(
-      appBar: AppBar(title: const Text('India ⇄ China chat')),
+      appBar: AppBar(title: Text(context.l10n.indiaChinaChat), actions: const [LanguageSwitch()]),
       body: s.chat == null
-          ? const Center(child: Padding(padding: EdgeInsets.all(24),
-              child: Text('Add your Chatwoot access token in Settings to use chat.', textAlign: TextAlign.center)))
+          ? Center(child: Padding(padding: EdgeInsets.all(24),
+              child: Text(context.l10n.addYourChatwootAccessTokenIn, textAlign: TextAlign.center)))
           : RefreshIndicator(
               onRefresh: () async => _reload(),
               child: AsyncView<List<SourcingRequest>>(
@@ -41,7 +44,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       .map((r) => ListTile(
                             leading: Icon(r.chatwootConversationId != null ? Icons.forum : Icons.add_comment_outlined),
                             title: Text(r.productDescription ?? r.name),
-                            subtitle: Text(r.chatwootConversationId != null ? 'Thread #${r.chatwootConversationId}' : 'No thread yet'),
+                            subtitle: Text(r.chatwootConversationId != null ? 'Thread #${r.chatwootConversationId}' : context.l10n.noThreadYet),
                             trailing: r.status != null ? StatusChip(r.status!) : null,
                             onTap: () async {
                               await Navigator.push(c, MaterialPageRoute(builder: (_) => ChatScreen(request: r)));

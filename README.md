@@ -94,10 +94,10 @@ the matching Twenty **Team Member** (same email) so records can be assigned to t
 
 | Role | Sees |
 |---|---|
-| `INDIA_STAFF` | Customers and leads, and quotes in INR only (admin-set rate). No supplier identity or raw costs. |
-| `CHINA_STAFF` | Suppliers and RMB/USD costs. Only leads assigned to China, with customer name/contact removed. |
+| `INDIA_STAFF` | Customers and leads, and client prices in the currency they were entered. No supplier identity or raw supplier costs. |
+| `CHINA_STAFF` | Suppliers and supplier costs (in their entered currency). Only leads assigned to China, with customer name/contact removed. |
 | `INDIA_ADMIN` / `CHINA_ADMIN` | Their own side, plus creating users / resetting passwords for their side. |
-| `SUPER_ADMIN` | Everything, including exchange rates and backup links. |
+| `SUPER_ADMIN` | Everything, including backup links. |
 
 **This separation is enforced in the server**: records and fields a role may not see are removed before the response leaves
 the VPS, and writes are checked per role and field (`server/src/policy.ts`, tested in `server/test/roles.test.ts`). Because
@@ -107,19 +107,19 @@ Twenty is not exposed, staff have no other way to reach the data. Keep the numbe
 |---|---|
 | `POST /api/auth/login` `{email,password}` | → `{token,user}` (5 failures → 10 min lockout per email+IP) |
 | `GET /api/me`, `POST /api/me/password` | current user / change own password |
-| `GET /api/records/:plural?field=value` | `leads, sourcingRequests, suppliers, quotations, clientApprovals, shippingOrders, exchangeRates, teamMembers` (filtered) |
+| `GET /api/records/:plural?field=value` | `leads, sourcingRequests, suppliers, quotations, clientApprovals, shippingOrders, teamMembers` (filtered) |
 | `GET/PATCH /api/records/:plural/:id`, `POST /api/records/:plural` | role-checked read/write |
 | `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password` | admins, own side only |
 | `GET /api/backups` | super admin only (`BACKUP_LINKS`) |
 
-### Exchange rates
+### Currencies and language
 
-Prices are stored **as quoted** (RMB or USD). India views are converted to INR.
+There is **no currency conversion**. Each amount is stored and shown in the currency it was entered in: USD (`$`), RMB/CNY (`¥`) or INR (`₹`).
+Every price form (web and Android) has a currency picker. A quotation has the supplier cost (`unitCost`, `totalCost`, `currency`, China side only)
+and the client price (`clientUnitPrice`, `clientCurrency`, India side). Totals are never summed across currencies.
 
-- The super admin sets the rate (web or app *Settings → Exchange rates*). Each change is saved as a new `Exchange Rate` row with `isManualOverride = true`. The server converts India's views to INR.
-- The newest rate wins. On the same day, a manual override beats an automatic rate.
-- Each quotation snapshots the rate it used (`exchangeRateUsed`), so old quotes don't change when the rate does.
-- Until a rate exists, the app falls back to 11.8 INR/RMB and 84 INR/USD.
+The UI is available in English and Simplified Chinese (switch in the top-right corner, also on sign-in). The choice is saved on the device
+and, when signed in, on the user (`PATCH /api/me {language}`). Data values (names, products, notes) are not translated.
 
 ---
 
@@ -212,7 +212,7 @@ P
 - Sourcing request form
 - Quotation:
   - RMB / USD / INR toggle, limited by role
-  - The client price is set in INR
+  - The client price is set with its own currency picker (USD / RMB / INR)
   - **PDF quote → Android share sheet → WhatsApp**, with no WhatsApp API
 - Client approval: accepting a quote creates a shipping order
 - Shipping tracker: stage stepper, map of the current location, and editing for China
@@ -220,7 +220,7 @@ P
 - Settings:
   - profile and role
   - sync queue with "Sync now"
-  - exchange rates (admins)
+  - language (English / 简体中文; also top-right on every screen)
   - Chatwoot configuration
   - backups note (super admin)
   - sign out
@@ -235,7 +235,8 @@ P
 ### Code layout
 
 ```
-lib/core/       roles.dart (Role, Permissions), currency.dart (RateTable, formatting)
+lib/core/       roles.dart (Role, Permissions), currency.dart (USD/RMB/INR formatting, no conversion)
+lib/l10n/       app_en.arb, app_zh.arb (gen-l10n; English / 简体中文)
 lib/data/api/   twenty_client.dart (GraphQL), twenty_auth.dart, chatwoot_client.dart
 lib/data/       models/, offline/offline_queue.dart, repository.dart (the single data API for the UI)
 lib/services/   session.dart (login, config, sync), quote_pdf.dart

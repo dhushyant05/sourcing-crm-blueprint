@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
@@ -42,7 +44,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
       }
       await s.refreshPending();
       if (!mounted) return;
-      showWriteResult(context, r, approved ? 'Approval' : 'Rejection');
+      showWriteResult(context, r, approved ? context.l10n.approval : 'Rejection');
       Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -55,7 +57,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
   Widget build(BuildContext context) {
     final p = context.watch<Session>().perms;
     return Scaffold(
-      appBar: AppBar(title: const Text('Client approval')),
+      appBar: AppBar(title: Text(context.l10n.clientApproval)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text(widget.lead.clientName ?? widget.lead.name, style: Theme.of(context).textTheme.titleLarge),
         Text(widget.quotation.name),
@@ -74,7 +76,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
         ),
         if (p.canRecordApproval) ...[
           const SizedBox(height: 16),
-          TextField(controller: _notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes from client')),
+          TextField(controller: _notes, maxLines: 3, decoration: InputDecoration(labelText: context.l10n.notesFromClient)),
           const SizedBox(height: 16),
           Row(children: [
             Expanded(
@@ -82,7 +84,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
                 style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
                 onPressed: _busy ? null : () => _decide(false),
                 icon: const Icon(Icons.close),
-                label: const Text('Reject'),
+                label: Text(context.l10n.reject),
               ),
             ),
             const SizedBox(width: 12),
@@ -90,7 +92,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
               child: FilledButton.icon(
                 onPressed: _busy ? null : () => _decide(true),
                 icon: const Icon(Icons.check),
-                label: const Text('Accept'),
+                label: Text(context.l10n.accept),
               ),
             ),
           ]),

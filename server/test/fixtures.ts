@@ -23,20 +23,16 @@ export function fixtures(): Record<string, Rec[]> {
         notes: 'MOQ 500', sourcingRequestId: 'sr-1' },
     ],
     quotations: [
-      { id: 'q-1', name: 'QT-1', unitCost: 10, totalCost: 12000, currency: 'CNY', exchangeRateUsed: 12, inrEquivalent: 144000,
-        clientUnitPriceInr: 150, validityDate: '2026-11-30', sourcingRequestId: 'sr-1', supplierId: 'sup-1',
+      { id: 'q-1', name: 'QT-1', unitCost: 10, totalCost: 12000, currency: 'CNY',
+        clientUnitPrice: 150, clientCurrency: 'INR', validityDate: '2026-11-30', sourcingRequestId: 'sr-1', supplierId: 'sup-1',
         pdfAttachment: { primaryLinkUrl: 'https://x/q.pdf' }, createdAt: '2026-10-05' },
-      { id: 'q-2', name: 'QT-2', unitCost: 2, totalCost: 200, currency: 'USD', sourcingRequestId: 'sr-1', supplierId: 'sup-1', createdAt: '2026-10-06' },
+      { id: 'q-2', name: 'QT-2', unitCost: 2, totalCost: 200, currency: 'USD', clientUnitPrice: 2.6, clientCurrency: 'USD', sourcingRequestId: 'sr-1', supplierId: 'sup-1', createdAt: '2026-10-06' },
     ],
     clientApprovals: [
       { id: 'ap-1', name: 'Approved', status: 'APPROVED', approver: 'Mr Mehta', notes: 'ok via phone', decidedAt: '2026-10-07', quotationId: 'q-1' },
     ],
     shippingOrders: [
       { id: 'so-1', name: 'SO-1', forwarder: 'Maersk', trackingNumber: 'MAEU1', shipmentStatus: 'IN_TRANSIT', leadId: 'lead-china-1', quotationId: 'q-1' },
-    ],
-    exchangeRates: [
-      { id: 'r-1', name: 'CNY_INR', currencyPair: 'CNY_INR', rate: 11.9, isManualOverride: true, effectiveDate: '2026-10-30', setBy: 'Dhushyanth' },
-      { id: 'r-2', name: 'USD_INR', currencyPair: 'USD_INR', rate: 84, isManualOverride: true, effectiveDate: '2026-10-30' },
     ],
     teamMembers: [
       { id: 'tm-1', name: 'Asha', email: 'asha@se.in', role: 'INDIA_STAFF', chatwootAgentId: 3 },

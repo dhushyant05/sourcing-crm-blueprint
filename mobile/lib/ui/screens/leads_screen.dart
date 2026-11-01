@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
 import '../../services/session.dart';
+import '../widgets/language_switch.dart';
 import '../widgets/common.dart';
 import 'dashboard_screen.dart' show pipelineStages;
 import 'lead_detail_screen.dart';
@@ -32,11 +35,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final s = context.watch<Session>();
     final showCustomer = s.perms.canSeeCustomerDetails;
     return Scaffold(
-      appBar: AppBar(title: const Text('Leads')),
+      appBar: AppBar(title: Text(context.l10n.leads), actions: const [LanguageSwitch()]),
       floatingActionButton: s.perms.canCreateLead
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.add),
-              label: const Text('New lead'),
+              label: Text(context.l10n.newLead),
               onPressed: () async {
                 await Navigator.push(context, MaterialPageRoute(builder: (_) => const LeadFormScreen()));
                 await s.refreshPending();
@@ -58,9 +61,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             PopupMenuButton<String?>(
               initialValue: _status,
               onSelected: (v) { _status = v; _reload(); },
-              itemBuilder: (_) => [const PopupMenuItem(value: null, child: Text('All statuses')),
+              itemBuilder: (_) => [PopupMenuItem(value: null, child: Text(context.l10n.allStatuses)),
                 ...pipelineStages.map((st) => PopupMenuItem(value: st, child: Text(pretty(st))))],
-              child: Chip(avatar: const Icon(Icons.filter_list, size: 18), label: Text(_status == null ? 'Status' : pretty(_status))),
+              child: Chip(avatar: const Icon(Icons.filter_list, size: 18), label: Text(_status == null ? context.l10n.status : pretty(_status))),
             ),
           ]),
         ),
@@ -71,7 +74,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
               future: _f,
               onRetry: _reload,
               builder: (c, leads) => leads.isEmpty
-                  ? ListView(children: const [SizedBox(height: 120), Center(child: Text('No leads'))])
+                  ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noLeads))])
                   : ListView.separated(
                       itemCount: leads.length,
                       separatorBuilder: (_, _) => const Divider(height: 1),

@@ -137,24 +137,25 @@ class Quotation {
     required this.currency,
     this.totalCost,
     this.quantity,
-    this.exchangeRateUsed,
-    this.inrEquivalent,
-    this.clientUnitPriceInr,
+    this.clientUnitPrice,
+    this.clientCurrency,
     this.validityDate,
     this.sourcingRequestId,
     this.supplierName,
   });
   final String id, name;
   final double unitCost;
-  final String currency; // CNY or USD as quoted
-  final double? totalCost, quantity, exchangeRateUsed, inrEquivalent, clientUnitPriceInr;
+  /// Supplier cost currency (USD/CNY/INR) as entered by China. Never converted.
+  final String currency;
+  final double? totalCost, quantity, clientUnitPrice;
+  /// Client price currency as entered by India. Independent of [currency].
+  final String? clientCurrency;
   final DateTime? validityDate;
   final String? sourcingRequestId, supplierName;
 
-  static const gqlFields = '''id name unitCost totalCost currency exchangeRateUsed inrEquivalent
-    clientUnitPriceInr validityDate sourcingRequestId''';
-  static const gqlFieldsIndia = '''id name currency inrEquivalent clientUnitPriceInr
-    exchangeRateUsed validityDate sourcingRequestId''';
+  static const gqlFields = '''id name unitCost totalCost currency clientUnitPrice clientCurrency
+    validityDate sourcingRequestId''';
+  static const gqlFieldsIndia = '''id name clientUnitPrice clientCurrency validityDate sourcingRequestId''';
 
   double get effectiveQuantity =>
       quantity ?? (totalCost != null && unitCost > 0 ? totalCost! / unitCost : 1);
@@ -165,9 +166,8 @@ class Quotation {
         unitCost: _num(j['unitCost']) ?? 0,
         currency: (j['currency'] as String?) ?? 'CNY',
         totalCost: _num(j['totalCost']),
-        exchangeRateUsed: _num(j['exchangeRateUsed']),
-        inrEquivalent: _num(j['inrEquivalent']),
-        clientUnitPriceInr: _num(j['clientUnitPriceInr']),
+        clientUnitPrice: _num(j['clientUnitPrice']),
+        clientCurrency: j['clientCurrency'] as String?,
         validityDate: _date(j['validityDate']),
         sourcingRequestId: j['sourcingRequestId'] as String?,
         supplierName: j['supplier'] is Map ? j['supplier']['name'] as String? : null,
@@ -226,25 +226,6 @@ class ShippingOrder {
         latitude: _num(j['latitude']),
         longitude: _num(j['longitude']),
         leadId: j['leadId'] as String?,
-      );
-}
-
-class ExchangeRate {
-  ExchangeRate({required this.id, required this.pair, required this.rate, this.source, this.manual = false, this.setBy, this.effectiveDate});
-  final String id, pair;
-  final double rate;
-  final String? source, setBy;
-  final bool manual;
-  final DateTime? effectiveDate;
-  static const gqlFields = 'id currencyPair rate source isManualOverride setBy effectiveDate createdAt';
-  factory ExchangeRate.fromJson(Map<String, dynamic> j) => ExchangeRate(
-        id: j['id'] as String,
-        pair: (j['currencyPair'] as String?) ?? '',
-        rate: _num(j['rate']) ?? 0,
-        source: j['source'] as String?,
-        manual: j['isManualOverride'] == true,
-        setBy: j['setBy'] as String?,
-        effectiveDate: _date(j['effectiveDate']),
       );
 }
 

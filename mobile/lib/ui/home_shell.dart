@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../services/session.dart';
@@ -26,22 +28,22 @@ class _HomeShellState extends State<HomeShell> {
         if (!s.online || s.pendingOps > 0)
           MaterialBanner(
             content: Text(!s.online
-                ? 'Offline — changes are queued (${s.pendingOps} pending)'
-                : '${s.pendingOps} change(s) waiting to sync'),
+                ? context.l10n.offlineQueued('${s.pendingOps}')
+                : context.l10n.waitingToSync('${s.pendingOps}')),
             leading: Icon(s.online ? Icons.sync : Icons.cloud_off),
-            actions: [TextButton(onPressed: s.syncNow, child: const Text('Sync now'))],
+            actions: [TextButton(onPressed: s.syncNow, child: Text(context.l10n.syncNow))],
           ),
         Expanded(child: IndexedStack(index: _i, children: _pages)),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _i,
         onDestinationSelected: (i) => setState(() => _i = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Leads'),
-          NavigationDestination(icon: Icon(Icons.local_shipping_outlined), selectedIcon: Icon(Icons.local_shipping), label: 'Shipping'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.dashboard_outlined), selectedIcon: const Icon(Icons.dashboard), label: context.l10n.dashboard),
+          NavigationDestination(icon: const Icon(Icons.people_outline), selectedIcon: const Icon(Icons.people), label: context.l10n.leads),
+          NavigationDestination(icon: const Icon(Icons.local_shipping_outlined), selectedIcon: const Icon(Icons.local_shipping), label: context.l10n.shipping),
+          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: context.l10n.chat),
+          NavigationDestination(icon: const Icon(Icons.settings_outlined), selectedIcon: const Icon(Icons.settings), label: context.l10n.settings),
         ],
       ),
     );

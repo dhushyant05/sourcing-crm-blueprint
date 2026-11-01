@@ -2,16 +2,20 @@ import { clsx } from 'clsx';
 import { KanbanSquare, Plus, Rows3 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp, useLoad } from '../lib/store';
-import { PIPELINE, type Lead, type LeadStatus } from '../lib/types';
-import { money } from '../lib/currency';
+import { PIPELINE, type Currency, type Lead, type LeadStatus } from '../lib/types';
+import { useTranslation } from 'react-i18next';
+import i18n, { fmtDate } from '../i18n';
+import { MoneyInput, Money } from '../components/MoneyInput';
 import { Avatar, Chip, dot, Empty, Field, PageHeader, Skeleton, SlideOver, TableSkeleton, pretty } from '../components/ui';
 
-const who = (l: Lead, customers: boolean) => (customers ? l.clientName ?? l.name : `Lead ${l.id}`);
+const who = (l: Lead, customers: boolean) => (customers ? l.clientName ?? l.name : i18n.t('common.leadN', { id: l.id }));
 export const matches = (l: Lead, q: string) => !q || [l.name, l.clientName, l.productInterest, l.assignedChinaAgent].some((v) => v?.toLowerCase().includes(q.toLowerCase()));
 
 export function Leads({ search, openLead }: { search: string; openLead: (l: Lead) => void }) {
   const { api, perms } = useApp();
-  const { data, setData } = useLoad(() => api.leads(), [api]);
+  const { t } = useTranslation();
+  const { data, setData, reload } = useLoad(() => api.leads(), [api]);
+  const [creating, setCreating] = useState(false);
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
   const [drag, setDrag] = useState<string | null>(null);
   const leads = data?.filter((l) => matches(l, search));
@@ -24,14 +28,14 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
 
   return (
     <>
-      <PageHeader title="Leads" subtitle={data ? `${data.length} leads · drag cards to move between stages` : 'Loading…'}
+      <PageHeader title={t('nav.leads')} subtitle={data ? t('leads.count', { n: data.length }) : t('common.loading')}
         actions={<>
           <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 dark:border-ink-700 dark:bg-ink-900">
             {([['board', KanbanSquare], ['table', Rows3]] as const).map(([v, I]) => (
               <button key={v} onClick={() => pick(v)} className={clsx('rounded-lg px-2.5 py-1.5 text-sm transition', view === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}><I size={16} /></button>
             ))}
           </div>
-          {perms.customers && <button className="btn-primary"><Plus size={16} />New lead</button>}
+          {perms.customers && <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={16} />{t('leads.new')}</button>}
         </>} />
 
       {view === 'board' ? (
@@ -52,12 +56,12 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <div className="text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
-                        <span>{l.quantity?.toLocaleString()} pcs</span>
+                        <span>{t('common.pcs', { n: l.quantity?.toLocaleString() })}</span>
                         <Avatar name={l.assignedChinaAgent ?? 'NA'} className="h-6 w-6 text-[10px]" />
                       </div>
                     </article>
                   ))}
-                  {data && !col.length && <div className="rounded-xl border border-dashed border-ink-200 py-6 text-center text-xs text-ink-400 dark:border-ink-800">No leads</div>}
+                  {data && !col.length && <div className="rounded-xl border border-dashed border-ink-200 py-6 text-center text-xs text-ink-400 dark:border-ink-800">{t('leads.none')}</div>}
                 </div>
               </div>
             );
@@ -65,20 +69,20 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
         </div>
       ) : (
         <div className="card overflow-hidden">
-          {!data ? <TableSkeleton /> : !leads?.length ? <Empty title="No leads match" hint="Try a different search." /> : (
+          {!data ? <TableSkeleton /> : !leads?.length ? <Empty title={t('leads.noMatch')} hint={t('leads.tryOther')} /> : (
             <div className="max-h-[calc(100vh-220px)] overflow-auto">
               <table className="w-full text-sm">
-                <thead><tr><th className="th">{perms.customers ? 'Client' : 'Lead'}</th><th className="th">Product</th><th className="th text-right">Qty</th>{perms.clientPricing && <th className="th text-right">Target</th>}<th className="th">Status</th><th className="th">China agent</th><th className="th">Created</th></tr></thead>
+                <thead><tr><th className="th">{perms.customers ? t('common.client') : t('common.lead')}</th><th className="th">{t('common.product')}</th><th className="th text-right">{t('common.qty')}</th>{perms.clientPricing && <th className="th text-right">{t('leads.target')}</th>}<th className="th">{t('common.status')}</th><th className="th">{t('common.chinaAgent')}</th><th className="th">{t('common.created')}</th></tr></thead>
                 <tbody>
                   {leads.map((l) => (
                     <tr key={l.id} onClick={() => openLead(l)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
                       <td className="td"><div className="flex items-center gap-3"><Avatar name={who(l, perms.customers)} /><span className="font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</span></div></td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
-                      {perms.clientPricing && <td className="td text-right tabular-nums">{l.targetPrice ? money(l.targetPrice, l.targetCurrency ?? 'INR') : '—'}</td>}
+                      {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
                       <td className="td"><Chip value={l.status} /></td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.assignedChinaAgent ?? '—'}</td>
-                      <td className="td text-ink-500">{new Date(l.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                      <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -87,36 +91,65 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
           )}
         </div>
       )}
+      <NewLead open={creating} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} />
     </>
+  );
+}
+
+/** India creates a lead; the optional target price is stored in the currency picked (USD / RMB / INR). */
+function NewLead({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const { api } = useApp();
+  const { t } = useTranslation();
+  const blank = { clientName: '', productInterest: '', quantity: '100', price: '', currency: 'INR' as Currency };
+  const [f, setF] = useState(blank), [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    try {
+      await api.createLead({ clientName: f.clientName, productInterest: f.productInterest, quantity: Number(f.quantity) || 1,
+        targetPrice: Number(f.price) > 0 ? Number(f.price) : undefined, targetCurrency: f.currency });
+      setF(blank); onCreated();
+    } catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <SlideOver open={open} onClose={onClose} title={t('leads.new')}
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.cancel')}</button><button className="btn-primary" form="new-lead">{t('leads.create')}</button></>}>
+      <form id="new-lead" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <div><label className="label">{t('leads.clientName')}</label><input className="input" required value={f.clientName} onChange={(e) => setF({ ...f, clientName: e.target.value })} /></div>
+        <div><label className="label">{t('common.product')}</label><input className="input" required value={f.productInterest} onChange={(e) => setF({ ...f, productInterest: e.target.value })} /></div>
+        <div><label className="label">{t('common.quantity')}</label><input className="input" inputMode="numeric" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></div>
+        <MoneyInput id="target-price" label={t('leads.targetPrice')} value={f.price} currency={f.currency} onValue={(price) => setF({ ...f, price })} onCurrency={(currency) => setF({ ...f, currency })} />
+        {err && <p role="alert" className="text-sm text-rose-600">{err}</p>}
+      </form>
+    </SlideOver>
   );
 }
 
 export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () => void }) {
   const { perms } = useApp();
+  const { t } = useTranslation();
   return (
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex items-center gap-2"><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
-      footer={<><button className="btn-outline" onClick={onClose}>Close</button>{perms.suppliers && <button className="btn-primary">New sourcing request</button>}{perms.customers && <button className="btn-primary">Assign to China</button>}</>}>
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{perms.customers && <button className="btn-primary">{t('leads.assignChina')}</button>}</>}>
       {lead && (
         <>
-          <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">Request</h3>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.request')}</h3>
           <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
-            <Field label="Product">{lead.productInterest}</Field>
-            <Field label="Quantity">{lead.quantity?.toLocaleString()} pcs</Field>
-            {perms.clientPricing && <Field label="Target price">{lead.targetPrice ? money(lead.targetPrice, lead.targetCurrency ?? 'INR') : '—'}</Field>}
-            <Field label="Channel">{lead.sourceChannel}</Field>
-            <Field label="China agent">{lead.assignedChinaAgent}</Field>
+            <Field label={t('common.product')}>{lead.productInterest}</Field>
+            <Field label={t('common.quantity')}>{t('common.pcs', { n: lead.quantity?.toLocaleString() })}</Field>
+            {perms.clientPricing && <Field label={t('leads.targetPrice')}><Money v={lead.targetPrice} c={lead.targetCurrency} /></Field>}
+            <Field label={t('leads.channel')}>{lead.sourceChannel}</Field>
+            <Field label={t('common.chinaAgent')}>{lead.assignedChinaAgent}</Field>
           </dl>
           {perms.customers && (<>
-            <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">Customer</h3>
+            <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.customer')}</h3>
             <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
-              <Field label="Phone">{lead.contactPhone}</Field><Field label="Email">{lead.contactEmail}</Field>
+              <Field label={t('common.phone')}>{lead.contactPhone}</Field><Field label={t('common.email')}>{lead.contactEmail}</Field>
             </dl>
           </>)}
-          <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">Timeline</h3>
+          <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
-            {[['Lead created', lead.createdAt], ['Assigned to ' + (lead.assignedChinaAgent ?? 'China'), lead.createdAt]].map(([t, d]) => (
-              <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="text-ink-800 dark:text-ink-100">{t}</div><div className="text-xs text-ink-500">{new Date(d).toLocaleString('en-IN', { dateStyle: 'medium' })}</div></li>
+            {[[t('leads.createdEvt'), lead.createdAt], [t('leads.assignedTo', { who: lead.assignedChinaAgent ?? 'China' }), lead.createdAt]].map(([t, d]) => (
+              <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="text-ink-800 dark:text-ink-100">{t}</div><div className="text-xs text-ink-500">{fmtDate(d, { dateStyle: 'medium' })}</div></li>
             ))}
           </ol>
         </>

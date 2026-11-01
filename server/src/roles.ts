@@ -28,7 +28,7 @@ export function capabilities(role: Role) {
   const s = sides(role);
   return {
     customers: s.india, suppliers: s.china, rawCost: s.china, clientPricing: s.india,
-    rates: s.superAdmin, backups: s.superAdmin, manageUsers: s.admin,
-    currencies: [...(s.china ? ['CNY', 'USD'] : []), ...(s.india ? ['INR'] : [])],
+    backups: s.superAdmin, manageUsers: s.admin,
+    currencies: ['USD', 'CNY', 'INR'], // every amount keeps its own currency; no conversion
   };
 }

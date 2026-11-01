@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
 import '../../services/session.dart';
+import '../widgets/language_switch.dart';
 import '../widgets/common.dart';
 
 /// Steps 8-9: China enters forwarder/tracking updates, India reads them.
@@ -28,14 +31,14 @@ class _ShippingScreenState extends State<ShippingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Shipping tracker')),
+      appBar: AppBar(title: Text(context.l10n.shippingTracker), actions: const [LanguageSwitch()]),
       body: RefreshIndicator(
         onRefresh: () async => _reload(),
         child: AsyncView<List<ShippingOrder>>(
           future: _f,
           onRetry: _reload,
           builder: (c, list) => list.isEmpty
-              ? ListView(children: const [SizedBox(height: 120), Center(child: Text('No shipments yet'))])
+              ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noShipmentsYet))])
               : ListView(
                   children: list
                       .map((o) => Card(
@@ -43,7 +46,7 @@ class _ShippingScreenState extends State<ShippingScreen> {
                             child: ListTile(
                               leading: const Icon(Icons.directions_boat_outlined),
                               title: Text(o.trackingNumber ?? o.name),
-                              subtitle: Text('${o.forwarder ?? 'Forwarder TBD'} · ETA ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
+                              subtitle: Text('${o.forwarder ?? context.l10n.forwarderTbd} · ETA ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
                               trailing: StatusChip(o.shipmentStatus ?? 'BOOKED'),
                               onTap: () async {
                                 await Navigator.push(c, MaterialPageRoute(builder: (_) => ShipmentDetailScreen(order: o)));
@@ -72,7 +75,7 @@ class ShipmentDetailScreen extends StatelessWidget {
     final step = shipmentSteps.indexOf(o.shipmentStatus ?? 'BOOKED');
     final hasPos = o.latitude != null && o.longitude != null;
     return Scaffold(
-      appBar: AppBar(title: Text(o.trackingNumber ?? 'Shipment'), actions: [
+      appBar: AppBar(title: Text(o.trackingNumber ?? context.l10n.shipment), actions: [
         if (p.canEditShipping)
           IconButton(
             icon: const Icon(Icons.edit),
@@ -113,13 +116,13 @@ class ShipmentDetailScreen extends StatelessWidget {
                       state: shipmentSteps.indexOf(s) < step ? StepState.complete : StepState.indexed))
                   .toList(),
             ),
-            InfoRow('Forwarder', o.forwarder),
-            InfoRow('Tracking no.', o.trackingNumber),
-            InfoRow('Container', pretty(o.containerType)),
-            InfoRow('ETD', o.etd != null ? dateFmt.format(o.etd!) : null),
-            InfoRow('ETA', o.eta != null ? dateFmt.format(o.eta!) : null),
-            InfoRow('Customs', pretty(o.customsStatus)),
-            InfoRow('Location', o.currentLocation),
+            InfoRow(context.l10n.forwarder, o.forwarder),
+            InfoRow(context.l10n.trackingNo, o.trackingNumber),
+            InfoRow(context.l10n.container, pretty(o.containerType)),
+            InfoRow(context.l10n.etd, o.etd != null ? dateFmt.format(o.etd!) : null),
+            InfoRow(context.l10n.eta, o.eta != null ? dateFmt.format(o.eta!) : null),
+            InfoRow(context.l10n.customs, pretty(o.customsStatus)),
+            InfoRow(context.l10n.location, o.currentLocation),
           ]),
         ),
       ]),
@@ -195,26 +198,26 @@ class _ShipmentEditScreenState extends State<ShipmentEditScreen> {
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 12);
     return Scaffold(
-      appBar: AppBar(title: const Text('Update shipment')),
+      appBar: AppBar(title: Text(context.l10n.updateShipment)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _fwd, decoration: const InputDecoration(labelText: 'Forwarder')),
+        TextField(controller: _fwd, decoration: InputDecoration(labelText: context.l10n.forwarder)),
         gap,
-        TextField(controller: _trk, decoration: const InputDecoration(labelText: 'Tracking number')),
+        TextField(controller: _trk, decoration: InputDecoration(labelText: context.l10n.trackingNumber)),
         gap,
         _select('Status', _status, shipmentSteps, (v) => _status = v),
         _select('Customs', _customs, const ['NOT_STARTED', 'FILED', 'HELD', 'CLEARED'], (v) => _customs = v),
         _select('Container', _container, const ['LCL', 'FCL_20', 'FCL_40', 'FCL_40HC', 'AIR', 'COURIER'], (v) => _container = v),
         _date('ETD', _etd, (d) => _etd = d),
         _date('ETA', _eta, (d) => _eta = d),
-        TextField(controller: _loc, decoration: const InputDecoration(labelText: 'Current location')),
+        TextField(controller: _loc, decoration: InputDecoration(labelText: context.l10n.currentLocation)),
         gap,
         Row(children: [
-          Expanded(child: TextField(controller: _lat, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: const InputDecoration(labelText: 'Latitude'))),
+          Expanded(child: TextField(controller: _lat, keyboardType: TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: context.l10n.latitude))),
           const SizedBox(width: 12),
-          Expanded(child: TextField(controller: _lng, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: const InputDecoration(labelText: 'Longitude'))),
+          Expanded(child: TextField(controller: _lng, keyboardType: TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: context.l10n.longitude))),
         ]),
         const SizedBox(height: 24),
-        FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save), label: const Text('Save update')),
+        FilledButton.icon(onPressed: _save, icon: Icon(Icons.save), label: Text(context.l10n.saveUpdate)),
       ]),
     );
   }

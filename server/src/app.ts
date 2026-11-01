@@ -3,7 +3,7 @@ import fastifyStatic from '@fastify/static';
 import jwt from 'jsonwebtoken';
 import { existsSync } from 'node:fs';
 import { capabilities, isRole, manageableRoles, type Role } from './roles.js';
-import { canRead, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, ratesFrom, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
+import { canRead, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { TwentyLike } from './twenty.js';
 import type { UserStore, User } from './users.js';
 
@@ -46,8 +46,8 @@ export async function buildApp(o: AppOptions) {
       req.user = u;
     } catch { return reply.code(401).send({ error: 'Session expired' }); }
   }
-  const ctxOf = async (role: Role): Promise<Ctx> => ({ role, rates: ratesFrom(await o.twenty.list('exchangeRates')) });
-  const me = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, capabilities: capabilities(u.role) });
+  const ctxOf = async (role: Role): Promise<Ctx> => ({ role });
+  const me = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, language: u.language ?? null, capabilities: capabilities(u.role) });
 
   app.get('/api/health', async () => ({ ok: true }));
 
@@ -64,6 +64,11 @@ export async function buildApp(o: AppOptions) {
   app.register(async (api) => {
     api.addHook('preHandler', auth);
     api.get('/api/me', async (req) => me(req.user!));
+    // Per-user UI language (devices also keep their own choice).
+    api.patch<{ Body: { language?: string } }>('/api/me', async (req, reply) => {
+      try { return me(o.users.setLanguage(req.user!.id, String(req.body?.language ?? ''))); }
+      catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+    });
     api.post<{ Body: { currentPassword: string; newPassword: string } }>('/api/me/password', async (req, reply) => {
       if (!(await o.users.verify(req.user!.email, req.body?.currentPassword ?? ''))) return reply.code(400).send({ error: 'Current password is wrong' });
       await o.users.setPassword(req.user!.id, req.body.newPassword ?? '');
@@ -99,7 +104,6 @@ export async function buildApp(o: AppOptions) {
     api.post<{ Params: { plural: string }; Body: Rec }>('/api/records/:plural', async (req, reply) => {
       const obj = objOf(req.params.plural);
       const data = writeCheck(req.user!.role, obj, 'create', req.body ?? {});
-      if (obj === 'exchangeRate') Object.assign(data, { setBy: req.user!.name });
       const r = await o.twenty.create(OBJECTS[obj], data);
       return reply.code(201).send({ data: { id: r.id } });
     });

@@ -61,11 +61,15 @@ class ServerClient {
     return j;
   }
 
-  Future<({String token, String email, String name, String role})> login(String email, String password) async {
+  Future<({String token, String email, String name, String role, String? language})> login(String email, String password) async {
     final j = await send('POST', '/api/auth/login', body: {'email': email, 'password': password}) as Map<String, dynamic>;
     final u = j['user'] as Map<String, dynamic>;
-    return (token: j['token'] as String, email: u['email'] as String, name: u['name'] as String, role: u['role'] as String);
+    return (token: j['token'] as String, email: u['email'] as String, name: u['name'] as String, role: u['role'] as String,
+        language: u['language'] as String?);
   }
+
+  /// Saves the UI language on the user's account (`en` or `zh-CN`).
+  Future<void> setLanguage(String language) async => send('PATCH', '/api/me', body: {'language': language});
 
   static String _plural(String singular) => '${singular}s';
 

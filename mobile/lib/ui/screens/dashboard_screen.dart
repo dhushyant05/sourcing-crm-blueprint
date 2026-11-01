@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
 import '../../services/session.dart';
+import '../widgets/language_switch.dart';
 import '../widgets/common.dart';
 
 const pipelineStages = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'DELIVERED', 'WON', 'LOST'];
@@ -36,7 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final s = context.watch<Session>();
     final t = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
+      appBar: AppBar(title: Text(context.l10n.dashboard), actions: const [LanguageSwitch()]),
       body: RefreshIndicator(
         onRefresh: () async => _reload(),
         child: AsyncView<List<Lead>>(
@@ -46,7 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final counts = pipelineCounts(leads);
             final active = leads.where((l) => !['WON', 'LOST', 'DELIVERED'].contains(l.status)).length;
             return ListView(padding: const EdgeInsets.all(16), children: [
-              Text('Hello ${s.displayName ?? ''}', style: t.textTheme.titleLarge),
+              Text(context.l10n.helloName(s.displayName ?? ''), style: t.textTheme.titleLarge),
               Text(s.role.label, style: t.textTheme.bodyMedium),
               const SizedBox(height: 16),
               Row(children: [
@@ -55,7 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _Kpi('Pending sync', '${s.pendingOps}', Icons.sync),
               ]),
               const SizedBox(height: 24),
-              Text('Pipeline', style: t.textTheme.titleMedium),
+              Text(context.l10n.pipeline, style: t.textTheme.titleMedium),
               const SizedBox(height: 8),
               ...pipelineStages.map((st) {
                 final n = counts[st]!;

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DemoApi, ServerApi, type Api, type Me } from './api';
 import { perms, type Role } from './roles';
+import { deviceLang, LANGS, setLang, type Lang } from '../i18n';
 
 export interface Session { name: string; email: string; role: Role; demo: boolean }
 interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, token?: string): void; signOut(): void; setRole(r: Role): void }
@@ -25,7 +26,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!token || session?.demo) return;
     fetch('/api/me', { headers: { authorization: `Bearer ${token}` } })
       .then((r) => (r.status === 401 ? (signOut(), null) : r.json()))
-      .then((me: Me | null) => me?.role && setSession((s) => (s ? { ...s, name: me.name, email: me.email, role: me.role } : s)))
+      .then((me: Me | null) => {
+        if (!me?.role) return;
+        setSession((s) => (s ? { ...s, name: me.name, email: me.email, role: me.role } : s));
+        // Device choice wins; otherwise adopt the language saved on the account.
+        if (!deviceLang() && LANGS.includes(me.language as Lang)) setLang(me.language as Lang);
+      })
       .catch(() => {});
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   // Role switching is a demo-only preview; live roles come from the server.

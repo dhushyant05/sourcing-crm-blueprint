@@ -40,8 +40,8 @@ describe('auth', () => {
   });
   it('/api/me returns role capabilities', async () => {
     const c = (await get('CHINA_STAFF', '/api/me')).json().capabilities;
-    expect(c).toMatchObject({ customers: false, suppliers: true, rates: false, backups: false, currencies: ['CNY', 'USD'] });
-    expect((await get('INDIA_STAFF', '/api/me')).json().capabilities).toMatchObject({ customers: true, suppliers: false, currencies: ['INR'] });
+    expect(c).toMatchObject({ customers: false, suppliers: true, backups: false, currencies: ['USD', 'CNY', 'INR'] });
+    expect((await get('INDIA_STAFF', '/api/me')).json().capabilities).toMatchObject({ customers: true, suppliers: false, currencies: ['USD', 'CNY', 'INR'] });
   });
 });
 
@@ -60,10 +60,11 @@ describe.each(['CHINA_STAFF', 'CHINA_ADMIN'] as Role[])('%s', (role) => {
     const q = await data(role, 'quotations');
     const q1 = q.find((x) => x.id === 'q-1');
     expect(q1).toMatchObject({ unitCost: 10, currency: 'CNY', supplierId: 'sup-1' });
-    expect(q1).not.toHaveProperty('clientUnitPriceInr');
+    expect(q1).not.toHaveProperty('clientUnitPrice');
+    expect(q1).not.toHaveProperty('clientCurrency');
   });
   it('sees approvals without approver/notes; shipments; never any customer string anywhere', async () => {
-    const all = await Promise.all(['leads', 'sourcingRequests', 'suppliers', 'quotations', 'clientApprovals', 'shippingOrders', 'exchangeRates'].map((p) => data(role, p)));
+    const all = await Promise.all(['leads', 'sourcingRequests', 'suppliers', 'quotations', 'clientApprovals', 'shippingOrders'].map((p) => data(role, p)));
     const blob = json(all);
     for (const s of CUSTOMER_STRINGS) expect(blob).not.toContain(s);
     expect(all[4][0]).toEqual({ id: 'ap-1', status: 'APPROVED', decidedAt: '2026-10-07', quotationId: 'q-1' });
@@ -79,11 +80,15 @@ describe.each(['CHINA_STAFF', 'CHINA_ADMIN'] as Role[])('%s', (role) => {
     expect((await send(role, 'PATCH', '/api/records/leads/lead-china-1', { clientName: 'z' })).statusCode).toBe(403);
     expect((await send(role, 'PATCH', '/api/records/leads/lead-india-1', { status: 'SOURCING' })).statusCode).toBe(404);
   });
-  it('can create suppliers/quotations; cannot set client price, rates or record approvals', async () => {
+  it('can create suppliers/quotations; cannot set client price or record approvals', async () => {
     expect((await send(role, 'POST', '/api/records/quotations', { name: 'Q', unitCost: 3, currency: 'CNY', sourcingRequestId: 'sr-1' })).statusCode).toBe(201);
     expect((await send(role, 'POST', '/api/records/suppliers', { name: 'New Co', wechatId: 'n' })).statusCode).toBe(201);
-    expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { clientUnitPriceInr: 1 })).statusCode).toBe(403);
-    expect((await send(role, 'POST', '/api/records/exchangeRates', { currencyPair: 'CNY_INR', rate: 1 })).statusCode).toBe(403);
+    expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { clientUnitPrice: 1 })).statusCode).toBe(403);
+    expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { clientCurrency: 'USD' })).statusCode).toBe(403);
+    // each currency is accepted as entered; anything else is rejected
+    for (const c of ['USD', 'CNY', 'INR']) expect((await send(role, 'POST', '/api/records/quotations', { name: 'Q', unitCost: 3, currency: c, sourcingRequestId: 'sr-1' })).statusCode).toBe(201);
+    expect((await send(role, 'POST', '/api/records/quotations', { name: 'Q', unitCost: 3, currency: 'EUR', sourcingRequestId: 'sr-1' })).statusCode).toBe(400);
+    expect(twenty.writes.filter((w) => w.data.currency === 'INR').at(-1)!.data).toMatchObject({ unitCost: 3, currency: 'INR' });
     expect((await send(role, 'POST', '/api/records/clientApprovals', { status: 'APPROVED' })).statusCode).toBe(403);
   });
   it('cannot filter by hidden fields', async () => {
@@ -102,32 +107,31 @@ describe.each(['INDIA_STAFF', 'INDIA_ADMIN'] as Role[])('%s', (role) => {
     expect((await get(role, '/api/records/suppliers')).statusCode).toBe(403);
     expect((await get(role, '/api/records/suppliers/sup-1')).statusCode).toBe(403);
   });
-  it('sees quotations in INR only, without supplier identity or raw cost', async () => {
+  it('sees client prices in their own currency (no conversion), without supplier identity or raw cost', async () => {
     const q = await data(role, 'quotations');
     const q1 = q.find((x) => x.id === 'q-1'), q2 = q.find((x) => x.id === 'q-2');
-    expect(keys(q1)).toEqual(['clientUnitPriceInr', 'createdAt', 'currency', 'id', 'inrEquivalent', 'name', 'pdfAttachment', 'sourcingRequestId', 'unitCostInr', 'validityDate']);
-    expect(q1).toMatchObject({ currency: 'INR', unitCostInr: 120, inrEquivalent: 144000, clientUnitPriceInr: expect.any(Number) });
-    // No snapshot rate: uses admin-set USD_INR (84)
-    expect(q2).toMatchObject({ currency: 'INR', unitCostInr: 168, inrEquivalent: 16800 });
+    expect(keys(q1)).toEqual(['clientCurrency', 'clientUnitPrice', 'createdAt', 'id', 'name', 'pdfAttachment', 'sourcingRequestId', 'validityDate']);
+    expect(q1).toMatchObject({ clientUnitPrice: expect.any(Number), clientCurrency: expect.stringMatching(/^(USD|CNY|INR)$/) });
+    expect(q2).toMatchObject({ clientUnitPrice: 2.6, clientCurrency: 'USD' });
     const all = json(await Promise.all(['leads', 'sourcingRequests', 'quotations', 'clientApprovals', 'shippingOrders'].map((p) => data(role, p))));
     for (const s of SUPPLIER_STRINGS) expect(all).not.toContain(s);
-    expect(all).not.toContain('"unitCost"');
-    expect(all).not.toContain('CNY');
+    for (const k of ['"unitCost"', '"totalCost"', '"currency"', '"supplierId"']) expect(all).not.toContain(k);
   });
-  it('sourcing request target price is converted to INR', async () => {
+  it('sourcing request target price is shown as entered (no conversion)', async () => {
     const [sr] = await data(role, 'sourcingRequests');
-    expect(sr.targetPrice).toEqual({ amountMicros: 119e6, currencyCode: 'INR' });
+    expect(sr.targetPrice).toEqual({ amountMicros: 10e6, currencyCode: 'CNY' });
   });
   it('sees approvals in full', async () => {
     expect((await data(role, 'clientApprovals'))[0]).toMatchObject({ approver: 'Mr Mehta' });
   });
-  it('can create leads and set client price; cannot write supplier cost, suppliers or rates', async () => {
+  it('can create leads and set client price; cannot write supplier cost or suppliers', async () => {
     expect((await send(role, 'POST', '/api/records/leads', { name: 'N', clientName: 'New', status: 'NEW' })).statusCode).toBe(201);
-    expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { clientUnitPriceInr: 160 })).statusCode).toBe(200);
+    expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { clientUnitPrice: 160, clientCurrency: 'USD' })).statusCode).toBe(200);
+    expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { clientUnitPrice: 1, clientCurrency: 'GBP' })).statusCode).toBe(400);
+    expect((await send(role, 'POST', '/api/records/leads', { name: 'N', targetPrice: { amountMicros: 1e6, currencyCode: 'EUR' } })).statusCode).toBe(400);
     expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { unitCost: 1 })).statusCode).toBe(403);
     expect((await send(role, 'PATCH', '/api/records/quotations/q-1', { supplierId: 'x' })).statusCode).toBe(403);
     expect((await send(role, 'POST', '/api/records/suppliers', { name: 'x' })).statusCode).toBe(403);
-    expect((await send(role, 'POST', '/api/records/exchangeRates', { currencyPair: 'CNY_INR', rate: 1 })).statusCode).toBe(403);
   });
 });
 
@@ -136,14 +140,11 @@ describe('SUPER_ADMIN', () => {
     expect((await data('SUPER_ADMIN', 'leads')).length).toBeGreaterThanOrEqual(2);
     expect((await data('SUPER_ADMIN', 'suppliers'))[0]).toMatchObject({ wechatId: 'brightway_ly' });
     const q1 = (await data('SUPER_ADMIN', 'quotations')).find((q) => q.id === 'q-1');
-    expect(q1).toMatchObject({ unitCost: 10, currency: 'CNY', supplierId: 'sup-1', unitCostInr: 120 });
-    expect(q1).toHaveProperty('clientUnitPriceInr');
+    expect(q1).toMatchObject({ unitCost: 10, currency: 'CNY', supplierId: 'sup-1', clientCurrency: expect.any(String) });
+    expect(q1).not.toHaveProperty('unitCostInr');
     expect((await data('SUPER_ADMIN', 'teamMembers')).length).toBe(2);
   });
-  it('sets exchange rates (setBy forced to the user) and gets backup links', async () => {
-    const r = await send('SUPER_ADMIN', 'POST', '/api/records/exchangeRates', { name: 'CNY_INR', currencyPair: 'CNY_INR', rate: 12.1, isManualOverride: true, setBy: 'spoof', effectiveDate: '2026-11-01' });
-    expect(r.statusCode).toBe(201);
-    expect(twenty.writes.at(-1)!.data.setBy).toBe('SUPER_ADMIN');
+  it('gets backup links', async () => {
     expect((await get('SUPER_ADMIN', '/api/backups')).json().data[0].url).toBe('https://backups.sourceec.in');
   });
   it('backups are super-admin only', async () => {
@@ -151,9 +152,20 @@ describe('SUPER_ADMIN', () => {
   });
 });
 
-describe('exchange rate reads', () => {
-  it('every role can read rates; only super admin writes them', async () => {
-    for (const r of ROLES) expect((await data(r, 'exchangeRates')).length).toBeGreaterThan(0);
+describe('no exchange rates', () => {
+  it('the exchange rate object no longer exists for any role', async () => {
+    for (const r of ROLES) expect((await get(r, '/api/records/exchangeRates')).statusCode).toBe(404);
+  });
+});
+
+describe('language preference', () => {
+  it('each user can save en / zh-CN; other values are rejected', async () => {
+    const r = await send('CHINA_STAFF', 'PATCH', '/api/me', { language: 'zh-CN' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().language).toBe('zh-CN');
+    expect((await get('CHINA_STAFF', '/api/me')).json().language).toBe('zh-CN');
+    expect((await get('INDIA_STAFF', '/api/me')).json().language).toBeNull();
+    expect((await send('INDIA_STAFF', 'PATCH', '/api/me', { language: 'fr' })).statusCode).toBe(400);
   });
 });
 

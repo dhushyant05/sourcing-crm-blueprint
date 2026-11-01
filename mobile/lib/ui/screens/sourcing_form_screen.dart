@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
 import '../../services/session.dart';
+import '../widgets/currency_picker.dart';
 import '../widgets/common.dart';
 
 /// Step 3: China creates a sourcing request for a lead and logs suppliers.
@@ -60,30 +63,26 @@ class _SourcingFormScreenState extends State<SourcingFormScreen> {
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 12);
     return Scaffold(
-      appBar: AppBar(title: const Text('Sourcing request')),
+      appBar: AppBar(title: Text(context.l10n.sourcingRequest)),
       body: Form(
         key: _form,
         child: ListView(padding: const EdgeInsets.all(16), children: [
-          TextFormField(controller: _product, maxLines: 3, decoration: const InputDecoration(labelText: 'Product description *'),
-              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null),
+          TextFormField(controller: _product, maxLines: 3, decoration: InputDecoration(labelText: context.l10n.productDescription),
+              validator: (v) => v == null || v.trim().isEmpty ? context.l10n.required : null),
           gap,
           Row(children: [
-            Expanded(child: TextFormField(controller: _qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Quantity'))),
+            Expanded(child: TextFormField(controller: _qty, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.l10n.quantity))),
             const SizedBox(width: 12),
             Expanded(child: TextFormField(controller: _price, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Target price/unit'))),
+                decoration: InputDecoration(labelText: context.l10n.targetPriceUnit))),
           ]),
           gap,
-          SegmentedButton<String>(
-            segments: const [ButtonSegment(value: 'CNY', label: Text('RMB')), ButtonSegment(value: 'USD', label: Text('USD'))],
-            selected: {_currency},
-            onSelectionChanged: (v) => setState(() => _currency = v.first),
-          ),
+          CurrencyPicker(value: _currency, onChanged: (v) => setState(() => _currency = v)),
           gap,
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.event),
-            title: Text(_deadline == null ? 'Set deadline' : 'Deadline: ${dateFmt.format(_deadline!)}'),
+            title: Text(_deadline == null ? context.l10n.setDeadline : 'Deadline: ${dateFmt.format(_deadline!)}'),
             onTap: () async {
               final d = await showDatePicker(context: context, firstDate: DateTime.now(),
                   lastDate: DateTime.now().add(const Duration(days: 365)), initialDate: DateTime.now().add(const Duration(days: 7)));
@@ -92,16 +91,16 @@ class _SourcingFormScreenState extends State<SourcingFormScreen> {
           ),
           DropdownButtonFormField<String>(
             initialValue: _sample,
-            decoration: const InputDecoration(labelText: 'Sample status'),
+            decoration: InputDecoration(labelText: context.l10n.sampleStatus),
             items: const ['NOT_REQUESTED', 'REQUESTED', 'RECEIVED', 'APPROVED', 'REJECTED']
                 .map((c) => DropdownMenuItem(value: c, child: Text(pretty(c)))).toList(),
             onChanged: (v) => setState(() => _sample = v!),
           ),
           gap,
           TextFormField(controller: _suppliers, maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Supplier names (one per line)', alignLabelWithHint: true)),
+              decoration: InputDecoration(labelText: context.l10n.supplierNamesOnePerLine, alignLabelWithHint: true)),
           const SizedBox(height: 24),
-          FilledButton.icon(onPressed: _busy ? null : _save, icon: const Icon(Icons.send), label: const Text('Create request')),
+          FilledButton.icon(onPressed: _busy ? null : _save, icon: Icon(Icons.send), label: Text(context.l10n.createRequest)),
         ]),
       ),
     );

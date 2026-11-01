@@ -1,0 +1,208 @@
+{
+  "@@locale": "en",
+  "syncNow": "Sync now",
+  "dashboard": "Dashboard",
+  "leads": "Leads",
+  "shipping": "Shipping",
+  "chat": "Chat",
+  "settings": "Settings",
+  "clientApproval": "Client approval",
+  "notesFromClient": "Notes from client",
+  "reject": "Reject",
+  "accept": "Accept",
+  "indiaChinaChat": "India ⇄ China chat",
+  "addYourChatwootAccessTokenIn": "Add your Chatwoot access token in Settings to use chat.",
+  "retry": "Retry",
+  "message": "Message",
+  "pipeline": "Pipeline",
+  "assignToChinaAgent": "Assign to China agent",
+  "agentName": "Agent name",
+  "cancel": "Cancel",
+  "assign": "Assign",
+  "winLossReason": "Win/loss reason",
+  "closeLead": "Close lead",
+  "lead": "Lead",
+  "assignToChina": "Assign to China",
+  "sourcingRequest": "Sourcing request",
+  "closeWon": "Close won",
+  "closeLost": "Close lost",
+  "sourcingRequests": "Sourcing requests",
+  "noneYet": "None yet",
+  "chatThread": "Chat thread",
+  "timeline": "Timeline",
+  "newLead": "New lead",
+  "clientName": "Client name *",
+  "phone": "Phone",
+  "email": "Email",
+  "productInterest": "Product interest *",
+  "quantity": "Quantity",
+  "targetPriceUnit": "Target price/unit",
+  "sourceChannel": "Source channel",
+  "saveLead": "Save lead",
+  "allStatuses": "All statuses",
+  "noLeads": "No leads",
+  "sourceEasy": "Source Easy",
+  "indiaChinaSourcing": "India ⇄ China sourcing",
+  "password": "Password",
+  "sourceEasyServerURL": "Source Easy server URL",
+  "signIn": "Sign in",
+  "newQuotation": "New quotation",
+  "supplier": "Supplier",
+  "unitCost": "Unit cost",
+  "save": "Save",
+  "clientPricePerUnit": "Client price per unit",
+  "setTheClientPriceFirst": "Set the client price first",
+  "quotation": "Quotation",
+  "amountsAreShownInTheCurrency": "Amounts are shown in the currency they were entered in. No conversion.",
+  "suppliers": "Suppliers",
+  "noQuotationsYet": "No quotations yet",
+  "clientPrice": "Client price",
+  "pdfToWhatsApp": "PDF to WhatsApp",
+  "approval": "Approval",
+  "language": "Language",
+  "currencies": "Currencies",
+  "usdRMBAndINREveryAmount": "USD, RMB and INR. Every amount stays in the currency it was entered in — no conversion.",
+  "offlineQueue": "Offline queue",
+  "chatwootConnection": "Chatwoot connection",
+  "backups": "Backups",
+  "openTheBackupBrowserOnThe": "Open the backup browser on the storage server in a browser to download dumps. Restores are CLI-only.",
+  "signOut": "Sign out",
+  "chatwoot": "Chatwoot",
+  "chatwootURL": "Chatwoot URL",
+  "accountID": "Account ID",
+  "internalAPIInboxID": "Internal API inbox ID",
+  "yourAccessToken": "Your access token",
+  "chatwootProfileSettingsAccessToken": "Chatwoot → Profile settings → Access token",
+  "shippingTracker": "Shipping tracker",
+  "noShipmentsYet": "No shipments yet",
+  "updateShipment": "Update shipment",
+  "forwarder": "Forwarder",
+  "trackingNumber": "Tracking number",
+  "currentLocation": "Current location",
+  "latitude": "Latitude",
+  "longitude": "Longitude",
+  "saveUpdate": "Save update",
+  "productDescription": "Product description *",
+  "sampleStatus": "Sample status",
+  "supplierNamesOnePerLine": "Supplier names (one per line)",
+  "createRequest": "Create request",
+  "chinaAgent": "China agent",
+  "clientPriceUnit": "Client price/unit",
+  "clientTotal": "Client total",
+  "contact": "Contact",
+  "container": "Container",
+  "customs": "Customs",
+  "eta": "ETA",
+  "etd": "ETD",
+  "location": "Location",
+  "office": "Office",
+  "product": "Product",
+  "source": "Source",
+  "supplierCostUnit": "Supplier cost/unit",
+  "supplierTotal": "Supplier total",
+  "targetPrice": "Target price",
+  "trackingNo": "Tracking no.",
+  "validUntil": "Valid until",
+  "quotations": "Quotations",
+  "offlineAndNothingCachedYet": "Offline and nothing cached yet",
+  "noThreadYet": "No thread yet",
+  "notConfigured": "Not configured",
+  "setDeadline": "Set deadline",
+  "hideServer": "Hide server",
+  "serverSettings": "Server settings",
+  "helloName": "Hello {name}",
+  "@helloName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingChanges": "{count} pending change(s)",
+  "@pendingChanges": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "offlineQueued": "Offline — changes are queued ({count} pending)",
+  "@offlineQueued": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingToSync": "{count} change(s) waiting to sync",
+  "@waitingToSync": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "syncedSummary": "Synced {synced}, failed {failed}, remaining {remaining}",
+  "@syncedSummary": {
+    "placeholders": {
+      "synced": {
+        "type": "String"
+      },
+      "failed": {
+        "type": "String"
+      },
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "deadlineOn": "Deadline: {date}",
+  "@deadlineOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "qtyValidUntil": "Qty {qty} · valid until {date}",
+  "@qtyValidUntil": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "samplesStatus": "Samples: {status}",
+  "@samplesStatus": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "threadNo": "Thread #{id}",
+  "@threadNo": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "closeAsWon": "Close as won",
+  "closeAsLost": "Close as lost",
+  "required": "Required",
+  "status": "Status",
+  "forwarderTbd": "Forwarder TBD",
+  "shipment": "Shipment",
+  "notSent": "Not sent: {error}",
+  "@notSent": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  }
+}

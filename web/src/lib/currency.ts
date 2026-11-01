@@ -1,26 +1,24 @@
-import type { Currency, ExchangeRate } from './types';
+import type { Currency } from './types';
 
-export interface Rates { CNY_INR: number; USD_INR: number; USD_CNY?: number }
+/** Supported currencies. Amounts are always stored and shown in the currency they were entered in — never converted. */
+export const CURRENCIES: Currency[] = ['USD', 'CNY', 'INR'];
+/** Display code: CNY is shown as RMB (what both offices call it). */
 export const label = (c: string) => (c === 'CNY' ? 'RMB' : c);
+export const symbol = (c: Currency) => ({ USD: '$', CNY: '¥', INR: '₹' })[c];
 
-export function convert(v: number, from: Currency, to: Currency, r: Rates): number {
-  if (from === to) return v;
-  if (from === 'USD' && to === 'CNY' && r.USD_CNY) return v * r.USD_CNY;
-  if (from === 'CNY' && to === 'USD' && r.USD_CNY) return v / r.USD_CNY;
-  const inr = { INR: 1, CNY: r.CNY_INR, USD: r.USD_INR };
-  return (v * inr[from]) / inr[to];
-}
-
+/** e.g. "$1,234.50", "¥14.12", "₹2,01,600.00". Pair with the code (label) wherever symbols could be ambiguous. */
 export function money(v: number, c: Currency, compact = false) {
-  return new Intl.NumberFormat(c === 'INR' ? 'en-IN' : 'en-US', {
-    style: 'currency', currency: c, currencyDisplay: 'narrowSymbol', notation: compact ? 'compact' : 'standard', maximumFractionDigits: compact ? 1 : 2,
+  const n = new Intl.NumberFormat(c === 'INR' ? 'en-IN' : 'en-US', {
+    notation: compact ? 'compact' : 'standard', minimumFractionDigits: compact ? 0 : 2, maximumFractionDigits: compact ? 1 : 2,
   }).format(v);
+  return `${symbol(c)}${n}`;
 }
+/** "¥14.12 RMB" — symbol and code, used in details and the PDF. */
+export const moneyCode = (v: number, c: Currency) => `${money(v, c)} ${label(c)}`;
 
-/** Latest effective date wins; manual override wins on the same day. Same rule as the app. */
-export function ratesFrom(list: ExchangeRate[]): Rates {
-  const pick = (p: string) =>
-    list.filter((r) => r.pair === p)
-      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate) || Number(b.manual) - Number(a.manual))[0]?.rate;
-  return { CNY_INR: pick('CNY_INR') ?? 11.8, USD_INR: pick('USD_INR') ?? 84, USD_CNY: pick('USD_CNY') };
+/** Sums per currency (never across). Returns e.g. [["INR", 12000], ["USD", 310]]. */
+export function totalsByCurrency<T>(rows: T[], get: (r: T) => [Currency | undefined, number | undefined]) {
+  const m = new Map<Currency, number>();
+  for (const r of rows) { const [c, v] = get(r); if (c && v != null) m.set(c, (m.get(c) ?? 0) + v); }
+  return CURRENCIES.filter((c) => m.has(c)).map((c) => [c, m.get(c)!] as const);
 }

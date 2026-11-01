@@ -1,16 +1,19 @@
-import type { BackupLink, Currency, ExchangeRate, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
-export interface Me { id: string; email: string; name: string; role: Role }
+export interface Me { id: string; email: string; name: string; role: Role; language?: string | null }
+export interface QuotePrice { unitCost?: number; totalCost?: number; currency?: Currency; clientUnitPrice?: number; clientCurrency?: Currency }
+export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency }
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
   quotations(): Promise<Quotation[]>;
   shipments(): Promise<Shipment[]>;
   suppliers(): Promise<Supplier[]>;
-  rates(): Promise<ExchangeRate[]>;
-  setRate(pair: string, rate: number, by: string): Promise<void>;
+  updateQuotePrice(id: string, p: QuotePrice): Promise<void>;
+  createLead(l: NewLead): Promise<void>;
+  setLanguage(lang: string): Promise<void>;
   users(): Promise<User[]>;
   createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
   resetPassword(id: string, password: string): Promise<void>;
@@ -20,7 +23,7 @@ export interface Api {
 
 type Raw = Record<string, any>;
 const amount = (c?: { amountMicros?: number }) => (c?.amountMicros != null ? c.amountMicros / 1e6 : undefined);
-const today = () => new Date().toISOString().slice(0, 10);
+const micros = (v: number, c: Currency) => ({ amountMicros: Math.round(v * 1e6), currencyCode: c });
 
 export class HttpError extends Error { status: number; constructor(m: string, s: number) { super(m); this.status = s; } }
 
@@ -70,9 +73,9 @@ export class ServerApi implements Api {
       const quantity = s?.quantity ?? (q.unitCost ? Math.round(q.totalCost / q.unitCost) : 1);
       return {
         id: q.id, name: q.name, leadId: s?.leadId, productName: s?.productDescription ?? s?.name, supplierName: sup.get(q.supplierId),
-        unitCost: q.unitCost, unitCostInr: q.unitCostInr, currency: (q.currency ?? 'INR') as Currency, quantity,
-        exchangeRateUsed: q.exchangeRateUsed, clientUnitPriceInr: q.clientUnitPriceInr ?? undefined,
-        status: ap?.status ?? (q.clientUnitPriceInr ? 'SENT' : 'DRAFT'), validityDate: q.validityDate, createdAt: q.createdAt,
+        unitCost: q.unitCost ?? undefined, totalCost: q.totalCost ?? undefined, currency: q.currency ?? undefined, quantity,
+        clientUnitPrice: q.clientUnitPrice ?? undefined, clientCurrency: q.clientCurrency ?? undefined,
+        status: ap?.status ?? (q.clientUnitPrice ? 'SENT' : 'DRAFT'), validityDate: q.validityDate, createdAt: q.createdAt,
       };
     });
   }
@@ -87,14 +90,14 @@ export class ServerApi implements Api {
   async suppliers() {
     return (await this.list('suppliers')).map((s): Supplier => ({ id: s.id, name: s.name, phone: s.phone?.primaryPhoneNumber, wechat: s.wechatId, notes: s.notes }));
   }
-  async rates() {
-    return (await this.list('exchangeRates')).map((r): ExchangeRate => ({
-      id: r.id, pair: r.currencyPair, rate: r.rate, manual: !!r.isManualOverride, setBy: r.setBy, effectiveDate: r.effectiveDate ?? r.createdAt?.slice(0, 10),
-    }));
+  async updateQuotePrice(id: string, p: QuotePrice) { await this.req('PATCH', `/records/quotations/${id}`, p); }
+  async createLead(l: NewLead) {
+    await this.req('POST', '/records/leads', {
+      name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',
+      ...(l.targetPrice ? { targetPrice: micros(l.targetPrice, l.targetCurrency) } : {}),
+    });
   }
-  async setRate(pair: string, rate: number) {
-    await this.req('POST', '/records/exchangeRates', { name: `${pair} ${rate}`, currencyPair: pair, rate, isManualOverride: true, source: 'MANUAL', effectiveDate: today() });
-  }
+  async setLanguage(language: string) { await this.req('PATCH', '/me', { language }); }
   users() { return this.req<User[]>('GET', '/users'); }
   async createUser(u: { email: string; name: string; role: Role; password: string }) { await this.req('POST', '/users', u); }
   async resetPassword(id: string, password: string) { await this.req('POST', `/users/${id}/password`, { password }); }
@@ -110,10 +113,12 @@ export class DemoApi implements Api {
   quotations() { return this.wait(demo.quotations); }
   shipments() { return this.wait(demo.shipments); }
   suppliers() { return this.wait(demo.suppliers); }
-  rates() { return this.wait(demo.rates); }
-  async setRate(pair: string, rate: number, setBy: string) {
-    demo.rates.unshift({ id: crypto.randomUUID(), pair, rate, manual: true, setBy, effectiveDate: today() });
+  async updateQuotePrice(id: string, p: QuotePrice) { const q = demo.quotations.find((x) => x.id === id); if (q) Object.assign(q, p); }
+  async createLead(l: NewLead) {
+    demo.leads.unshift({ id: `L${demo.leads.length + 1}`, name: l.clientName, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity,
+      targetPrice: l.targetPrice, targetCurrency: l.targetCurrency, status: 'NEW', createdAt: new Date().toISOString() });
   }
+  async setLanguage() {}
   users() { return this.wait(demo.users); }
   async createUser(u: { email: string; name: string; role: Role }) {
     demo.users.push({ id: crypto.randomUUID(), email: u.email, name: u.name, role: u.role, active: true, createdAt: new Date().toISOString() });

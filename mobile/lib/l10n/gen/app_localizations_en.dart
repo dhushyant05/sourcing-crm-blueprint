@@ -1,0 +1,413 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for English (`en`).
+class AppLocalizationsEn extends AppLocalizations {
+  AppLocalizationsEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get syncNow => 'Sync now';
+
+  @override
+  String get dashboard => 'Dashboard';
+
+  @override
+  String get leads => 'Leads';
+
+  @override
+  String get shipping => 'Shipping';
+
+  @override
+  String get chat => 'Chat';
+
+  @override
+  String get settings => 'Settings';
+
+  @override
+  String get clientApproval => 'Client approval';
+
+  @override
+  String get notesFromClient => 'Notes from client';
+
+  @override
+  String get reject => 'Reject';
+
+  @override
+  String get accept => 'Accept';
+
+  @override
+  String get indiaChinaChat => 'India ⇄ China chat';
+
+  @override
+  String get addYourChatwootAccessTokenIn =>
+      'Add your Chatwoot access token in Settings to use chat.';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get message => 'Message';
+
+  @override
+  String get pipeline => 'Pipeline';
+
+  @override
+  String get assignToChinaAgent => 'Assign to China agent';
+
+  @override
+  String get agentName => 'Agent name';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get assign => 'Assign';
+
+  @override
+  String get winLossReason => 'Win/loss reason';
+
+  @override
+  String get closeLead => 'Close lead';
+
+  @override
+  String get lead => 'Lead';
+
+  @override
+  String get assignToChina => 'Assign to China';
+
+  @override
+  String get sourcingRequest => 'Sourcing request';
+
+  @override
+  String get closeWon => 'Close won';
+
+  @override
+  String get closeLost => 'Close lost';
+
+  @override
+  String get sourcingRequests => 'Sourcing requests';
+
+  @override
+  String get noneYet => 'None yet';
+
+  @override
+  String get chatThread => 'Chat thread';
+
+  @override
+  String get timeline => 'Timeline';
+
+  @override
+  String get newLead => 'New lead';
+
+  @override
+  String get clientName => 'Client name *';
+
+  @override
+  String get phone => 'Phone';
+
+  @override
+  String get email => 'Email';
+
+  @override
+  String get productInterest => 'Product interest *';
+
+  @override
+  String get quantity => 'Quantity';
+
+  @override
+  String get targetPriceUnit => 'Target price/unit';
+
+  @override
+  String get sourceChannel => 'Source channel';
+
+  @override
+  String get saveLead => 'Save lead';
+
+  @override
+  String get allStatuses => 'All statuses';
+
+  @override
+  String get noLeads => 'No leads';
+
+  @override
+  String get sourceEasy => 'Source Easy';
+
+  @override
+  String get indiaChinaSourcing => 'India ⇄ China sourcing';
+
+  @override
+  String get password => 'Password';
+
+  @override
+  String get sourceEasyServerURL => 'Source Easy server URL';
+
+  @override
+  String get signIn => 'Sign in';
+
+  @override
+  String get newQuotation => 'New quotation';
+
+  @override
+  String get supplier => 'Supplier';
+
+  @override
+  String get unitCost => 'Unit cost';
+
+  @override
+  String get save => 'Save';
+
+  @override
+  String get clientPricePerUnit => 'Client price per unit';
+
+  @override
+  String get setTheClientPriceFirst => 'Set the client price first';
+
+  @override
+  String get quotation => 'Quotation';
+
+  @override
+  String get amountsAreShownInTheCurrency =>
+      'Amounts are shown in the currency they were entered in. No conversion.';
+
+  @override
+  String get suppliers => 'Suppliers';
+
+  @override
+  String get noQuotationsYet => 'No quotations yet';
+
+  @override
+  String get clientPrice => 'Client price';
+
+  @override
+  String get pdfToWhatsApp => 'PDF to WhatsApp';
+
+  @override
+  String get approval => 'Approval';
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get currencies => 'Currencies';
+
+  @override
+  String get usdRMBAndINREveryAmount =>
+      'USD, RMB and INR. Every amount stays in the currency it was entered in — no conversion.';
+
+  @override
+  String get offlineQueue => 'Offline queue';
+
+  @override
+  String get chatwootConnection => 'Chatwoot connection';
+
+  @override
+  String get backups => 'Backups';
+
+  @override
+  String get openTheBackupBrowserOnThe =>
+      'Open the backup browser on the storage server in a browser to download dumps. Restores are CLI-only.';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get chatwoot => 'Chatwoot';
+
+  @override
+  String get chatwootURL => 'Chatwoot URL';
+
+  @override
+  String get accountID => 'Account ID';
+
+  @override
+  String get internalAPIInboxID => 'Internal API inbox ID';
+
+  @override
+  String get yourAccessToken => 'Your access token';
+
+  @override
+  String get chatwootProfileSettingsAccessToken =>
+      'Chatwoot → Profile settings → Access token';
+
+  @override
+  String get shippingTracker => 'Shipping tracker';
+
+  @override
+  String get noShipmentsYet => 'No shipments yet';
+
+  @override
+  String get updateShipment => 'Update shipment';
+
+  @override
+  String get forwarder => 'Forwarder';
+
+  @override
+  String get trackingNumber => 'Tracking number';
+
+  @override
+  String get currentLocation => 'Current location';
+
+  @override
+  String get latitude => 'Latitude';
+
+  @override
+  String get longitude => 'Longitude';
+
+  @override
+  String get saveUpdate => 'Save update';
+
+  @override
+  String get productDescription => 'Product description *';
+
+  @override
+  String get sampleStatus => 'Sample status';
+
+  @override
+  String get supplierNamesOnePerLine => 'Supplier names (one per line)';
+
+  @override
+  String get createRequest => 'Create request';
+
+  @override
+  String get chinaAgent => 'China agent';
+
+  @override
+  String get clientPriceUnit => 'Client price/unit';
+
+  @override
+  String get clientTotal => 'Client total';
+
+  @override
+  String get contact => 'Contact';
+
+  @override
+  String get container => 'Container';
+
+  @override
+  String get customs => 'Customs';
+
+  @override
+  String get eta => 'ETA';
+
+  @override
+  String get etd => 'ETD';
+
+  @override
+  String get location => 'Location';
+
+  @override
+  String get office => 'Office';
+
+  @override
+  String get product => 'Product';
+
+  @override
+  String get source => 'Source';
+
+  @override
+  String get supplierCostUnit => 'Supplier cost/unit';
+
+  @override
+  String get supplierTotal => 'Supplier total';
+
+  @override
+  String get targetPrice => 'Target price';
+
+  @override
+  String get trackingNo => 'Tracking no.';
+
+  @override
+  String get validUntil => 'Valid until';
+
+  @override
+  String get quotations => 'Quotations';
+
+  @override
+  String get offlineAndNothingCachedYet => 'Offline and nothing cached yet';
+
+  @override
+  String get noThreadYet => 'No thread yet';
+
+  @override
+  String get notConfigured => 'Not configured';
+
+  @override
+  String get setDeadline => 'Set deadline';
+
+  @override
+  String get hideServer => 'Hide server';
+
+  @override
+  String get serverSettings => 'Server settings';
+
+  @override
+  String helloName(String name) {
+    return 'Hello $name';
+  }
+
+  @override
+  String pendingChanges(String count) {
+    return '$count pending change(s)';
+  }
+
+  @override
+  String offlineQueued(String count) {
+    return 'Offline — changes are queued ($count pending)';
+  }
+
+  @override
+  String waitingToSync(String count) {
+    return '$count change(s) waiting to sync';
+  }
+
+  @override
+  String syncedSummary(String synced, String failed, String remaining) {
+    return 'Synced $synced, failed $failed, remaining $remaining';
+  }
+
+  @override
+  String deadlineOn(String date) {
+    return 'Deadline: $date';
+  }
+
+  @override
+  String qtyValidUntil(String qty, String date) {
+    return 'Qty $qty · valid until $date';
+  }
+
+  @override
+  String samplesStatus(String status) {
+    return 'Samples: $status';
+  }
+
+  @override
+  String threadNo(String id) {
+    return 'Thread #$id';
+  }
+
+  @override
+  String get closeAsWon => 'Close as won';
+
+  @override
+  String get closeAsLost => 'Close as lost';
+
+  @override
+  String get required => 'Required';
+
+  @override
+  String get status => 'Status';
+
+  @override
+  String get forwarderTbd => 'Forwarder TBD';
+
+  @override
+  String get shipment => 'Shipment';
+
+  @override
+  String notSent(String error) {
+    return 'Not sent: $error';
+  }
+}

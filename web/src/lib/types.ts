@@ -8,8 +8,10 @@ export interface Lead {
 }
 export interface Quotation {
   id: string; name: string; leadId?: string; productName?: string; supplierName?: string;
-  unitCost?: number; unitCostInr?: number; currency: Currency; quantity: number; exchangeRateUsed?: number;
-  clientUnitPriceInr?: number; status: string; validityDate?: string; createdAt: string;
+  /** Supplier cost (China side) in its own currency. */
+  unitCost?: number; totalCost?: number; currency?: Currency; quantity: number;
+  /** Client price (India side) in its own currency. Never converted from the supplier cost. */
+  clientUnitPrice?: number; clientCurrency?: Currency; status: string; validityDate?: string; createdAt: string;
 }
 export interface Shipment {
   id: string; name: string; clientName?: string; stage: string; carrier?: string; trackingNumber?: string;
@@ -18,7 +20,6 @@ export interface Shipment {
 export interface Supplier { id: string; name: string; phone?: string; wechat?: string; notes?: string; city?: string; category?: string; rating?: number; contactName?: string; }
 export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string }
 export interface BackupLink { label: string; url: string }
-export interface ExchangeRate { id: string; pair: string; rate: number; manual: boolean; setBy?: string; effectiveDate: string; }
 
 export const PIPELINE: LeadStatus[] = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'WON'];
 // shippingOrder.shipmentStatus options in twenty-setup/schema.json

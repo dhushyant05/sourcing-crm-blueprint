@@ -10,7 +10,7 @@ try {
   for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, colorScheme: theme });
     await page.goto('http://localhost:4319/');
-    await page.evaluate((t) => localStorage.setItem('theme', t), theme);
+    await page.evaluate((t) => { localStorage.setItem('theme', t); localStorage.setItem('se.lang', 'en'); }, theme);
     if (theme === 'light') { await page.reload(); await page.screenshot({ path: `${out}login.png` }); }
     await page.reload();
     await page.getByText('Explore with demo data').click();
@@ -36,6 +36,28 @@ try {
       await page.reload();
       await shot('/dashboard', 'dashboard-collapsed-loading', async () => { await page.reload(); await page.waitForTimeout(150); });
       await page.evaluate(() => { localStorage.sidebar = 'open'; });
+      // Price forms with the currency picker (USD / RMB / INR) — no conversion.
+      await shot('/quotations', 'quotation-price-form', async () => {
+        await page.locator('tbody tr').nth(2).click(); await page.waitForTimeout(500);
+        await page.getByTestId('client-price-currency').selectOption('USD'); await page.fill('#client-price', '31.50');
+      });
+      await page.keyboard.press('Escape');
+      await shot('/leads', 'new-lead-currency', async () => {
+        await page.getByRole('button', { name: 'New lead' }).click(); await page.waitForTimeout(400);
+        await page.fill('#target-price', '9.80'); await page.getByTestId('target-price-currency').selectOption('CNY');
+      });
+      await page.keyboard.press('Escape');
+      // Simplified Chinese via the header switch (top-right).
+      await page.getByTestId('lang-switch').getByText('中文').click();
+      await shot('/dashboard', 'zh-dashboard');
+      await shot('/quotations', 'zh-quotations');
+      await shot('/quotations', 'zh-quotation-price-form', async () => { await page.locator('tbody tr').first().click(); await page.waitForTimeout(500); });
+      await page.keyboard.press('Escape');
+      await shot('/leads', 'zh-leads-board');
+      await shot('/settings', 'zh-settings');
+      await page.getByRole('button', { name: '退出登录' }).click(); await page.waitForTimeout(500);
+      await page.screenshot({ path: `${out}zh-login.png` });
+      await page.evaluate(() => localStorage.setItem('se.lang', 'en'));
     }
     await page.close();
   }

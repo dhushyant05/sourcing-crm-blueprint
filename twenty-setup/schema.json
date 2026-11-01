@@ -227,36 +227,31 @@
         },
         {
           "name": "currency",
-          "label": "Currency",
+          "label": "Supplier cost currency",
           "type": "SELECT",
           "options": [
+            "USD",
             "CNY",
-            "USD"
+            "INR"
           ]
         },
         {
-          "name": "exchangeRateUsed",
-          "label": "Exchange rate used (to INR)",
-          "type": "NUMBER",
-          "settings": {
-            "decimals": 4
-          }
-        },
-        {
-          "name": "inrEquivalent",
-          "label": "INR equivalent",
+          "name": "clientUnitPrice",
+          "label": "Client unit price",
           "type": "NUMBER",
           "settings": {
             "decimals": 2
           }
         },
         {
-          "name": "clientUnitPriceInr",
-          "label": "Client unit price (INR)",
-          "type": "NUMBER",
-          "settings": {
-            "decimals": 2
-          }
+          "name": "clientCurrency",
+          "label": "Client price currency",
+          "type": "SELECT",
+          "options": [
+            "USD",
+            "CNY",
+            "INR"
+          ]
         },
         {
           "name": "validityDate",
@@ -424,59 +419,6 @@
           "type": "RELATION",
           "target": "quotation",
           "targetLabel": "Shipping orders"
-        }
-      ]
-    },
-    {
-      "nameSingular": "exchangeRate",
-      "namePlural": "exchangeRates",
-      "labelSingular": "Exchange Rate",
-      "labelPlural": "Exchange Rates",
-      "icon": "IconCurrencyRupee",
-      "description": "Admin-controlled rates to INR",
-      "fields": [
-        {
-          "name": "currencyPair",
-          "label": "Currency pair",
-          "type": "SELECT",
-          "options": [
-            "CNY_INR",
-            "USD_INR",
-            "USD_CNY"
-          ]
-        },
-        {
-          "name": "rate",
-          "label": "Rate",
-          "type": "NUMBER",
-          "settings": {
-            "decimals": 6
-          }
-        },
-        {
-          "name": "source",
-          "label": "Source",
-          "type": "SELECT",
-          "options": [
-            "MANUAL",
-            "RBI_REFERENCE",
-            "API"
-          ]
-        },
-        {
-          "name": "isManualOverride",
-          "label": "Manual override",
-          "type": "BOOLEAN"
-        },
-        {
-          "name": "setBy",
-          "label": "Set by",
-          "type": "TEXT"
-        },
-        {
-          "name": "effectiveDate",
-          "label": "Effective date",
-          "type": "DATE"
         }
       ]
     },

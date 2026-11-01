@@ -2,6 +2,8 @@ import { clsx } from 'clsx';
 import { X, Inbox } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 
 const tone: Record<string, string> = {
   NEW: 'bg-sky-50 text-sky-700 ring-sky-600/15 dark:bg-sky-500/10 dark:text-sky-300',
@@ -20,9 +22,11 @@ export const dot: Record<string, string> = {
   NEW: 'bg-sky-500', ASSIGNED: 'bg-violet-500', SOURCING: 'bg-amber-500', QUOTED: 'bg-brand-500',
   APPROVED: 'bg-teal-500', SHIPPING: 'bg-cyan-500', WON: 'bg-emerald-500', LOST: 'bg-rose-500',
 };
-export const pretty = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
+/** Translated label for a status enum (falls back to "In transit"-style prettifying). */
+export const pretty = (s: string) => i18n.t(`status.${s}`, { defaultValue: s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ') });
 
 export function Chip({ value }: { value: string }) {
+  useTranslation();
   return (
     <span className={clsx('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
       tone[value] ?? 'bg-ink-100 text-ink-600 ring-ink-500/15 dark:bg-ink-800 dark:text-ink-300')}>
@@ -85,7 +89,7 @@ export function SlideOver({ open, onClose, title, subtitle, children, footer }: 
       <aside className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-ink-200 bg-white shadow-lift animate-slide-in dark:border-ink-800 dark:bg-ink-900">
         <header className="flex items-start justify-between gap-4 border-b border-ink-100 px-6 py-5 dark:border-ink-800">
           <div><h2 className="text-base font-semibold text-ink-900 dark:text-white">{title}</h2>{subtitle && <div className="mt-1 text-sm text-ink-500">{subtitle}</div>}</div>
-          <button aria-label="Close" onClick={onClose} className="btn-ghost -mr-2 p-2"><X size={18} /></button>
+          <button aria-label={i18n.t('common.close')} onClick={onClose} className="btn-ghost -mr-2 p-2"><X size={18} /></button>
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {footer && <footer className="flex justify-end gap-2 border-t border-ink-100 px-6 py-4 dark:border-ink-800">{footer}</footer>}

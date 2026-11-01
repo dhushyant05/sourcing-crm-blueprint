@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -34,6 +35,17 @@ class Session extends ChangeNotifier {
   int pendingOps = 0;
   bool restoring = true;
 
+  /// UI language: `en` or `zh-CN`. Saved on this device; also saved to the account when signed in.
+  String? language;
+  Locale? get locale => switch (language) { 'zh-CN' => const Locale('zh'), 'en' => const Locale('en'), _ => null };
+
+  Future<void> setLanguage(String code) async {
+    language = code;
+    await _secure.write(key: 'language', value: code);
+    notifyListeners();
+    try { await _api?.setLanguage(code); } catch (_) {} // best effort; device choice already saved
+  }
+
   ServerClient? _api;
   SourceEasyRepository? _repo;
   LocalStore? _store;
@@ -55,6 +67,7 @@ class Session extends ChangeNotifier {
       chatwootInboxId: int.tryParse(m['chatwootInboxId'] ?? '') ?? 1,
       chatwootToken: m['chatwootToken'] ?? '',
     );
+    language = m['language'];
   }
 
   Future<void> saveConfig() async {
@@ -90,6 +103,10 @@ class Session extends ChangeNotifier {
     this.email = me.email;
     displayName = me.name.isEmpty ? me.email : me.name;
     role = Role.fromCode(me.role);
+    if (language == null && (me.language == 'en' || me.language == 'zh-CN')) {
+      language = me.language;
+      await _secure.write(key: 'language', value: language);
+    }
     await _start(me.token);
     _rebuildRepo();
     await _secure.write(key: 'token', value: me.token);

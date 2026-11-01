@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -74,7 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _input.clear();
       await _refresh();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Not sent: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.notSent('$e'))));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -91,11 +93,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final me = context.watch<Session>().displayName;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.request.productDescription ?? 'Chat'), bottom: PreferredSize(
+      appBar: AppBar(title: Text(widget.request.productDescription ?? context.l10n.chat), bottom: PreferredSize(
           preferredSize: const Size.fromHeight(18),
-          child: Text('Sourcing request ${widget.request.id.substring(0, 8)}', style: Theme.of(context).textTheme.bodySmall))),
+          child: Text('${context.l10n.sourcingRequest} ${widget.request.id.substring(0, 8)}', style: Theme.of(context).textTheme.bodySmall))),
       body: Column(children: [
-        if (_error != null) MaterialBanner(content: Text(_error!), actions: [TextButton(onPressed: _refresh, child: const Text('Retry'))]),
+        if (_error != null) MaterialBanner(content: Text(_error!), actions: [TextButton(onPressed: _refresh, child: Text(context.l10n.retry))]),
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
@@ -131,7 +133,7 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
             child: Row(children: [
               Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 4,
-                  decoration: const InputDecoration(hintText: 'Message', isDense: true), onSubmitted: (_) => _send())),
+                  decoration: InputDecoration(hintText: context.l10n.message, isDense: true), onSubmitted: (_) => _send())),
               const SizedBox(width: 8),
               IconButton.filled(onPressed: _sending ? null : _send, icon: const Icon(Icons.send)),
             ]),

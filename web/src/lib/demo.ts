@@ -1,4 +1,4 @@
-import type { ExchangeRate, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
 
 const day = (n: number) => new Date(Date.UTC(2026, 9, 31) - n * 864e5).toISOString();
 const clients = ['Arora Home Store', 'Mehta Kitchenware', 'Sri Balaji Traders', 'Kapoor Retail', 'Nair Hospitality',
@@ -19,8 +19,8 @@ const leads: Lead[] = clients.map((c, i) => ({
 const quotations: Quotation[] = leads.filter((l) => ['QUOTED', 'APPROVED', 'SHIPPING', 'WON'].includes(l.status)).map((l, i) => ({
   id: `Q${i + 1}`, name: `QT-26${(1040 + i).toString()}`, leadId: l.id, productName: l.productInterest,
   supplierName: ['Yiwu Huaxin Trading', 'Ningbo Brightway', 'Guangzhou Hometex', 'Shenzhen Joylight', 'Foshan Ceramics Co.'][i % 5],
-  unitCost: [11.5, 9.2, 22, 48, 3.1, 7.4][i % 6], currency: i % 3 === 2 ? 'USD' : 'CNY', quantity: l.quantity ?? 100,
-  exchangeRateUsed: 11.9, clientUnitPriceInr: [168, 142, 2450, 720, 52, 118][i % 6],
+  unitCost: [11.5, 9.2, 22, 48, 3.1, 7.4][i % 6], currency: (['CNY', 'CNY', 'USD', 'CNY', 'INR', 'USD'] as const)[i % 6], quantity: l.quantity ?? 100,
+  clientUnitPrice: [168, 142, 29.5, 720, 52, 1.45][i % 6], clientCurrency: (['INR', 'INR', 'USD', 'INR', 'INR', 'USD'] as const)[i % 6],
   status: ['SENT', 'ACCEPTED', 'ACCEPTED', 'ACCEPTED', 'DRAFT', 'SENT'][i % 6], validityDate: day(-14 + i), createdAt: day(i + 2),
 }));
 
@@ -39,12 +39,6 @@ const suppliers: Supplier[] = [
   { id: 'SP5', name: 'Foshan Ceramics Co.', city: 'Foshan', category: 'Ceramics', rating: 4.5, contactName: 'Sun Hao', wechat: 'fsceramic' },
 ];
 
-const rates: ExchangeRate[] = [
-  { id: 'R1', pair: 'CNY_INR', rate: 11.92, manual: true, setBy: 'Dhushyanth', effectiveDate: '2026-10-30' },
-  { id: 'R2', pair: 'USD_INR', rate: 84.35, manual: true, setBy: 'Dhushyanth', effectiveDate: '2026-10-30' },
-  { id: 'R3', pair: 'USD_CNY', rate: 7.08, manual: false, setBy: 'auto', effectiveDate: '2026-10-29' },
-  { id: 'R4', pair: 'CNY_INR', rate: 11.85, manual: false, setBy: 'auto', effectiveDate: '2026-10-22' },
-];
 
 const users: User[] = [
   { id: 'U1', email: 'dhushyanth@sourceec.in', name: 'Dhushyanth Kumar', role: 'SUPER_ADMIN', active: true, createdAt: day(60) },
@@ -54,4 +48,4 @@ const users: User[] = [
   { id: 'U5', email: 'chenjing@sourceec.in', name: 'Chen Jing', role: 'CHINA_STAFF', active: true, createdAt: day(30) },
 ];
 
-export const demo = { leads, quotations, shipments, suppliers, rates, users };
+export const demo = { leads, quotations, shipments, suppliers, users };

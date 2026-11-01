@@ -56,14 +56,6 @@ class Permissions {
   bool get canChat => true;
 
   // Admin
-  bool get canSetExchangeRate => role == Role.superAdmin; // server enforces the same
   bool get canManageUsers => role.isAdmin;
   bool get canDownloadBackups => role == Role.superAdmin;
-
-  /// Currencies the user may toggle between on a quotation.
-  /// India sees INR (converted); China sees the raw quoted currencies.
-  List<String> get quoteCurrencies => [
-        if (canSeeRawSupplierCost) ...['CNY', 'USD'],
-        if (canSeeClientPricing) 'INR',
-      ];
 }

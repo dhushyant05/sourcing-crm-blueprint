@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/models/models.dart';
 import '../../services/session.dart';
-import '../widgets/common.dart';
+import '../widgets/language_switch.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -13,45 +14,41 @@ class SettingsScreen extends StatelessWidget {
     final s = context.watch<Session>();
     final p = s.perms;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(context.l10n.settings), actions: const [LanguageSwitch()]),
       body: ListView(children: [
         ListTile(leading: const Icon(Icons.person), title: Text(s.displayName ?? ''), subtitle: Text('${s.email} · ${s.role.label}')),
+        ListTile(leading: Icon(Icons.translate), title: Text(context.l10n.language), trailing: LanguageSwitch()),
+        ListTile(leading: Icon(Icons.payments_outlined), title: Text(context.l10n.currencies),
+            subtitle: Text(context.l10n.usdRMBAndINREveryAmount)),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.sync),
-          title: const Text('Offline queue'),
-          subtitle: Text('${s.pendingOps} pending change(s)'),
+          title: Text(context.l10n.offlineQueue),
+          subtitle: Text(context.l10n.pendingChanges('${s.pendingOps}')),
           trailing: TextButton(
             onPressed: () async {
               final r = await s.syncNow();
               if (r != null && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Synced ${r.synced}, failed ${r.failed}, remaining ${r.remaining}')));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.syncedSummary('${r.synced}', '${r.failed}', '${r.remaining}'))));
               }
             },
-            child: const Text('Sync now'),
+            child: Text(context.l10n.syncNow),
           ),
         ),
         ListTile(
           leading: const Icon(Icons.chat_outlined),
-          title: const Text('Chatwoot connection'),
-          subtitle: Text(s.config.chatwootToken.isEmpty ? 'Not configured' : '${s.config.chatwootUrl} · account ${s.config.chatwootAccountId}'),
+          title: Text(context.l10n.chatwootConnection),
+          subtitle: Text(s.config.chatwootToken.isEmpty ? context.l10n.notConfigured : '${s.config.chatwootUrl} · account ${s.config.chatwootAccountId}'),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatwootSettingsScreen())),
         ),
-        if (p.canSetExchangeRate)
-          ListTile(
-            leading: const Icon(Icons.currency_exchange),
-            title: const Text('Exchange rates'),
-            subtitle: const Text('Set RMB/USD → INR (admin)'),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExchangeRatesScreen())),
-          ),
         if (p.canDownloadBackups)
-          const ListTile(
+          ListTile(
             leading: Icon(Icons.backup_outlined),
-            title: Text('Backups'),
-            subtitle: Text('Open the backup browser on the storage server in a browser to download dumps. Restores are CLI-only.'),
+            title: Text(context.l10n.backups),
+            subtitle: Text(context.l10n.openTheBackupBrowserOnThe),
           ),
         const Divider(),
-        ListTile(leading: const Icon(Icons.logout), title: const Text('Sign out'), onTap: s.signOut),
+        ListTile(leading: Icon(Icons.logout), title: Text(context.l10n.signOut), onTap: s.signOut),
         const AboutListTile(applicationName: 'Source Easy', applicationVersion: '1.0.0', icon: Icon(Icons.info_outline)),
       ]),
     );
@@ -75,16 +72,16 @@ class _ChatwootSettingsScreenState extends State<ChatwootSettingsScreen> {
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 12);
     return Scaffold(
-      appBar: AppBar(title: const Text('Chatwoot')),
+      appBar: AppBar(title: Text(context.l10n.chatwoot)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _url, decoration: const InputDecoration(labelText: 'Chatwoot URL')),
+        TextField(controller: _url, decoration: InputDecoration(labelText: context.l10n.chatwootURL)),
         gap,
-        TextField(controller: _acct, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Account ID')),
+        TextField(controller: _acct, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.l10n.accountID)),
         gap,
-        TextField(controller: _inbox, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Internal API inbox ID')),
+        TextField(controller: _inbox, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.l10n.internalAPIInboxID)),
         gap,
         TextField(controller: _token, obscureText: true,
-            decoration: const InputDecoration(labelText: 'Your access token', helperText: 'Chatwoot → Profile settings → Access token')),
+            decoration: InputDecoration(labelText: context.l10n.yourAccessToken, helperText: context.l10n.chatwootProfileSettingsAccessToken)),
         const SizedBox(height: 24),
         FilledButton(
           onPressed: () async {
@@ -96,71 +93,7 @@ class _ChatwootSettingsScreenState extends State<ChatwootSettingsScreen> {
             await context.read<Session>().saveConfig();
             if (context.mounted) Navigator.pop(context);
           },
-          child: const Text('Save'),
-        ),
-      ]),
-    );
-  }
-}
-
-class ExchangeRatesScreen extends StatefulWidget {
-  const ExchangeRatesScreen({super.key});
-  @override
-  State<ExchangeRatesScreen> createState() => _ExchangeRatesScreenState();
-}
-
-class _ExchangeRatesScreenState extends State<ExchangeRatesScreen> {
-  late Future<List<ExchangeRate>> _f;
-  @override
-  void initState() {
-    super.initState();
-    _f = context.read<Session>().repo.rateHistory();
-  }
-
-  Future<void> _set(String pair) async {
-    final c = TextEditingController();
-    final v = await showDialog<double>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Set ${pair.replaceAll('_', ' → ').replaceAll('CNY', 'RMB')}'),
-        content: TextField(controller: c, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Rate', helperText: 'Manual override, effective today')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, double.tryParse(c.text)), child: const Text('Save')),
-        ],
-      ),
-    );
-    if (v == null || v <= 0 || !mounted) return;
-    final s = context.read<Session>();
-    final r = await s.repo.setRate(pair, v, s.displayName ?? s.email ?? 'admin');
-    if (!mounted) return;
-    showWriteResult(context, r, 'Rate');
-    setState(() => _f = s.repo.rateHistory());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Exchange rates')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        Wrap(spacing: 8, children: [
-          for (final pair in const ['CNY_INR', 'USD_INR', 'USD_CNY'])
-            FilledButton.tonal(onPressed: () => _set(pair), child: Text(pair.replaceAll('_', '→').replaceAll('CNY', 'RMB'))),
-        ]),
-        const SizedBox(height: 16),
-        Text('History', style: Theme.of(context).textTheme.titleMedium),
-        AsyncView<List<ExchangeRate>>(
-          future: _f,
-          builder: (c, list) => Column(
-            children: list
-                .map((r) => ListTile(
-                      title: Text('${r.pair.replaceAll('_', ' → ').replaceAll('CNY', 'RMB')}  ${r.rate}'),
-                      subtitle: Text('${r.effectiveDate != null ? dateFmt.format(r.effectiveDate!) : ''} · ${pretty(r.source)} · ${r.setBy ?? ''}'),
-                      trailing: r.manual ? const Chip(label: Text('Override')) : null,
-                    ))
-                .toList(),
-          ),
+          child: Text(context.l10n.save),
         ),
       ]),
     );

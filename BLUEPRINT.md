@@ -24,17 +24,16 @@ A cross-border sourcing operation with an India office capturing leads and deliv
 - **Lead**: client name, contact, source channel, status, assigned office, Chatwoot conversation link
 - **Sourcing Request**: product description, quantity, target price, deadline, assigned China agent, linked Chatwoot thread URL
 - **Supplier**: name, phone, WeChat ID, notes (China-side only)
-- **Quotation**: unit cost, total cost, currency (RMB or USD as quoted), exchange rate used, INR equivalent, validity date, PDF attachment
+- **Quotation**: supplier unit cost, total cost and currency (USD / CNY / INR), client unit price and client currency (USD / CNY / INR), validity date, PDF attachment. No currency conversion.
 - **Client Approval**: status, approver, timestamp, notes
 - **Shipping Order**: forwarder, tracking number, container type, ETD, ETA, customs status
-- **Exchange Rate**: currency pair, rate, source, set by, date (admin-controlled)
 
 ## 5. Workflows (10 Steps)
 1. India agent creates a Lead manually in Source Easy — client name, contact, product interest, quantity, target price
 2. Lead assigned to a China agent; push notification sent through the app
 3. China opens the Lead, creates a Sourcing Request, logs supplier names and sample statuses
 4. India-China discussion happens in the linked Chatwoot thread (internal agents only)
-5. Quotation created in RMB or USD; India sees INR conversion using the admin-set rate
+5. China records the supplier cost in its own currency (USD, RMB or INR); India sets the client price in the currency agreed with the client. Amounts are never converted
 6. India generates the quote PDF and shares it to the client via WhatsApp (phone share sheet), then logs the client's yes or no as a Client Approval record
 7. On approval, shipping order created
 8. China coordinates forwarder and booking
@@ -42,10 +41,10 @@ A cross-border sourcing operation with an India office capturing leads and deliv
 10. Delivery confirmed, lead closed with win-loss reason
 
 ## 6. Roles and Permissions
-- **India staff**: leads, customer details, quotations (INR view), approvals, shipping; not supplier details or raw supplier costs
+- **India staff**: leads, customer details, quotations (client price only, in its entered currency), approvals, shipping; not supplier details or raw supplier costs
 - **China staff**: sourcing requests, supplier details, quotations, shipping; not customer details, client pricing or margins
 - **Office admin (India or China)**: everything on their own office's side, plus user administration for that office
-- **Super admin**: everything across both offices, exchange rates (super admin only), backup links
+- **Super admin**: everything across both offices, backup links
 - Enforced server-side by the Source Easy server (record + field filtering per role, per-field write checks); Twenty is never exposed, so no paid row-level security is needed
 
 ## 7. Chatwoot Integration (Internal Only)
@@ -63,7 +62,8 @@ A cross-border sourcing operation with an India office capturing leads and deliv
 - Lead list with filters by office and status
 - Lead detail with timeline of every handoff
 - Sourcing request form for China
-- Quotation view with currency toggle (RMB / USD / INR) and PDF share to WhatsApp
+- Quotation view showing each amount in its own currency, with a currency picker (USD / RMB / INR) on every price form, and PDF share to WhatsApp
+- English / Simplified Chinese language switch in the top-right corner (also on sign-in)
 - Approval screen with accept and reject
 - Shipping tracker with map
 - Native Chatwoot chat screen via bottom tab or floating button on every screen
@@ -80,7 +80,7 @@ A cross-border sourcing operation with an India office capturing leads and deliv
 - **Phase 7**: Iterate and harden
 
 ## 10. Decisions (resolved 2026-10-31)
-See QUESTIONS.md. Summary: PDF quotes shared to WhatsApp manually; RMB/USD with admin-set INR rate; office-scoped visibility with super admin over all; no voice notes; sideloaded APK for everyone; backup downloads for super admin only.
+See QUESTIONS.md. Summary: PDF quotes shared to WhatsApp manually; USD/RMB/INR stored as entered with no conversion; English/Chinese UI; office-scoped visibility with super admin over all; no voice notes; sideloaded APK for everyone; backup downloads for super admin only.
 
 ## 11. License Notes
 - Twenty core is AGPLv3 — free for internal commercial use across both offices

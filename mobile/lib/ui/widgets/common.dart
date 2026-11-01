@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/api/server_client.dart';
@@ -52,8 +54,8 @@ class AsyncView<T> extends StatelessWidget {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Icon(offline ? Icons.cloud_off : Icons.error_outline, size: 40),
                   const SizedBox(height: 8),
-                  Text(offline ? 'Offline and nothing cached yet' : '${s.error}', textAlign: TextAlign.center),
-                  if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('Retry')),
+                  Text(offline ? context.l10n.offlineAndNothingCachedYet : '${s.error}', textAlign: TextAlign.center),
+                  if (onRetry != null) TextButton(onPressed: onRetry, child: Text(context.l10n.retry)),
                 ]),
               ),
             );

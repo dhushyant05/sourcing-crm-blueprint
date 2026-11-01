@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import '../core/currency.dart';
 import '../core/roles.dart';
 import 'api/server_client.dart';
 import 'models/models.dart';
@@ -30,7 +29,7 @@ class SourceEasyRepository {
   static const _plural = {
     'lead': 'leads', 'sourcingRequest': 'sourcingRequests', 'supplier': 'suppliers',
     'quotation': 'quotations', 'clientApproval': 'clientApprovals',
-    'shippingOrder': 'shippingOrders', 'exchangeRate': 'exchangeRates', 'teamMember': 'teamMembers',
+    'shippingOrder': 'shippingOrders', 'teamMember': 'teamMembers',
   };
 
   Future<List<Map<String, dynamic>>> _read(String cacheKey, String plural, String fields,
@@ -175,14 +174,12 @@ class SourceEasyRepository {
     return rows.map(Quotation.fromJson).toList();
   }
 
-  /// China creates a quotation in the supplier's currency; INR equivalent is
-  /// snapshotted with the admin rate in force at creation time.
+  /// China creates a quotation in the currency the supplier quoted (USD/CNY/INR). No conversion.
   Future<WriteResult> createQuotation({required String sourcingRequestId, String? supplierId,
       required double unitCost, required double quantity, required String currency,
-      required RateTable rates, DateTime? validUntil}) {
+      DateTime? validUntil}) {
     assert(perms.canCreateQuotation);
     final total = unitCost * quantity;
-    final rate = rates.toInr(currency);
     return _write('quotation', {
       'name': 'Q ${DateTime.now().toIso8601String().substring(0, 10)}',
       'sourcingRequestId': sourcingRequestId,
@@ -190,15 +187,14 @@ class SourceEasyRepository {
       'unitCost': unitCost,
       'totalCost': total,
       'currency': currency,
-      'exchangeRateUsed': rate,
-      'inrEquivalent': double.parse((total * rate).toStringAsFixed(2)),
       if (validUntil != null) 'validityDate': validUntil.toIso8601String().substring(0, 10),
       'office': 'BOTH',
     });
   }
 
-  Future<WriteResult> setClientPrice(String quotationId, double unitPriceInr) =>
-      _write('quotation', {'clientUnitPriceInr': unitPriceInr}, id: quotationId);
+  /// India sets the client price in the currency it picks (USD/CNY/INR).
+  Future<WriteResult> setClientPrice(String quotationId, double unitPrice, String currency) =>
+      _write('quotation', {'clientUnitPrice': unitPrice, 'clientCurrency': currency}, id: quotationId);
 
   // ---------- Approvals ----------
   Future<List<ClientApproval>> approvals({String? quotationId}) async {
@@ -239,51 +235,6 @@ class SourceEasyRepository {
   Future<WriteResult> updateShipping(String id, Map<String, dynamic> data) {
     assert(perms.canEditShipping);
     return _write('shippingOrder', data, id: id);
-  }
-
-  // ---------- Exchange rates ----------
-  /// Latest rate per pair; manual overrides win over fetched rates of the same day.
-  Future<RateTable> rates() async {
-    final rows = await _read('rates', 'exchangeRates', ExchangeRate.gqlFields,
-        orderBy: {'effectiveDate': 'DescNullsLast'});
-    return rateTableFrom(rows.map(ExchangeRate.fromJson).toList());
-  }
-
-  static RateTable rateTableFrom(List<ExchangeRate> list) {
-    double? pick(String pair) {
-      final xs = list.where((r) => r.pair == pair).toList()
-        ..sort((a, b) {
-          final d = (b.effectiveDate ?? DateTime(0)).compareTo(a.effectiveDate ?? DateTime(0));
-          if (d != 0) return d;
-          return (b.manual ? 1 : 0) - (a.manual ? 1 : 0);
-        });
-      return xs.isEmpty ? null : xs.first.rate;
-    }
-
-    return RateTable(
-      cnyToInr: pick('CNY_INR') ?? 11.8, // fallback defaults until an admin sets rates
-      usdToInr: pick('USD_INR') ?? 84.0,
-      usdToCny: pick('USD_CNY'),
-    );
-  }
-
-  Future<List<ExchangeRate>> rateHistory() async =>
-      (await _read('rates', 'exchangeRates', ExchangeRate.gqlFields, orderBy: {'effectiveDate': 'DescNullsLast'}))
-          .map(ExchangeRate.fromJson)
-          .toList();
-
-  Future<WriteResult> setRate(String pair, double rate, String setBy, {bool manual = true}) {
-    if (!perms.canSetExchangeRate) throw StateError('Only the super admin can set exchange rates');
-    return _write('exchangeRate', {
-      'name': pair.replaceAll('_', '→'),
-      'currencyPair': pair,
-      'rate': rate,
-      'source': manual ? 'MANUAL' : 'API',
-      'isManualOverride': manual,
-      'setBy': setBy,
-      'effectiveDate': DateTime.now().toIso8601String().substring(0, 10),
-      'office': 'BOTH',
-    });
   }
 
   // ---------- Timeline ----------

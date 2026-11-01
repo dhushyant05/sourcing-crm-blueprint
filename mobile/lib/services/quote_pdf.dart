@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -23,13 +24,18 @@ class QuoteData {
 }
 
 /// Builds the client-facing quote PDF. It never contains supplier names or
-/// supplier costs — only the client price in the chosen currency (normally INR).
+/// supplier costs — only the client price, in the currency it was entered in.
 class QuotePdf {
   static Future<Uint8List> build(QuoteData q) async {
     final df = DateFormat('dd MMM yyyy');
-    final doc = pw.Document(title: 'Quotation ${q.quoteNo}', author: 'Source Easy');
-    // Built-in Helvetica has no ₹ glyph, so amounts use the ISO code prefix.
-    String money(double v) => '${q.currency == 'CNY' ? 'RMB' : q.currency} ${NumberFormat('#,##0.00').format(v)}';
+    // Built-in Helvetica has no ₹ glyph; bundled Noto Sans covers ₹, ¥ and \$.
+    final theme = pw.ThemeData.withFont(
+      base: pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Regular.ttf')),
+      bold: pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Bold.ttf')),
+    );
+    final doc = pw.Document(title: 'Quotation ${q.quoteNo}', author: 'Source Easy', theme: theme);
+    // Shown exactly in the currency India entered — never converted.
+    String money(double v) => formatMoneyCode(v, q.currency);
     doc.addPage(pw.Page(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(40),

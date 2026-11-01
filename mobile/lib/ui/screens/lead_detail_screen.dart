@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/currency.dart';
 import '../../data/models/models.dart';
 import '../../services/session.dart';
 import '../widgets/common.dart';
@@ -46,11 +49,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     final agent = await showDialog<String>(
       context: context,
       builder: (d) => AlertDialog(
-        title: const Text('Assign to China agent'),
-        content: TextField(controller: c, decoration: const InputDecoration(labelText: 'Agent name')),
+        title: Text(context.l10n.assignToChinaAgent),
+        content: TextField(controller: c, decoration: InputDecoration(labelText: context.l10n.agentName)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: const Text('Assign')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(context.l10n.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: Text(context.l10n.assign)),
         ],
       ),
     );
@@ -65,11 +68,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     final reason = await showDialog<String>(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text(won ? 'Close as won' : 'Close as lost'),
-        content: TextField(controller: c, decoration: const InputDecoration(labelText: 'Win/loss reason')),
+        title: Text(won ? context.l10n.closeAsWon : context.l10n.closeAsLost),
+        content: TextField(controller: c, decoration: InputDecoration(labelText: context.l10n.winLossReason)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: const Text('Close lead')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(context.l10n.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: Text(context.l10n.closeLead)),
         ],
       ),
     );
@@ -85,7 +88,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     final p = s.perms;
     final t = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Lead')),
+      appBar: AppBar(title: Text(context.l10n.lead)),
       body: AsyncView<_Detail>(
         future: _f,
         onRetry: _reload,
@@ -95,7 +98,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
             onRefresh: () async => _reload(),
             child: ListView(padding: const EdgeInsets.all(16), children: [
               Row(children: [
-                Expanded(child: Text(p.canSeeCustomerDetails ? (l.clientName ?? l.name) : (l.productInterest ?? 'Lead'),
+                Expanded(child: Text(p.canSeeCustomerDetails ? (l.clientName ?? l.name) : (l.productInterest ?? context.l10n.lead),
                     style: t.textTheme.headlineSmall)),
                 StatusChip(l.status),
               ]),
@@ -105,27 +108,27 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Column(children: [
                     if (p.canSeeCustomerDetails) ...[
-                      InfoRow('Contact', l.contactPhone),
-                      InfoRow('Email', l.contactEmail),
-                      InfoRow('Source', pretty(l.sourceChannel)),
+                      InfoRow(context.l10n.contact, l.contactPhone),
+                      InfoRow(context.l10n.email, l.contactEmail),
+                      InfoRow(context.l10n.source, pretty(l.sourceChannel)),
                     ],
-                    InfoRow('Product', l.productInterest),
-                    InfoRow('Quantity', l.quantity?.toStringAsFixed(0)),
+                    InfoRow(context.l10n.product, l.productInterest),
+                    InfoRow(context.l10n.quantity, l.quantity?.toStringAsFixed(0)),
                     if (p.canSeeClientPricing && l.targetPrice != null)
-                      InfoRow('Target price', '${l.targetPrice!.toStringAsFixed(2)} ${l.targetCurrency ?? ''}'),
-                    InfoRow('Office', pretty(l.assignedOffice)),
-                    InfoRow('China agent', l.assignedChinaAgent),
-                    if (l.winLossReason != null) InfoRow('Win/loss reason', l.winLossReason),
+                      InfoRow(context.l10n.targetPrice, formatMoneyCode(l.targetPrice!, l.targetCurrency ?? 'INR')),
+                    InfoRow(context.l10n.office, pretty(l.assignedOffice)),
+                    InfoRow(context.l10n.chinaAgent, l.assignedChinaAgent),
+                    if (l.winLossReason != null) InfoRow(context.l10n.winLossReason, l.winLossReason),
                   ]),
                 ),
               ),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (p.canCreateLead && l.status == 'NEW')
-                  FilledButton.tonalIcon(onPressed: () => _assign(l), icon: const Icon(Icons.forward), label: const Text('Assign to China')),
+                  FilledButton.tonalIcon(onPressed: () => _assign(l), icon: Icon(Icons.forward), label: Text(context.l10n.assignToChina)),
                 if (p.canCreateSourcingRequest)
                   FilledButton.tonalIcon(
                     icon: const Icon(Icons.add_task),
-                    label: const Text('Sourcing request'),
+                    label: Text(context.l10n.sourcingRequest),
                     onPressed: () async {
                       await Navigator.push(c, MaterialPageRoute(builder: (_) => SourcingFormScreen(lead: l)));
                       _reload();
@@ -133,25 +136,25 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                   ),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.local_shipping_outlined),
-                  label: const Text('Shipping'),
+                  label: Text(context.l10n.shipping),
                   onPressed: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ShippingScreen(leadId: l.id))),
                 ),
                 if (p.canCreateLead && !['WON', 'LOST'].contains(l.status)) ...[
-                  OutlinedButton(onPressed: () => _close(l, true), child: const Text('Close won')),
-                  OutlinedButton(onPressed: () => _close(l, false), child: const Text('Close lost')),
+                  OutlinedButton(onPressed: () => _close(l, true), child: Text(context.l10n.closeWon)),
+                  OutlinedButton(onPressed: () => _close(l, false), child: Text(context.l10n.closeLost)),
                 ],
               ]),
               const SizedBox(height: 20),
-              Text('Sourcing requests', style: t.textTheme.titleMedium),
-              if (d.requests.isEmpty) const Padding(padding: EdgeInsets.all(8), child: Text('None yet')),
+              Text(context.l10n.sourcingRequests, style: t.textTheme.titleMedium),
+              if (d.requests.isEmpty) Padding(padding: EdgeInsets.all(8), child: Text(context.l10n.noneYet)),
               ...d.requests.map((r) => Card(
                     child: ListTile(
                       title: Text(r.productDescription ?? r.name),
-                      subtitle: Text('Samples: ${pretty(r.sampleStatus)}'
-                          '${r.deadline != null ? ' · due ${dateFmt.format(r.deadline!)}' : ''}'),
+                      subtitle: Text(context.l10n.samplesStatus(pretty(r.sampleStatus)) +
+                          (r.deadline != null ? ' · ${context.l10n.deadlineOn(dateFmt.format(r.deadline!))}' : '')),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         IconButton(
-                          tooltip: 'Chat thread',
+                          tooltip: context.l10n.chatThread,
                           icon: const Icon(Icons.chat_bubble_outline),
                           onPressed: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ChatScreen(request: r))),
                         ),
@@ -164,7 +167,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     ),
                   )),
               const SizedBox(height: 20),
-              Text('Timeline', style: t.textTheme.titleMedium),
+              Text(context.l10n.timeline, style: t.textTheme.titleMedium),
               ...d.timeline.map((e) => ListTile(
                     dense: true,
                     leading: Icon(switch (e.kind) {
