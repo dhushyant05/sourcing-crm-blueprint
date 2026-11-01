@@ -89,7 +89,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-ink-200/70 bg-white/70 px-3 md:h-16 md:gap-4 md:px-6 backdrop-blur dark:border-ink-800 dark:bg-ink-900/40">
+        <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-ink-200/70 bg-white/70 px-3 md:h-16 md:gap-4 md:px-6 backdrop-blur dark:border-ink-800 dark:bg-ink-900/40">
           <button className="btn-ghost p-2.5 md:hidden" onClick={() => setDrawer(true)} aria-label={t('nav.toggleSidebar')}><Menu size={22} /></button>
           <label className="relative w-full min-w-0 max-w-md">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
