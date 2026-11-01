@@ -88,7 +88,8 @@
     "role": "角色",
     "vsLastMonth": "较上月",
     "edit": "编辑",
-    "remove": "删除"
+    "remove": "删除",
+    "delete": "删除"
   },
   "login": {
     "tagline": "从 WhatsApp 询盘到集装箱送达——同一条共享流程。",
@@ -163,7 +164,9 @@
     "assignedOk": "线索已分配给中国办公室。",
     "office": "办公室",
     "officeChina": "中国",
-    "officeIndia": "印度"
+    "officeIndia": "印度",
+    "deleteConfirm": "删除线索 {{ref}} 及其所有文件和报价？此操作无法撤销。",
+    "createdMsg": "已创建新的采购需求，可在看板“新建”列中查看。"
   },
   "quotes": {
     "title": "报价",

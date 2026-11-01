@@ -5,7 +5,7 @@ import { LanguageSwitch } from '../components/LanguageSwitch';
 import { AppDownloadButton } from './Download';
 import { EnquiryForm } from '../components/EnquiryForm';
 
-const PHONE = '+91 9094124755', TEL = '+919094124755', EMAIL = 'fortuneengineering05@gmail.com';
+const PHONE = '+91 72995 41489', TEL = '+917299541489', EMAIL = 'fortuneengineering05@gmail.com';
 const WA = `https://wa.me/917299541489`, WA_DISPLAY = '+91 72995 41489';
 
 export function Landing() {

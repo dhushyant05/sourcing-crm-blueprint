@@ -8,6 +8,7 @@ export interface NewLead { clientName: string; productInterest: string; quantity
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
+  deleteLead(id: string): Promise<void>;
   quotations(): Promise<Quotation[]>;
   shipments(): Promise<Shipment[]>;
   suppliers(): Promise<Supplier[]>;
@@ -113,6 +114,7 @@ export class ServerApi implements Api {
     if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
     return URL.createObjectURL(await res.blob());
   }
+  async deleteLead(id: string) { await this.req('DELETE', `/records/leads/${encodeURIComponent(id)}`); }
   async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); } // server sets assignedOffice=CHINA for China stages
   async quotations() {
     const [qs, srs, aps, sups] = await Promise.all([this.list('quotations'), this.list('sourcingRequests'), this.list('clientApprovals'),
@@ -232,6 +234,7 @@ export class DemoApi implements Api {
   async deleteQuoteFile(id: string, fid: string) { const q = this.dq.find((x) => x.id === id); if (q) q.files = q.files.filter((f) => f.id !== fid); }
   async quoteSuppliers() { return structuredClone(this.ds); }
   async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
+  async deleteLead(id: string) { demo.leads = demo.leads.filter((x) => x.id !== id); }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
   quotations() { return this.wait(demo.quotations); }
   shipments() { return this.wait(demo.shipments); }

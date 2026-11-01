@@ -434,7 +434,7 @@ export async function buildApp(o: AppOptions) {
       const r = await o.twenty.create(OBJECTS[obj], data);
       if (obj === 'lead') {
         const actor = req.user!, office: Office = data.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA';
-        assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'INDIA' ? actor.id : null });
+        assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'CHINA' ? null : actor.id });
         // India staff creating an India lead own it unless they pick someone else.
         handoff({ ...data, id: r.id }, actor, office, to !== undefined ? to : office === 'INDIA' && officeOf(actor.role) === 'INDIA' ? actor.id : undefined);
       }

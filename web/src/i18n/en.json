@@ -88,7 +88,8 @@
     "role": "Role",
     "vsLastMonth": "vs last month",
     "edit": "Edit",
-    "remove": "Remove"
+    "remove": "Remove",
+    "delete": "Delete"
   },
   "login": {
     "tagline": "From WhatsApp enquiry to delivered container — one shared pipeline.",
@@ -163,7 +164,9 @@
     "assignedOk": "Lead assigned to the China office.",
     "office": "Office",
     "officeChina": "China",
-    "officeIndia": "India"
+    "officeIndia": "India",
+    "deleteConfirm": "Delete lead {{ref}} with all its files and quotes? This cannot be undone.",
+    "createdMsg": "New sourcing request created — it is on the board under New."
   },
   "quotes": {
     "title": "Quotations",

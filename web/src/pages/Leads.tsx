@@ -20,6 +20,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   const { t } = useTranslation();
   const [mine, setMine] = useState(() => localStorage.leadMine === '1');
   const { data, setData, reload } = useLoad(() => api.leads(mine), [api, mine]);
+  useEffect(() => { const h = () => reload(); window.addEventListener('se:leads-changed', h); return () => window.removeEventListener('se:leads-changed', h); }, [reload]);
   const [creating, setCreating] = useState(false);
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
   const [drag, setDrag] = useState<string | null>(null);
@@ -102,17 +103,18 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
           )}
         </div>
       )}
-      <NewLead open={creating} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} />
+      <NewLead open={creating} onClose={() => setCreating(false)} onCreated={() => setCreating(false)} />
     </>
   );
 }
 
 /** India creates a lead; the optional target price is stored in the currency picked (USD / RMB / INR). */
-function NewLead({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+export function NewLead({ open, onClose, onCreated, prefill }: { open: boolean; onClose: () => void; onCreated: (id: string) => void; prefill?: { clientName?: string; productInterest?: string } }) {
   const { api } = useApp();
   const { t } = useTranslation();
   const blank = { clientName: '', productInterest: '', quantity: '100', price: '', currency: 'INR' as Currency, summary: '' };
   const [f, setF] = useState(blank), [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (open) setF({ ...blank, ...prefill }); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const [files, setFiles] = useState<File[]>([]), [pct, setPct] = useState<number | null>(null);
   const submit = async () => {
     try {
@@ -120,13 +122,13 @@ function NewLead({ open, onClose, onCreated }: { open: boolean; onClose: () => v
       const id = await api.createLead({ clientName: f.clientName, productInterest: f.productInterest, quantity: Number(f.quantity) || 1,
         targetPrice: Number(f.price) > 0 ? Number(f.price) : undefined, targetCurrency: f.currency, summary: f.summary.trim() || undefined });
       if (files.length) await api.uploadAttachments(id, files, setPct);
-      setF(blank); setFiles([]); setPct(null); onCreated();
+      setF(blank); setFiles([]); setPct(null); window.dispatchEvent(new Event('se:leads-changed')); onCreated(id);
     } catch (e) { setPct(null); setErr((e as Error).message); }
   };
   return (
     <SlideOver open={open} onClose={onClose} title={t('leads.new')}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.cancel')}</button><button className="btn-primary" form="new-lead" disabled={pct != null}>{t('leads.create')}</button></>}>
-      <form id="new-lead" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+      <form id="new-lead" data-testid="new-lead-form" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <div><label className="label">{t('leads.clientName')}</label><input className="input" required value={f.clientName} onChange={(e) => setF({ ...f, clientName: e.target.value })} /></div>
         <div><label className="label">{t('common.product')}</label><input className="input" required value={f.productInterest} onChange={(e) => setF({ ...f, productInterest: e.target.value })} /></div>
         <div><label className="label">{t('common.quantity')}</label><input className="input" inputMode="numeric" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></div>
@@ -200,6 +202,11 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
     try { await api.updateLead(lead.id, { summary: editSum.trim() }); setLead({ ...lead, summary: editSum.trim() }); setEditSum(null); }
     catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
+  const [newReq, setNewReq] = useState(false);
+  const delLead = async () => {
+    if (!lead || !confirm(t('leads.deleteConfirm', { ref: lead.leadRef ?? '' }))) return; setBusy(true);
+    try { await api.deleteLead(lead.id); window.dispatchEvent(new Event('se:leads-changed')); onClose(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
   const owner: Office = lead?.ownerOffice ?? (lead?.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA');
   const role = session?.role ?? 'INDIA_STAFF', isAdmin = role.endsWith('ADMIN');
   const canSend = perms.customers && owner !== 'CHINA';
@@ -207,10 +214,10 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const myOffice: Office | null = role.startsWith('CHINA') ? 'CHINA' : role.startsWith('INDIA') ? 'INDIA' : null;
   const canReassign = role === 'SUPER_ADMIN' || (isAdmin && myOffice === owner);
   const canTake = !isAdmin && myOffice === owner && !!session?.id && lead?.assignedTo !== session.id;
-  return (
+  return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{role === 'SUPER_ADMIN' && <button className="btn-outline text-rose-600" data-testid="lead-delete" disabled={busy} onClick={() => void delLead()}><Trash2 size={15} />{t('common.delete')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
         {!mode && canSend && <button className="btn-primary" data-testid="assign-china" onClick={() => openPicker('CHINA')}><Send size={15} />{t('assign.sendChina')}</button>}</>}>
@@ -269,7 +276,8 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
         </>
       )}
     </SlideOver>
-  );
+    <NewLead open={newReq} prefill={lead ? { clientName: lead.clientName ?? '', productInterest: '' } : undefined} onClose={() => setNewReq(false)} onCreated={() => { setNewReq(false); setMsg(t('leads.createdMsg')); }} />
+  </>);
 }
 
 /** Enquiry photos/documents. Files are fetched with the staff token and shown via blob: URLs, never public links. */
