@@ -146,10 +146,10 @@ export class ServerApi implements Api {
   }
   staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
   timeline(id: string) { return this.req<Timeline>('GET', `/leads/${encodeURIComponent(id)}/timeline`); }
-  async reopenLead(id: string, office: 'INDIA' | 'CHINA') { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/reopen`, { office })).data; }
-  async copyLead(id: string) { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/copy`, {})).data; }
-  async closeLeadPermanently(id: string, followUp: string | null, reason?: string) { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/close-permanent`, { followUp, reason })).data; }
-  async setFollowUp(id: string, date: string | null) { return (await this.req<{ data: Lead }>('POST', `/leads/${encodeURIComponent(id)}/follow-up`, { date })).data; }
+  async reopenLead(id: string, office: 'INDIA' | 'CHINA') { return this.req<Lead>('POST', `/leads/${encodeURIComponent(id)}/reopen`, { office }); }
+  async copyLead(id: string) { return this.req<Lead>('POST', `/leads/${encodeURIComponent(id)}/copy`, {}); }
+  async closeLeadPermanently(id: string, followUp: string | null, reason?: string) { return this.req<Lead>('POST', `/leads/${encodeURIComponent(id)}/close-permanent`, { followUp, reason }); }
+  async setFollowUp(id: string, date: string | null) { return this.req<Lead>('POST', `/leads/${encodeURIComponent(id)}/follow-up`, { date }); }
   setPriority(id: string, priority: boolean) { return this.req<{ priority: boolean; sla: Sla | null }>('POST', `/leads/${encodeURIComponent(id)}/priority`, { priority }); }
   slaSettings() { return this.req<SlaSettings>('GET', '/settings/sla'); }
   saveSlaSettings(s: SlaSettings) { return this.req<SlaSettings>('PUT', '/settings/sla', s); }
