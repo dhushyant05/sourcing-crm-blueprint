@@ -125,10 +125,11 @@ function QuoteFiles({ quote, canEdit, onChange }: { quote: LeadQuote; canEdit: b
   const { api } = useApp(); const { t } = useTranslation();
   const [thumbs, setThumbs] = useState<Record<string, string>>({}), [videos, setVideos] = useState<Record<string, string>>({});
   const [pct, setPct] = useState<number | null>(null), [err, setErr] = useState<string | null>(null);
-  const key = quote.files.map((f) => f.id).join(',');
+  const files = quote.files ?? [];
+  const key = files.map((f) => f.id).join(',');
   useEffect(() => {
     let live = true; const made: string[] = [];
-    (async () => { for (const a of quote.files.filter((x) => /^image\/(jpeg|png|webp)$/.test(x.mime))) {
+    (async () => { for (const a of files.filter((x) => /^image\/(jpeg|png|webp)$/.test(x.mime))) {
       const u = await api.quoteFileUrl(quote.id, a).catch(() => ''); if (!live) return; if (u.startsWith('blob:')) made.push(u); if (u) setThumbs((m) => ({ ...m, [a.id]: u }));
     } })();
     return () => { live = false; made.forEach((u) => URL.revokeObjectURL(u)); };
@@ -140,9 +141,9 @@ function QuoteFiles({ quote, canEdit, onChange }: { quote: LeadQuote; canEdit: b
   };
   const play = async (a: Attachment) => { setVideos((v) => ({ ...v, [a.id]: 'loading' })); try { const u = await api.quoteFileUrl(quote.id, a); setVideos((v) => ({ ...v, [a.id]: u })); } catch (e) { setErr((e as Error).message); } };
   const upload = async (fs: File[]) => { setPct(0); setErr(null); try { onChange(await api.uploadQuoteFiles(quote.id, fs, setPct)); } catch (e) { setErr((e as Error).message); } finally { setPct(null); } };
-  const del = async (a: Attachment) => { if (!confirm(t('leads.deleteFile', { name: a.name }))) return; try { await api.deleteQuoteFile(quote.id, a.id); onChange({ ...quote, files: quote.files.filter((x) => x.id !== a.id) }); } catch (e) { setErr((e as Error).message); } };
+  const del = async (a: Attachment) => { if (!confirm(t('leads.deleteFile', { name: a.name }))) return; try { await api.deleteQuoteFile(quote.id, a.id); onChange({ ...quote, files: files.filter((x) => x.id !== a.id) }); } catch (e) { setErr((e as Error).message); } };
   return (<div className="mt-2">
-    {quote.files.length > 0 && <ul className="grid grid-cols-3 gap-2">{quote.files.map((a) => (
+    {files.length > 0 && <ul className="grid grid-cols-3 gap-2">{files.map((a) => (
       <li key={a.id} data-testid="quote-file" className="overflow-hidden rounded-lg border border-ink-100 dark:border-ink-800">
         {a.mime.startsWith('video/') || isVideoName(a.name) ? (videos[a.id] && videos[a.id] !== 'loading'
           ? <video src={videos[a.id]} controls playsInline className="h-20 w-full bg-black object-contain" />

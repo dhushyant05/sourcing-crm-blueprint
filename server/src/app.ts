@@ -389,10 +389,10 @@ export async function buildApp(o: AppOptions) {
       for (const r of rows) { const f = readFilter('lead', r, ctx); if (f) m.set(String(f.id), decorate(f, all.get(String(f.id)), names)); }
       return m;
     };
-    const quoteRow = (u: { role: Role; id: string }, q: Quote, lead: Rec) => {
+    const quoteRow = (u: { role: Role; id: string }, q: Quote, lead: Rec, keepFiles = false) => {
       const i = quotes.list(q.leadId).findIndex((x) => x.id === q.id);
       const v: any = viewQuote(u, q, i, (lead.leadRef as string) ?? null);
-      delete v.files;
+      if (!keepFiles) delete v.files; // the all-quotes list omits files; single-quote responses keep them (the lead panel renders them)
       return { ...v, label: `${lead.leadRef ?? 'Quote'}-Q${i + 1}`, leadRef: lead.leadRef ?? null, leadStatus: lead.status ?? null, ownerOffice: lead.ownerOffice,
         assignedTo: lead.assignedTo ?? null, assignedToName: lead.assignedToName ?? null, raisedBy: lead.raisedBy ?? null };
     };
@@ -406,7 +406,7 @@ export async function buildApp(o: AppOptions) {
     });
     const indiaOnly = (role: Role) => { if (!sides(role).india) throw new Forbidden('Only the India office can do this'); };
     const leadOf = async (id: string) => (await o.twenty.get(OBJECTS.lead, id)) as Rec;
-    const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, quotes.get(q.id)!, decorate(l, assign.get(q.leadId), userNames())); };
+    const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, quotes.get(q.id)!, decorate(l, assign.get(q.leadId), userNames()), true); };
     /** Notify about a lead-level event (quote decided, order created/updated). */
     const tell = (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE', office: Office, actor: User) => {
       const ids = [...new Set(recips.filter((x): x is string => !!x && x !== actor.id && !!o.users.byId(x)?.active))];

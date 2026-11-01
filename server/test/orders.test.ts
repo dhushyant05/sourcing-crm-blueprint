@@ -62,6 +62,7 @@ describe('customer quote, PDF and orders', () => {
     expect((await call('is', 'PUT', `/api/quotes/${q.id}/customer`, { qty: 100 })).statusCode).toBe(400); // no price yet
     expect((await call('cs', 'PUT', `/api/quotes/${q.id}/customer`, { qty: 100, unitPrice: 200 })).statusCode).toBe(403);
     const c = (await call('is', 'PUT', `/api/quotes/${q.id}/customer`, { qty: 100, unitPrice: 200, gstPct: 18, shipCost: 1000, shipTerm: 'DDP', shipMode: 'SEA', port: 'Chennai', transit: '25 days', otherCharges: 500, otherLabel: 'Packing', validity: '15 days', terms: '50% advance' })).json().data;
+    expect(Array.isArray(c.files)).toBe(true); // the lead panel renders quote files from this response
     expect(c.cqTotals).toMatchObject({ subtotal: 20000, taxable: 21500, gst: 3870, total: 25370 });
     expect(c.clientPrice).toBe(200);
     const il = (await call('is', 'GET', '/api/quotes?status=DRAFT')).json().data;
