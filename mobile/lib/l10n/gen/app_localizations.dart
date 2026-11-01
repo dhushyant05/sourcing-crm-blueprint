@@ -1621,6 +1621,210 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Source Easy lead'**
   String get newLeadNotif;
+
+  /// No description provided for @lqTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier quotes'**
+  String get lqTitle;
+
+  /// No description provided for @lqAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add quote'**
+  String get lqAdd;
+
+  /// No description provided for @lqEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get lqEdit;
+
+  /// No description provided for @lqNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No supplier quotes yet. China will add them here.'**
+  String get lqNone;
+
+  /// No description provided for @lqNoneChina.
+  ///
+  /// In en, this message translates to:
+  /// **'No quotes yet. Add the supplier\'s price, MOQ and product photos.'**
+  String get lqNoneChina;
+
+  /// No description provided for @lqLoadFail.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load quotes.'**
+  String get lqLoadFail;
+
+  /// No description provided for @lqUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'unit'**
+  String get lqUnit;
+
+  /// No description provided for @lqMoq.
+  ///
+  /// In en, this message translates to:
+  /// **'MOQ'**
+  String get lqMoq;
+
+  /// No description provided for @lqLeadTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Lead time'**
+  String get lqLeadTime;
+
+  /// No description provided for @lqValidity.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for'**
+  String get lqValidity;
+
+  /// No description provided for @lqNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get lqNotes;
+
+  /// No description provided for @lqSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier'**
+  String get lqSupplier;
+
+  /// No description provided for @lqChinaOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'China only'**
+  String get lqChinaOnly;
+
+  /// No description provided for @lqNoSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'— Select supplier —'**
+  String get lqNoSupplier;
+
+  /// No description provided for @lqNewSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'New supplier'**
+  String get lqNewSupplier;
+
+  /// No description provided for @lqSupName.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier name'**
+  String get lqSupName;
+
+  /// No description provided for @lqSupContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact person'**
+  String get lqSupContact;
+
+  /// No description provided for @lqSupPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get lqSupPhone;
+
+  /// No description provided for @lqSupCity.
+  ///
+  /// In en, this message translates to:
+  /// **'City'**
+  String get lqSupCity;
+
+  /// No description provided for @lqProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Product / model'**
+  String get lqProduct;
+
+  /// No description provided for @lqProductPh.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. SB-500 steel bottle 500ml'**
+  String get lqProductPh;
+
+  /// No description provided for @lqUnitPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Unit price'**
+  String get lqUnitPrice;
+
+  /// No description provided for @lqCurrency.
+  ///
+  /// In en, this message translates to:
+  /// **'Currency'**
+  String get lqCurrency;
+
+  /// No description provided for @lqMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier photos, videos & documents'**
+  String get lqMedia;
+
+  /// No description provided for @lqAddMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Add photos / files'**
+  String get lqAddMedia;
+
+  /// No description provided for @lqSellPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Our selling price'**
+  String get lqSellPrice;
+
+  /// No description provided for @lqSellNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer quote notes'**
+  String get lqSellNotes;
+
+  /// No description provided for @lqAddSell.
+  ///
+  /// In en, this message translates to:
+  /// **'Add INR price'**
+  String get lqAddSell;
+
+  /// No description provided for @lqReturnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Done quoting? Tap “Return to India” to notify the person who raised this lead.'**
+  String get lqReturnHint;
+
+  /// No description provided for @lqErrProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the product / model.'**
+  String get lqErrProduct;
+
+  /// No description provided for @lqErrPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid unit price.'**
+  String get lqErrPrice;
+
+  /// No description provided for @lqErrSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the new supplier\'s name.'**
+  String get lqErrSupplier;
+
+  /// No description provided for @lqDeleteQ.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the quote for “{product}”?'**
+  String lqDeleteQ(String product);
+
+  /// No description provided for @lqBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Added by {name}'**
+  String lqBy(String name);
 }
 
 class _AppLocalizationsDelegate

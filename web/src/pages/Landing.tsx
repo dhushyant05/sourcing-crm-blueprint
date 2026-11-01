@@ -6,7 +6,7 @@ import { AppDownloadButton } from './Download';
 import { EnquiryForm } from '../components/EnquiryForm';
 
 const PHONE = '+91 9094124755', TEL = '+919094124755', EMAIL = 'fortuneengineering05@gmail.com';
-const WA = `https://wa.me/919094124755`;
+const WA = `https://wa.me/917299541489`, WA_DISPLAY = '+91 72995 41489';
 
 export function Landing() {
   const { t } = useTranslation();
@@ -100,7 +100,7 @@ export function Landing() {
                 <li className="flex gap-3"><MapPin size={18} className="shrink-0 text-accent-300" />{l('contact.city')}</li>
                 <li><a className="flex gap-3 hover:text-white" href={`tel:${TEL}`}><Phone size={18} className="shrink-0 text-accent-300" />{PHONE}</a></li>
                 <li><a className="flex gap-3 break-all hover:text-white" href={`mailto:${EMAIL}`}><Mail size={18} className="shrink-0 text-accent-300" />{EMAIL}</a></li>
-                <li><a className="flex gap-3 hover:text-white" href={WA} target="_blank" rel="noreferrer"><MessageCircle size={18} className="shrink-0 text-accent-300" />{l('hero.whatsapp')}</a></li>
+                <li><a className="flex gap-3 hover:text-white" href={WA} target="_blank" rel="noreferrer"><MessageCircle size={18} className="shrink-0 text-accent-300" />{l('hero.whatsapp')} · {WA_DISPLAY}</a></li>
               </ul>
             </div>
           </div>

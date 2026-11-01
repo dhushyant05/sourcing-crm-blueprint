@@ -28,6 +28,18 @@ export interface Shipment {
   origin?: string; destination?: string; eta?: string; updatedAt: string;
 }
 export interface Supplier { id: string; name: string; phone?: string; wechat?: string; notes?: string; city?: string; category?: string; rating?: number; contactName?: string; }
+export type QuoteCurrency = 'USD' | 'CNY' | 'INR';
+/** China-side supplier record (never sent to India). */
+export interface QuoteSupplier { id: string; name: string; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null }
+/** A supplier quote on a lead. India receives it without supplier/createdBy fields and with neutral file names. */
+export interface LeadQuote {
+  id: string; leadId: string; label?: string; product: string; unitPrice: number; currency: QuoteCurrency;
+  moq?: string | null; leadTime?: string | null; validity?: string | null; notes?: string | null;
+  clientPrice?: number | null; clientCurrency?: string | null; clientNotes?: string | null;
+  supplierId?: string | null; supplier?: QuoteSupplier | null; canEdit?: boolean; createdBy?: string; createdByName?: string | null;
+  files: Attachment[]; createdAt: string; updatedAt?: string;
+}
+export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId'>> & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
 export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string }
 export interface BackupLink { label: string; url: string }
 

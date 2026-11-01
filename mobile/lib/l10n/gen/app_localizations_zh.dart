@@ -828,4 +828,110 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get newLeadNotif => 'Source Easy 线索';
+
+  @override
+  String get lqTitle => '供应商报价';
+
+  @override
+  String get lqAdd => '添加报价';
+
+  @override
+  String get lqEdit => '编辑';
+
+  @override
+  String get lqNone => '暂无供应商报价，中国团队会在此添加。';
+
+  @override
+  String get lqNoneChina => '暂无报价。请添加供应商价格、起订量和产品图片。';
+
+  @override
+  String get lqLoadFail => '无法加载报价。';
+
+  @override
+  String get lqUnit => '件';
+
+  @override
+  String get lqMoq => '起订量';
+
+  @override
+  String get lqLeadTime => '交期';
+
+  @override
+  String get lqValidity => '有效期';
+
+  @override
+  String get lqNotes => '备注';
+
+  @override
+  String get lqSupplier => '供应商';
+
+  @override
+  String get lqChinaOnly => '仅中国可见';
+
+  @override
+  String get lqNoSupplier => '— 选择供应商 —';
+
+  @override
+  String get lqNewSupplier => '新建供应商';
+
+  @override
+  String get lqSupName => '供应商名称';
+
+  @override
+  String get lqSupContact => '联系人';
+
+  @override
+  String get lqSupPhone => '电话';
+
+  @override
+  String get lqSupCity => '城市';
+
+  @override
+  String get lqProduct => '产品 / 型号';
+
+  @override
+  String get lqProductPh => '例如：SB-500 不锈钢保温杯 500ml';
+
+  @override
+  String get lqUnitPrice => '单价';
+
+  @override
+  String get lqCurrency => '币种';
+
+  @override
+  String get lqMedia => '供应商图片、视频和文件';
+
+  @override
+  String get lqAddMedia => '添加图片 / 文件';
+
+  @override
+  String get lqSellPrice => '我方销售价';
+
+  @override
+  String get lqSellNotes => '客户报价备注';
+
+  @override
+  String get lqAddSell => '添加卢比价格';
+
+  @override
+  String get lqReturnHint => '报价完成？点击“退回印度”通知提交此线索的同事。';
+
+  @override
+  String get lqErrProduct => '请填写产品 / 型号。';
+
+  @override
+  String get lqErrPrice => '请填写有效单价。';
+
+  @override
+  String get lqErrSupplier => '请填写新供应商名称。';
+
+  @override
+  String lqDeleteQ(String product) {
+    return '删除“$product”的报价？';
+  }
+
+  @override
+  String lqBy(String name) {
+    return '由 $name 添加';
+  }
 }

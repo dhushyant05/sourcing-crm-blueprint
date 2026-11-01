@@ -41,6 +41,7 @@ export class AssignStore {
     return n;
   }
   /** A removed user owns nothing any more: their leads fall back to the office queue (lead data stays). */
+  forgetLead(leadId: string) { this.db.prepare('DELETE FROM lead_assignments WHERE lead_id = ?').run(leadId); this.db.prepare('DELETE FROM notifications WHERE lead_id = ?').run(leadId); }
   forgetUser(userId: string) {
     this.db.prepare('UPDATE lead_assignments SET assigned_to = NULL WHERE assigned_to = ?').run(userId);
     this.db.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId);

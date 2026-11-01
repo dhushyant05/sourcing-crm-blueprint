@@ -10,6 +10,7 @@ import '../../data/models/models.dart';
 import '../../services/session.dart';
 import '../widgets/common.dart';
 import '../widgets/lead_attachments.dart';
+import '../widgets/lead_quotes.dart';
 import 'chat_screen.dart';
 import 'quotation_screen.dart';
 import 'shipping_screen.dart';
@@ -187,6 +188,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               ),
               const SizedBox(height: 8),
               LeadAttachments(leadId: l.id, canEdit: p.canCreateLead),
+              const SizedBox(height: 12),
+              LeadQuotesSection(key: ValueKey('quotes-${l.id}'), leadId: l.id),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 if (p.canSeeCustomerDetails && l.owner != 'CHINA' && !['WON', 'LOST'].contains(l.status))

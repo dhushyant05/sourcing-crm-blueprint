@@ -49,5 +49,6 @@ export class MockTwenty implements TwentyLike {
   }
   async get(plural: string, id: string) { const r = this.db[plural]?.find((x) => x.id === id); return r ? structuredClone(r) : null; }
   async create(plural: string, data: Rec) { const r = { id: `new-${this.writes.length}`, ...data }; this.db[plural].push(r); this.writes.push({ op: 'create', plural, data }); return r; }
+  async remove(plural: string, id: string) { this.db[plural] = this.db[plural].filter((x) => x.id !== id); this.writes.push({ op: 'remove' as any, plural, id, data: {} }); }
   async update(plural: string, id: string, data: Rec) { const r = this.db[plural].find((x) => x.id === id)!; Object.assign(r, data); this.writes.push({ op: 'update', plural, id, data }); return r; }
 }

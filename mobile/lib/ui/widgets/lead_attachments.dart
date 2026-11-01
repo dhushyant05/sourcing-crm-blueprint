@@ -91,13 +91,13 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
   Future<void> _open(LeadAttachment a) async {
     if (a.isVideo) {
       final s = context.read<Session>().repo.attachmentStream(widget.leadId, a);
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => _VideoViewer(a: a, uri: s.uri, headers: s.headers)));
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => VideoViewer(a: a, uri: s.uri, headers: s.headers)));
       return;
     }
     final b = await _get(a);
     if (!mounted) return;
     if (a.isImage) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => _ImageViewer(a: a, bytes: b, onShare: () => _share(a, b))));
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewer(a: a, bytes: b, onShare: () => _share(a, b))));
     } else {
       await _share(a, b);
     }
@@ -162,8 +162,8 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
   }
 }
 
-class _ImageViewer extends StatelessWidget {
-  const _ImageViewer({required this.a, required this.bytes, required this.onShare});
+class ImageViewer extends StatelessWidget {
+  const ImageViewer({super.key, required this.a, required this.bytes, required this.onShare});
   final LeadAttachment a;
   final Uint8List bytes;
   final VoidCallback onShare;
@@ -176,16 +176,16 @@ class _ImageViewer extends StatelessWidget {
       );
 }
 
-class _VideoViewer extends StatefulWidget {
-  const _VideoViewer({required this.a, required this.uri, required this.headers});
+class VideoViewer extends StatefulWidget {
+  const VideoViewer({super.key, required this.a, required this.uri, required this.headers});
   final LeadAttachment a;
   final Uri uri;
   final Map<String, String> headers;
   @override
-  State<_VideoViewer> createState() => _VideoViewerState();
+  State<VideoViewer> createState() => VideoViewerState();
 }
 
-class _VideoViewerState extends State<_VideoViewer> {
+class VideoViewerState extends State<VideoViewer> {
   late final VideoPlayerController _c = VideoPlayerController.networkUrl(widget.uri, httpHeaders: widget.headers);
   Object? _err;
 

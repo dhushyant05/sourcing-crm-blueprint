@@ -124,6 +124,8 @@ export class UploadStore {
     writeFileSync(join(d, 'manifest.json'), JSON.stringify(list, null, 1));
     return list;
   }
+  /** Deletes every file kept under [key] (e.g. when a quote is deleted). */
+  removeAll(key: string) { rmSync(this.leadDir(key), { recursive: true, force: true }); }
   discard(files: Staged[]) { for (const f of files) rmSync(f.path, { force: true }); }
 }
 export interface Staged { name: string; path: string; size: number; mime: string; error?: 'size' | 'type' | 'empty' }

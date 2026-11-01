@@ -312,3 +312,33 @@ class AppNotification {
         kind: (j['kind'] as String?) ?? 'ASSIGNED', office: j['office'] as String?, byName: j['byName'] as String?,
         createdAt: _date(j['createdAt']), read: j['read'] == true || j['readAt'] != null);
 }
+
+/// China-side supplier for lead quotes (never sent to India by the server).
+class QuoteSupplier {
+  QuoteSupplier({required this.id, required this.name, this.contact, this.phone, this.wechat, this.city});
+  final String id, name;
+  final String? contact, phone, wechat, city;
+  factory QuoteSupplier.fromJson(Map<String, dynamic> j) => QuoteSupplier(id: j['id'] as String, name: (j['name'] as String?) ?? '',
+      contact: j['contact'] as String?, phone: j['phone'] as String?, wechat: j['wechat'] as String?, city: j['city'] as String?);
+}
+
+/// A supplier quote on a lead. India receives it without supplier fields and with neutral file names.
+class LeadQuote {
+  LeadQuote({required this.id, required this.product, required this.unitPrice, required this.currency, this.label, this.moq, this.leadTime,
+      this.validity, this.notes, this.clientPrice, this.clientCurrency, this.clientNotes, this.supplierId, this.supplier, this.createdByName,
+      this.canEdit = false, this.files = const []});
+  final String id, product, currency;
+  final double unitPrice;
+  final String? label, moq, leadTime, validity, notes, clientCurrency, clientNotes, supplierId, createdByName;
+  final double? clientPrice;
+  final QuoteSupplier? supplier;
+  final bool canEdit;
+  final List<LeadAttachment> files;
+  factory LeadQuote.fromJson(Map<String, dynamic> j) => LeadQuote(
+        id: j['id'] as String, product: (j['product'] as String?) ?? '', unitPrice: _num(j['unitPrice']) ?? 0, currency: (j['currency'] as String?) ?? 'USD',
+        label: j['label'] as String?, moq: j['moq'] as String?, leadTime: j['leadTime'] as String?, validity: j['validity'] as String?, notes: j['notes'] as String?,
+        clientPrice: _num(j['clientPrice']), clientCurrency: j['clientCurrency'] as String?, clientNotes: j['clientNotes'] as String?,
+        supplierId: j['supplierId'] as String?, supplier: j['supplier'] is Map ? QuoteSupplier.fromJson((j['supplier'] as Map).cast<String, dynamic>()) : null,
+        createdByName: j['createdByName'] as String?, canEdit: j['canEdit'] == true,
+        files: ((j['files'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList());
+}

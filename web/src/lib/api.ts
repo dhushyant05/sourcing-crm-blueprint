@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -40,6 +40,15 @@ export interface Api {
   backups(): Promise<BackupLink[]>;
   /** Enquiry photos/documents of a lead (India side + super admin). */
   attachments(leadId: string): Promise<Attachment[]>;
+  /** Supplier quotes on a lead (China adds; India sees them without supplier identity). */
+  quotes(leadId: string): Promise<LeadQuote[]>;
+  createQuote(leadId: string, q: QuoteInput): Promise<LeadQuote>;
+  updateQuote(id: string, q: QuoteInput | { clientPrice?: number | string | null; clientCurrency?: string; clientNotes?: string }): Promise<LeadQuote>;
+  deleteQuote(id: string): Promise<void>;
+  uploadQuoteFiles(id: string, files: File[], onProgress?: (pct: number) => void): Promise<LeadQuote>;
+  quoteFileUrl(id: string, a: Attachment): Promise<string>;
+  deleteQuoteFile(id: string, fid: string): Promise<void>;
+  quoteSuppliers(): Promise<QuoteSupplier[]>;
   /** Downloads one file with the staff token (never a public URL) and returns a blob: URL. */
   attachmentUrl(leadId: string, a: Attachment): Promise<string>;
 }
@@ -145,18 +154,32 @@ export class ServerApi implements Api {
   async assignToChina(id: string, agent?: string) {
     await this.req('PATCH', `/records/leads/${id}`, { assignedOffice: 'CHINA', status: 'ASSIGNED', ...(agent ? { assignedChinaAgent: agent } : {}) });
   }
+  quotes(leadId: string) { return this.req<LeadQuote[]>('GET', `/leads/${encodeURIComponent(leadId)}/quotes`); }
+  createQuote(leadId: string, q: QuoteInput) { return this.req<LeadQuote>('POST', `/leads/${encodeURIComponent(leadId)}/quotes`, q); }
+  updateQuote(id: string, q: object) { return this.req<LeadQuote>('PATCH', `/quotes/${encodeURIComponent(id)}`, q); }
+  async deleteQuote(id: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}`); }
+  uploadQuoteFiles(id: string, files: File[], onProgress?: (pct: number) => void) { return this.xhrUpload<LeadQuote>(`/api/quotes/${encodeURIComponent(id)}/files`, files, onProgress); }
+  async quoteFileUrl(id: string, a: Attachment) {
+    const res = await fetch(`/api/quotes/${encodeURIComponent(id)}/files/${encodeURIComponent(a.id)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+  async deleteQuoteFile(id: string, fid: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}/files/${encodeURIComponent(fid)}`); }
+  quoteSuppliers() { return this.req<QuoteSupplier[]>('GET', '/suppliers'); }
+  uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void) { return this.xhrUpload<Attachment[]>(`/api/leads/${encodeURIComponent(leadId)}/attachments`, files, onProgress); }
   /** XHR (not fetch) so large videos show upload progress. */
-  uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void) {
-    return new Promise<Attachment[]>((resolve, reject) => {
+  private xhrUpload<T>(url: string, files: File[], onProgress?: (pct: number) => void) {
+    return new Promise<T>((resolve, reject) => {
       const fd = new FormData(); files.forEach((f) => fd.append('files', f, f.name));
       const x = new XMLHttpRequest();
-      x.open('POST', `/api/leads/${encodeURIComponent(leadId)}/attachments`);
+      x.open('POST', url);
       x.setRequestHeader('authorization', `Bearer ${this.token}`);
       x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
       x.onload = () => {
         let j: any = {}; try { j = JSON.parse(x.responseText); } catch { /* empty */ }
         if (x.status === 401) this.onAuthError();
-        if (x.status >= 400) reject(new HttpError(j.error ?? `HTTP ${x.status}`, x.status)); else resolve(j.data as Attachment[]);
+        if (x.status >= 400) reject(new HttpError(j.error ?? `HTTP ${x.status}`, x.status)); else resolve(j.data as T);
       };
       x.onerror = () => reject(new HttpError('Network error', 0));
       x.send(fd);
@@ -188,6 +211,26 @@ export class DemoApi implements Api {
   async notifications() { return structuredClone({ data: demoNotes, unread: demoNotes.filter((n) => !n.read).length }); }
   async markNotificationRead(id?: string) { demoNotes.forEach((n) => { if (!id || n.id === id) n.read = true; }); }
   async attachments(leadId: string) { return structuredClone(demo.attachments[leadId] ?? []); }
+  private dq: LeadQuote[] = []; private ds: QuoteSupplier[] = [{ id: 'ds1', name: 'Yiwu Hardware Co.', contact: 'Ms Li', phone: '+86 139 0000 0000', wechat: 'yiwu_hw', city: 'Yiwu' }];
+  async quotes(leadId: string) { return structuredClone(this.dq.filter((q) => q.leadId === leadId)); }
+  async createQuote(leadId: string, q: QuoteInput) {
+    let supplierId = q.supplierId ?? null;
+    if (q.newSupplier) { const s = { id: `ds${Date.now()}`, ...q.newSupplier }; this.ds.push(s); supplierId = s.id; }
+    const nq: LeadQuote = { id: `dq${Date.now()}`, leadId, product: q.product ?? '', unitPrice: Number(q.unitPrice ?? 0), currency: q.currency ?? 'USD', moq: q.moq, leadTime: q.leadTime, validity: q.validity, notes: q.notes,
+      supplierId, supplier: this.ds.find((s) => s.id === supplierId) ?? null, createdBy: 'demo-me', createdByName: 'Demo', canEdit: true, files: [], createdAt: new Date().toISOString() };
+    this.dq.push(nq); return structuredClone(nq);
+  }
+  async updateQuote(id: string, p: any) {
+    const q = this.dq.find((x) => x.id === id)!; Object.assign(q, p, p.unitPrice != null ? { unitPrice: Number(p.unitPrice) } : {}, p.clientPrice != null ? { clientPrice: Number(p.clientPrice), clientCurrency: 'INR' } : {});
+    if (p.supplierId) q.supplier = this.ds.find((s) => s.id === p.supplierId) ?? null; return structuredClone(q);
+  }
+  async deleteQuote(id: string) { this.dq = this.dq.filter((q) => q.id !== id); }
+  async uploadQuoteFiles(id: string, files: File[]) {
+    const q = this.dq.find((x) => x.id === id)!; q.files.push(...files.map((f, i) => ({ id: `df${Date.now()}${i}`, name: f.name, mime: f.type, size: f.size, createdAt: new Date().toISOString() }))); return structuredClone(q);
+  }
+  async quoteFileUrl() { return ''; }
+  async deleteQuoteFile(id: string, fid: string) { const q = this.dq.find((x) => x.id === id); if (q) q.files = q.files.filter((f) => f.id !== fid); }
+  async quoteSuppliers() { return structuredClone(this.ds); }
   async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
   quotations() { return this.wait(demo.quotations); }

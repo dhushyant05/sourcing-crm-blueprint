@@ -3,6 +3,7 @@ import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play,
 import { useEffect, useRef, useState } from 'react';
 import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
+import { LeadQuotes } from '../components/LeadQuotes';
 import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import i18n, { fmtDate } from '../i18n';
@@ -146,7 +147,7 @@ function NewLead({ open, onClose, onCreated }: { open: boolean; onClose: () => v
 }
 
 /** Photo / video / document picker used by staff (validates type and size like the server). */
-function FilePicker({ onPick, onError }: { onPick: (f: File[]) => void; onError: (m: string | null) => void }) {
+export function FilePicker({ onPick, onError }: { onPick: (f: File[]) => void; onError: (m: string | null) => void }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null), cam = useRef<HTMLInputElement>(null), vid = useRef<HTMLInputElement>(null);
   const take = (list: FileList | null) => {
@@ -258,6 +259,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
             {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
           </>)}
           <Attachments leadId={lead.id} canEdit={perms.customers} />
+          <LeadQuotes leadId={lead.id} />
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
             {[[t('leads.createdEvt'), lead.createdAt], ...(lead.assignedOffice === 'CHINA' ? [[t('leads.assignedTo', { who: lead.assignedToName || lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d]) => (
@@ -271,7 +273,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
 }
 
 /** Enquiry photos/documents. Files are fetched with the staff token and shown via blob: URLs, never public links. */
-function Attachments({ leadId, canEdit }: { leadId: string; canEdit: boolean }) {
+export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: boolean }) {
   const { api } = useApp();
   const { t } = useTranslation();
   const [list, setList] = useState<Attachment[] | null>(null);

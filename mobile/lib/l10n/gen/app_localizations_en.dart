@@ -840,4 +840,112 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newLeadNotif => 'Source Easy lead';
+
+  @override
+  String get lqTitle => 'Supplier quotes';
+
+  @override
+  String get lqAdd => 'Add quote';
+
+  @override
+  String get lqEdit => 'Edit';
+
+  @override
+  String get lqNone => 'No supplier quotes yet. China will add them here.';
+
+  @override
+  String get lqNoneChina =>
+      'No quotes yet. Add the supplier\'s price, MOQ and product photos.';
+
+  @override
+  String get lqLoadFail => 'Couldn\'t load quotes.';
+
+  @override
+  String get lqUnit => 'unit';
+
+  @override
+  String get lqMoq => 'MOQ';
+
+  @override
+  String get lqLeadTime => 'Lead time';
+
+  @override
+  String get lqValidity => 'Valid for';
+
+  @override
+  String get lqNotes => 'Notes';
+
+  @override
+  String get lqSupplier => 'Supplier';
+
+  @override
+  String get lqChinaOnly => 'China only';
+
+  @override
+  String get lqNoSupplier => '— Select supplier —';
+
+  @override
+  String get lqNewSupplier => 'New supplier';
+
+  @override
+  String get lqSupName => 'Supplier name';
+
+  @override
+  String get lqSupContact => 'Contact person';
+
+  @override
+  String get lqSupPhone => 'Phone';
+
+  @override
+  String get lqSupCity => 'City';
+
+  @override
+  String get lqProduct => 'Product / model';
+
+  @override
+  String get lqProductPh => 'e.g. SB-500 steel bottle 500ml';
+
+  @override
+  String get lqUnitPrice => 'Unit price';
+
+  @override
+  String get lqCurrency => 'Currency';
+
+  @override
+  String get lqMedia => 'Supplier photos, videos & documents';
+
+  @override
+  String get lqAddMedia => 'Add photos / files';
+
+  @override
+  String get lqSellPrice => 'Our selling price';
+
+  @override
+  String get lqSellNotes => 'Customer quote notes';
+
+  @override
+  String get lqAddSell => 'Add INR price';
+
+  @override
+  String get lqReturnHint =>
+      'Done quoting? Tap “Return to India” to notify the person who raised this lead.';
+
+  @override
+  String get lqErrProduct => 'Enter the product / model.';
+
+  @override
+  String get lqErrPrice => 'Enter a valid unit price.';
+
+  @override
+  String get lqErrSupplier => 'Enter the new supplier\'s name.';
+
+  @override
+  String lqDeleteQ(String product) {
+    return 'Delete the quote for “$product”?';
+  }
+
+  @override
+  String lqBy(String name) {
+    return 'Added by $name';
+  }
 }

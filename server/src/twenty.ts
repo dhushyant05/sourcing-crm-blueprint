@@ -6,6 +6,7 @@ export interface TwentyLike {
   get(plural: string, id: string): Promise<Rec | null>;
   create(plural: string, data: Rec): Promise<Rec>;
   update(plural: string, id: string, data: Rec): Promise<Rec>;
+  remove?(plural: string, id: string): Promise<void>;
 }
 
 /**
@@ -69,5 +70,6 @@ export class TwentyRest implements TwentyLike {
     const j = await this.req('PATCH', `${plural}/${encodeURIComponent(id)}`, toTwenty(plural, data));
     return fromTwenty(plural, (j?.data?.[`update${cap(singular(plural))}`] as Rec) ?? j?.data ?? {}) as Rec;
   }
+  async remove(plural: string, id: string) { await this.req('DELETE', `${plural}/${encodeURIComponent(id)}`); }
 }
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);

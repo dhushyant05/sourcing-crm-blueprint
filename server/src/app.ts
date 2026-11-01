@@ -11,6 +11,7 @@ import { capabilities, isRole, manageableRoles, sides, type Role } from './roles
 import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { TwentyLike } from './twenty.js';
 import type { UserStore, User } from './users.js';
+import { QuoteStore, type Quote } from './quotes.js';
 import { AssignStore, type Assignment, type Office } from './assign.js';
 
 export interface AppOptions {
@@ -53,6 +54,7 @@ export async function buildApp(o: AppOptions) {
 
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.users.database);
+  const quotes = new QuoteStore(o.users.database);
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
@@ -228,13 +230,11 @@ export async function buildApp(o: AppOptions) {
       return String(r.id);
     };
     api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => ({ data: uploads.list(await attLead(req)) }));
-    api.get<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
-      const f = uploads.file(await attLead(req), req.params.fid);
-      if (!f) return reply.code(404).send({ error: 'Not found' });
+    const sendFile = (req: FastifyRequest, reply: any, f: { meta: { mime: string; name: string }; path: string; size: number }, name = f.meta.name) => {
       const inline = /^image\/(jpeg|png|webp)$|^application\/pdf$|^video\//.test(f.meta.mime);
       reply.header('content-type', f.meta.mime).header('cache-control', 'private, no-store').header('accept-ranges', 'bytes')
         .header('content-security-policy', "default-src 'none'; sandbox")
-        .header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.meta.name)}`);
+        .header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(name)}`);
       // HTTP Range so videos can be played/seeked without downloading the whole file first. Original bytes, never re-encoded.
       const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
       if (m && (m[1] || m[2])) {
@@ -244,6 +244,11 @@ export async function buildApp(o: AppOptions) {
           .send(createReadStream(f.path, { start, end }));
       }
       return reply.header('content-length', f.size).send(createReadStream(f.path));
+    };
+    api.get<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
+      const f = uploads.file(await attLead(req), req.params.fid);
+      if (!f) return reply.code(404).send({ error: 'Not found' });
+      return sendFile(req, reply, f);
     });
     // India side (and super admin) attach product photos/videos to a lead from the web or Android app.
     const attWrite = async (req: FastifyRequest<{ Params: { id: string } }>) => {
@@ -269,6 +274,118 @@ export async function buildApp(o: AppOptions) {
       if (!rest) return reply.code(404).send({ error: 'Not found' });
       await syncCount(id, rest.length);
       return { data: rest };
+    });
+
+    // ---- Supplier quotes on a lead (China writes; India reads a redacted view + adds its selling price) ----
+    const qKey = (id: string) => `q_${id.replace(/-/g, '')}`.slice(0, 64);
+    const quoteOf = async (req: FastifyRequest<{ Params: { qid: string } }>) => {
+      const q = quotes.get(req.params.qid);
+      if (!q) throw Object.assign(new Error('Not found'), { status: 404 });
+      await attLead({ ...req, params: { id: q.leadId } } as any); // 404 unless this user can read the lead
+      return q;
+    };
+    const canEditQuote = (role: Role, uid: string, q: Quote) => role === 'SUPER_ADMIN' || role === 'CHINA_ADMIN' || (role === 'CHINA_STAFF' && q.createdBy === uid);
+    /** China + super admin: everything. India: no supplier id/identity/contact, neutral file names. */
+    const viewQuote = (u: { role: Role; id: string }, q: Quote, i: number, ref: string | null) => {
+      const role = u.role;
+      const s = sides(role), names = userNames();
+      const files = uploads.list(qKey(q.id));
+      const base = { id: q.id, leadId: q.leadId, product: q.product, unitPrice: q.unitPrice, currency: q.currency, moq: q.moq, leadTime: q.leadTime,
+        validity: q.validity, notes: q.notes, createdAt: q.createdAt, updatedAt: q.updatedAt };
+      const client = { clientPrice: q.clientPrice, clientCurrency: q.clientCurrency, clientNotes: q.clientNotes };
+      if (s.china) {
+        const sup = q.supplierId ? quotes.supplier(q.supplierId) : null;
+        return { ...base, ...(s.india ? client : {}), supplierId: q.supplierId, supplier: sup, createdBy: q.createdBy, createdByName: names.get(q.createdBy) ?? null, canEdit: canEditQuote(role, u.id, q), files };
+      }
+      return { ...base, ...client, label: `${ref ?? 'Quote'}-Q${i + 1}`,
+        files: files.map((f, k) => ({ ...f, name: `${ref ?? 'quote'}-Q${i + 1}-${k + 1}${(/\.[A-Za-z0-9]{1,5}$/.exec(f.name)?.[0] ?? '').toLowerCase()}` })) };
+    };
+    const leadRefOf = async (id: string) => { try { return ((await o.twenty.get(OBJECTS.lead, id)) as any)?.leadRef ?? null; } catch { return null; } };
+    const chinaOnly = (role: Role) => { if (!sides(role).china) throw new Forbidden('Only the China office can do this'); };
+    api.get<{ Params: { id: string } }>('/api/leads/:id/quotes', async (req) => {
+      const id = await attLead(req), ref = await leadRefOf(id);
+      return { data: quotes.list(id).map((q, i) => viewQuote(req.user!, q, i, ref)) };
+    });
+    api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/leads/:id/quotes', async (req, reply) => {
+      chinaOnly(req.user!.role);
+      const id = await attLead(req);
+      if (quotes.count(id) >= 50) return reply.code(413).send({ error: 'Up to 50 quotes per lead' });
+      let body = { ...(req.body ?? {}) } as Record<string, unknown>;
+      if (body.newSupplier && typeof body.newSupplier === 'object') body.supplierId = quotes.addSupplier(body.newSupplier as any, req.user!.id).id;
+      const q = quotes.create(id, body, req.user!.id);
+      const list = quotes.list(id);
+      return reply.code(201).send({ data: viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(id)) });
+    });
+    api.patch<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid', async (req) => {
+      const q = await quoteOf(req), role = req.user!.role, s = sides(role), b = { ...(req.body ?? {}) };
+      const clientKeys = ['clientPrice', 'clientCurrency', 'clientNotes'];
+      let n = q;
+      if (clientKeys.some((k) => k in b)) {
+        if (!s.india) throw new Forbidden('Only the India office sets the customer price');
+        n = quotes.setClient(q.id, Object.fromEntries(clientKeys.filter((k) => k in b).map((k) => [k, b[k]])));
+      }
+      const chinaKeys = Object.keys(b).filter((k) => !clientKeys.includes(k));
+      if (chinaKeys.length) {
+        if (!canEditQuote(role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can edit it');
+        if (b.newSupplier && typeof b.newSupplier === 'object') b.supplierId = quotes.addSupplier(b.newSupplier as any, req.user!.id).id;
+        delete b.newSupplier; for (const k of clientKeys) delete b[k];
+        n = quotes.update(q.id, b);
+      }
+      const list = quotes.list(q.leadId);
+      return { data: viewQuote(req.user!, n, list.findIndex((x) => x.id === n.id), await leadRefOf(q.leadId)) };
+    });
+    api.delete<{ Params: { qid: string } }>('/api/quotes/:qid', async (req, reply) => {
+      const q = await quoteOf(req);
+      if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can delete it');
+      quotes.remove(q.id); uploads.removeAll(qKey(q.id));
+      return reply.code(204).send();
+    });
+    api.post<{ Params: { qid: string } }>('/api/quotes/:qid/files', async (req, reply) => {
+      const q = await quoteOf(req);
+      if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can add files');
+      if (!req.isMultipart()) return reply.code(400).send({ error: 'multipart/form-data expected' });
+      const m = await readMultipart(req, MAX_STAFF_FILES);
+      if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
+      if (uploads.list(qKey(q.id)).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per quote', code: 'count' }); }
+      uploads.commit(qKey(q.id), m.files);
+      const list = quotes.list(q.leadId);
+      return reply.code(201).send({ data: viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(q.leadId)) });
+    });
+    api.get<{ Params: { qid: string; fid: string } }>('/api/quotes/:qid/files/:fid', async (req, reply) => {
+      const q = await quoteOf(req);
+      const all = uploads.list(qKey(q.id)), k = all.findIndex((a) => a.id === req.params.fid);
+      const f = uploads.file(qKey(q.id), req.params.fid);
+      if (!f) return reply.code(404).send({ error: 'Not found' });
+      if (sides(req.user!.role).china) return sendFile(req, reply, f);
+      const ref = await leadRefOf(q.leadId), i = quotes.list(q.leadId).findIndex((x) => x.id === q.id);
+      return sendFile(req, reply, f, `${ref ?? 'quote'}-Q${i + 1}-${k + 1}${(/\.[A-Za-z0-9]{1,5}$/.exec(f.meta.name)?.[0] ?? '').toLowerCase()}`);
+    });
+    api.delete<{ Params: { qid: string; fid: string } }>('/api/quotes/:qid/files/:fid', async (req, reply) => {
+      const q = await quoteOf(req);
+      if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can remove files');
+      if (!uploads.remove(qKey(q.id), req.params.fid)) return reply.code(404).send({ error: 'Not found' });
+      return reply.code(204).send();
+    });
+    // Super admin only: permanently remove a lead with its quotes, files, assignment and notifications (e.g. test data).
+    api.delete<{ Params: { id: string } }>('/api/records/leads/:id', async (req, reply) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can delete leads');
+      const id = await attLead(req);
+      for (const q of quotes.list(id)) uploads.removeAll(qKey(q.id));
+      quotes.removeLead(id); uploads.removeAll(id); assign.forgetLead(id);
+      if (!o.twenty.remove) return reply.code(501).send({ error: 'Not supported' });
+      await o.twenty.remove(OBJECTS.lead, id);
+      return reply.code(204).send();
+    });
+    api.get('/api/suppliers', async (req) => { chinaOnly(req.user!.role); return { data: quotes.suppliers() }; });
+    api.post<{ Body: Record<string, unknown> }>('/api/suppliers', async (req, reply) => { chinaOnly(req.user!.role); return reply.code(201).send({ data: quotes.addSupplier(req.body ?? {}, req.user!.id) }); });
+    api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/suppliers/:id', async (req, reply) => {
+      chinaOnly(req.user!.role);
+      const sup = quotes.updateSupplier(req.params.id, req.body ?? {});
+      return sup ? { data: sup } : reply.code(404).send({ error: 'Not found' });
+    });
+    api.delete<{ Params: { id: string } }>('/api/suppliers/:id', async (req, reply) => {
+      const role = req.user!.role; if (role !== 'SUPER_ADMIN' && role !== 'CHINA_ADMIN') throw new Forbidden('Only a China admin can delete suppliers');
+      quotes.deleteSupplier(req.params.id); return reply.code(204).send();
     });
 
     // ---- Generic filtered records API (used by mobile and web) ----

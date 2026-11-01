@@ -495,5 +495,53 @@
         "type": "String"
       }
     }
+  },
+  "lqTitle": "Supplier quotes",
+  "lqAdd": "Add quote",
+  "lqEdit": "Edit",
+  "lqNone": "No supplier quotes yet. China will add them here.",
+  "lqNoneChina": "No quotes yet. Add the supplier's price, MOQ and product photos.",
+  "lqLoadFail": "Couldn't load quotes.",
+  "lqUnit": "unit",
+  "lqMoq": "MOQ",
+  "lqLeadTime": "Lead time",
+  "lqValidity": "Valid for",
+  "lqNotes": "Notes",
+  "lqSupplier": "Supplier",
+  "lqChinaOnly": "China only",
+  "lqNoSupplier": "— Select supplier —",
+  "lqNewSupplier": "New supplier",
+  "lqSupName": "Supplier name",
+  "lqSupContact": "Contact person",
+  "lqSupPhone": "Phone",
+  "lqSupCity": "City",
+  "lqProduct": "Product / model",
+  "lqProductPh": "e.g. SB-500 steel bottle 500ml",
+  "lqUnitPrice": "Unit price",
+  "lqCurrency": "Currency",
+  "lqMedia": "Supplier photos, videos & documents",
+  "lqAddMedia": "Add photos / files",
+  "lqSellPrice": "Our selling price",
+  "lqSellNotes": "Customer quote notes",
+  "lqAddSell": "Add INR price",
+  "lqReturnHint": "Done quoting? Tap “Return to India” to notify the person who raised this lead.",
+  "lqErrProduct": "Enter the product / model.",
+  "lqErrPrice": "Enter a valid unit price.",
+  "lqErrSupplier": "Enter the new supplier's name.",
+  "lqDeleteQ": "Delete the quote for “{product}”?",
+  "@lqDeleteQ": {
+    "placeholders": {
+      "product": {
+        "type": "String"
+      }
+    }
+  },
+  "lqBy": "Added by {name}",
+  "@lqBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

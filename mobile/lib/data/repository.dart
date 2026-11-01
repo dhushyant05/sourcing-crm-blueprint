@@ -133,6 +133,26 @@ class SourceEasyRepository {
   Future<void> deleteAttachment(String leadId, String fileId) =>
       api.send('DELETE', '/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(fileId)}');
 
+  // ── Supplier quotes on a lead (server SQLite; China adds, India sees them redacted) ──
+  Future<List<LeadQuote>> leadQuotes(String leadId) async {
+    final j = await api.send('GET', '/api/leads/${Uri.encodeComponent(leadId)}/quotes') as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadQuote.fromJson).toList();
+  }
+  Future<LeadQuote> createLeadQuote(String leadId, Map<String, dynamic> body) async =>
+      LeadQuote.fromJson((await api.send('POST', '/api/leads/${Uri.encodeComponent(leadId)}/quotes', body: body) as Map<String, dynamic>)['data'] as Map<String, dynamic>);
+  Future<LeadQuote> updateLeadQuote(String id, Map<String, dynamic> body) async =>
+      LeadQuote.fromJson((await api.send('PATCH', '/api/quotes/${Uri.encodeComponent(id)}', body: body) as Map<String, dynamic>)['data'] as Map<String, dynamic>);
+  Future<void> deleteLeadQuote(String id) => api.send('DELETE', '/api/quotes/${Uri.encodeComponent(id)}');
+  Future<LeadQuote> uploadQuoteFiles(String id, List<String> paths) async =>
+      LeadQuote.fromJson((await api.upload('/api/quotes/${Uri.encodeComponent(id)}/files', paths) as Map<String, dynamic>)['data'] as Map<String, dynamic>);
+  Future<List<int>> quoteFileBytes(String id, LeadAttachment a) => api.getBytes('/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(a.id)}');
+  ({Uri uri, Map<String, String> headers}) quoteFileStream(String id, LeadAttachment a) => api.authed('/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(a.id)}');
+  Future<void> deleteQuoteFile(String id, String fid) => api.send('DELETE', '/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(fid)}');
+  Future<List<QuoteSupplier>> quoteSuppliers() async {
+    final j = await api.send('GET', '/api/suppliers') as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(QuoteSupplier.fromJson).toList();
+  }
+
   ({Uri uri, Map<String, String> headers}) attachmentStream(String leadId, LeadAttachment a) =>
       api.authed('/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(a.id)}');
 
