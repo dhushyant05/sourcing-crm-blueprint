@@ -1,4 +1,4 @@
-import type { Attachment, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { Attachment, Lead, LeadStatus, Quotation, Supplier, User } from './types';
 
 const day = (n: number) => new Date(Date.UTC(2026, 9, 31) - n * 864e5).toISOString();
 const clients = ['Arora Home Store', 'Mehta Kitchenware', 'Sri Balaji Traders', 'Kapoor Retail', 'Nair Hospitality',
@@ -25,15 +25,6 @@ const quotations: Quotation[] = leads.filter((l) => ['QUOTED', 'APPROVED', 'SHIP
   clientUnitPrice: [168, 142, 29.5, 720, 52, 1.45][i % 6], clientCurrency: (['INR', 'INR', 'USD', 'INR', 'INR', 'USD'] as const)[i % 6],
   status: ['SENT', 'ACCEPTED', 'ACCEPTED', 'ACCEPTED', 'DRAFT', 'SENT'][i % 6], validityDate: day(-14 + i), createdAt: day(i + 2),
 }));
-
-const shipments: Shipment[] = [
-  { id: 'S1', name: 'SO-2611', clientName: 'Sri Balaji Traders', stage: 'IN_TRANSIT', carrier: 'Maersk', trackingNumber: 'MAEU7731902', origin: 'Ningbo', destination: 'Nhava Sheva', eta: day(-9), updatedAt: day(0) },
-  { id: 'S2', name: 'SO-2609', clientName: 'Mehta Kitchenware', stage: 'AT_PORT', carrier: 'COSCO', trackingNumber: 'COSU6210457', origin: 'Shenzhen', destination: 'Chennai', eta: day(-2), updatedAt: day(1) },
-  { id: 'S3', name: 'SO-2604', clientName: 'Desai Electricals', stage: 'DELIVERED', carrier: 'DHL Express', trackingNumber: '4021 8833 10', origin: 'Shenzhen', destination: 'Mumbai', eta: day(5), updatedAt: day(5) },
-  { id: 'S4', name: 'SO-2613', clientName: 'Urban Nest Decor', stage: 'BOOKED', carrier: 'ONE', trackingNumber: '—', origin: 'Yiwu', destination: 'Mundra', eta: day(-24), updatedAt: day(0) },
-];
-
-for (const s of shipments) s.leadRef = leads.find((l) => l.clientName === s.clientName)?.leadRef;
 
 const suppliers: Supplier[] = [
   { id: 'SP1', name: 'Yiwu Huaxin Trading', city: 'Yiwu', category: 'Household', rating: 4.6, contactName: 'Zhang Min', wechat: 'huaxin_zm' },
@@ -65,4 +56,4 @@ const attachments: Record<string, Attachment[]> = {
 };
 const files: Record<string, string> = { a1: '/demo/bamboo-board-1.jpg', a2: '/demo/bamboo-board-2.jpg' };
 
-export const demo = { leads, quotations, shipments, suppliers, users, attachments, files };
+export const demo = { leads, quotations, suppliers, users, attachments, files };

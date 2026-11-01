@@ -60,7 +60,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
               ))}
             </nav>
             <div className="border-t border-ink-100 p-3 dark:border-ink-800">
-              <div className="mb-2 flex items-center gap-3 px-2"><Avatar name={session?.name ?? '?'} /><div className="leading-tight"><div className="text-sm font-medium text-ink-900 dark:text-white">{session?.name}</div><div className="text-xs text-ink-500">{session && t(`role.${session.role}`)}</div></div></div>
+              <div className="mb-2 flex items-center gap-3 px-2"><Avatar name={session?.name ?? '?'} src={session?.avatarUrl} /><div className="leading-tight"><div className="text-sm font-medium text-ink-900 dark:text-white">{session?.name}</div><div className="text-xs text-ink-500">{session && t(`role.${session.role}`)}</div></div></div>
               <button className="btn-ghost w-full" onClick={() => setDark(!dark)}>{dark ? <Sun size={18} /> : <Moon size={18} />}{t('header.theme')}</button>
               <button className="btn-ghost w-full" onClick={signOut}><LogOut size={18} />{t('header.signOut')}</button>
             </div>
@@ -108,7 +108,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
             <button className="btn-ghost hidden p-2 md:inline-flex" onClick={() => setDark(!dark)} aria-label={t('header.theme')}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
             <NotificationBell openLead={openLeadId} />
             <div className="ml-2 hidden items-center gap-2.5 border-l md:flex border-ink-200 pl-4 dark:border-ink-800">
-              <Avatar name={session?.name ?? '?'} />
+              <Avatar name={session?.name ?? '?'} src={session?.avatarUrl} />
               <div className="hidden leading-tight lg:block"><div className="text-sm font-medium text-ink-900 dark:text-white">{session?.name}</div><div className="text-xs text-ink-500">{session && t(`role.${session.role}`)}</div></div>
               <button className="btn-ghost p-2" onClick={signOut} aria-label={t('header.signOut')}><LogOut size={16} /></button>
             </div>

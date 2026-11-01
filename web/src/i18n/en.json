@@ -190,9 +190,9 @@
   },
   "shipping": {
     "title": "Shipping",
-    "subtitle": "Orders from supplier pickup to client delivery",
+    "subtitle": "One shipment per order — from China dispatch to delivery",
     "none": "No shipments",
-    "noneHint": "Shipping orders are created when a client approves a quote.",
+    "noneHint": "A shipment is created automatically when an order is created.",
     "order": "Order",
     "route": "Route",
     "progress": "Progress",
@@ -440,7 +440,15 @@
     "QUOTE_ACCEPTED_nobody": "customer accepted the quote on {{ref}}",
     "QUOTE_REJECTED_nobody": "customer rejected the quote on {{ref}}",
     "ORDER_NEW_nobody": "created an order for {{ref}}",
-    "ORDER_UPDATE_nobody": "updated the order for {{ref}}"
+    "ORDER_UPDATE_nobody": "updated the order for {{ref}}",
+    "SHIPMENT_UPDATE": "{{by}} updated the shipment for {{ref}}",
+    "SHIPMENT_UPDATE_nobody": "updated the shipment for {{ref}}",
+    "REVISE_REQUESTED": "{{by}} requested a revised quote for {{ref}}",
+    "REVISE_REQUESTED_nobody": "revised quote requested for {{ref}}",
+    "LEAD_CLOSED": "{{by}} closed {{ref}} as Lost",
+    "LEAD_CLOSED_nobody": "{{ref}} closed as Lost",
+    "ORDER_SHIPPED": "{{by}} marked {{ref}} as shipped",
+    "ORDER_SHIPPED_nobody": "{{ref}} has shipped"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -478,29 +486,36 @@
     "shipFrom": "Supplier shipping"
   },
   "ship": {
-    "title": "Shipping",
-    "cost": "Shipping cost",
-    "costInr": "Shipping cost (₹ INR)",
-    "term": "Shipping term (Incoterm)",
-    "mode": "Shipping mode",
-    "port": "Port / destination",
-    "transit": "Transit time",
-    "none": "— Select —",
-    "terms": {
-      "EXW": "EXW (Ex Works)",
-      "FOB": "FOB (Free On Board)",
-      "CIF": "CIF (Cost, Insurance & Freight)",
-      "CFR": "CFR (Cost & Freight)",
-      "DDP": "DDP (Delivered Duty Paid)",
-      "DAP": "DAP (Delivered At Place)",
-      "DOOR": "Door to door"
-    },
-    "modes": {
+    "all": "All",
+    "mode": "Mode",
+    "incoterm": "Incoterm",
+    "port": "Port",
+    "transit": "Transit",
+    "deliveredAt": "Delivered on",
+    "customsNote": "Customs note",
+    "chinaPart": "China: booking & transit",
+    "indiaPart": "India: customs & delivery",
+    "m": {
       "AIR": "Air",
       "SEA": "Sea",
-      "EXPRESS": "Express / Courier",
+      "EXPRESS": "Express",
       "ROAD": "Road"
-    }
+    },
+    "st": {
+      "PENDING": "Pending",
+      "BOOKED": "Booked",
+      "SHIPPED": "Shipped",
+      "IN_TRANSIT": "In transit",
+      "ARRIVED": "Arrived",
+      "CUSTOMS": "In customs",
+      "CLEARED": "Cleared",
+      "DELIVERED": "Delivered",
+      "OUT_FOR_DELIVERY": "Out for delivery"
+    },
+    "markShipped": "Mark shipped",
+    "needForShip": "Needs tracking or container no. + ETD",
+    "shippedNote": "Shipped — India now handles transit and delivery",
+    "indiaLocked": "Transit and delivery unlock once China marks the order Shipped."
   },
   "qs": {
     "DRAFT": "Draft",
@@ -605,13 +620,70 @@
       "NONE": "Not shipped yet",
       "IN_TRANSIT": "In transit",
       "CUSTOMS": "At customs",
-      "DELIVERED": "Delivered"
-    }
+      "DELIVERED": "Delivered",
+      "OUT_FOR_DELIVERY": "Out for delivery"
+    },
+    "shipmentRef": "Shipment"
   },
   "raiser": {
     "label": "Raised by",
     "none": "Not set",
     "set": "Set raiser",
     "hint": "Quoted or returned leads go back to this person."
+  },
+  "rej": {
+    "pick": "Pick a reason…",
+    "otherText": "Describe the reason (required)",
+    "optText": "Details (optional)",
+    "actionNeeded": "Rejected – action needed",
+    "revising": "Revised quote requested from China",
+    "title": "Customer rejection",
+    "count": "Rejections: {{n}}",
+    "target": "India target",
+    "revise": "Request revised quote from China",
+    "close": "Close lead (Lost)",
+    "closeConfirm": "Close this lead as Lost with the rejection reason?",
+    "targetOpt": "Target price (optional)",
+    "notesOpt": "Notes for China (optional)",
+    "reviseHint": "China sees the reason, and your target/notes if entered. No customer details or your selling price are shared.",
+    "send": "Send to China",
+    "history": "Rejection history",
+    "open": "Awaiting India",
+    "res": {
+      "REVISE": "Revised quote requested",
+      "CLOSED": "Closed as Lost"
+    },
+    "r": {
+      "PRICE": "Price too high",
+      "LEAD_TIME": "Lead time too long",
+      "MOQ": "MOQ too high",
+      "QUALITY": "Quality / spec mismatch",
+      "SHIPPING": "Shipping cost",
+      "OTHER_SUPPLIER": "Chose another supplier",
+      "NO_RESPONSE": "No response",
+      "OTHER": "Other"
+    }
+  },
+  "profile": {
+    "picture": "Profile picture",
+    "upload": "Upload photo",
+    "change": "Change photo",
+    "remove": "Remove",
+    "zoom": "Zoom",
+    "hint": "JPG, PNG, WebP or HEIC, up to 5 MB. Drag to position.",
+    "notImage": "Please choose an image file.",
+    "tooBig": "Image must be 5 MB or smaller."
+  },
+  "pw": {
+    "title": "Change password",
+    "hint": "Other devices will be signed out. This one stays signed in.",
+    "current": "Current password",
+    "new": "New password (min 10 characters)",
+    "confirm": "Confirm new password",
+    "submit": "Update password",
+    "min": "New password must be at least 10 characters.",
+    "mismatch": "Passwords do not match.",
+    "wrong": "Current password is wrong.",
+    "done": "Password updated. Other sessions were signed out."
   }
 }

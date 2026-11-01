@@ -190,9 +190,9 @@
   },
   "shipping": {
     "title": "物流",
-    "subtitle": "从供应商提货到客户签收的订单",
+    "subtitle": "每个订单一票货运——从中国发货到签收",
     "none": "暂无货运",
-    "noneHint": "客户批准报价后会创建货运订单。",
+    "noneHint": "创建订单时会自动生成货运。",
     "order": "订单",
     "route": "路线",
     "progress": "进度",
@@ -440,7 +440,15 @@
     "QUOTE_ACCEPTED_nobody": "客户已接受 {{ref}} 的报价",
     "QUOTE_REJECTED_nobody": "客户已拒绝 {{ref}} 的报价",
     "ORDER_NEW_nobody": "为 {{ref}} 创建了订单",
-    "ORDER_UPDATE_nobody": "更新了 {{ref}} 的订单"
+    "ORDER_UPDATE_nobody": "更新了 {{ref}} 的订单",
+    "SHIPMENT_UPDATE": "{{by}} 更新了 {{ref}} 的货运",
+    "SHIPMENT_UPDATE_nobody": "更新了 {{ref}} 的货运",
+    "REVISE_REQUESTED": "{{by}} 请求为 {{ref}} 重新报价",
+    "REVISE_REQUESTED_nobody": "已请求为 {{ref}} 重新报价",
+    "LEAD_CLOSED": "{{by}} 已将 {{ref}} 关闭为丢单",
+    "LEAD_CLOSED_nobody": "{{ref}} 已关闭为丢单",
+    "ORDER_SHIPPED": "{{by}} 已将 {{ref}} 标记为已发货",
+    "ORDER_SHIPPED_nobody": "{{ref}} 已发货"
   },
   "lq": {
     "title": "供应商报价",
@@ -478,29 +486,36 @@
     "shipFrom": "供应商运输"
   },
   "ship": {
-    "title": "运输",
-    "cost": "运费",
-    "costInr": "运费（₹ 印度卢比）",
-    "term": "贸易条款（Incoterm）",
+    "all": "全部",
     "mode": "运输方式",
-    "port": "港口 / 目的地",
-    "transit": "运输时间",
-    "none": "— 请选择 —",
-    "terms": {
-      "EXW": "EXW（工厂交货）",
-      "FOB": "FOB（船上交货）",
-      "CIF": "CIF（成本、保险加运费）",
-      "CFR": "CFR（成本加运费）",
-      "DDP": "DDP（完税后交货）",
-      "DAP": "DAP（目的地交货）",
-      "DOOR": "门到门"
-    },
-    "modes": {
+    "incoterm": "贸易条款",
+    "port": "港口",
+    "transit": "运输时效",
+    "deliveredAt": "签收日期",
+    "customsNote": "清关备注",
+    "chinaPart": "中国：订舱与运输",
+    "indiaPart": "印度：清关与签收",
+    "m": {
       "AIR": "空运",
       "SEA": "海运",
       "EXPRESS": "快递",
       "ROAD": "陆运"
-    }
+    },
+    "st": {
+      "PENDING": "待处理",
+      "BOOKED": "已订舱",
+      "SHIPPED": "已发货",
+      "IN_TRANSIT": "运输中",
+      "ARRIVED": "已到港",
+      "CUSTOMS": "清关中",
+      "CLEARED": "已清关",
+      "DELIVERED": "已签收",
+      "OUT_FOR_DELIVERY": "派送中"
+    },
+    "markShipped": "标记为已发货",
+    "needForShip": "需要运单号或柜号 + 预计离港日期",
+    "shippedNote": "已发货 — 运输和交付由印度处理",
+    "indiaLocked": "中国标记订单已发货后，运输和交付操作才会解锁。"
   },
   "qs": {
     "DRAFT": "草稿",
@@ -605,13 +620,70 @@
       "NONE": "尚未发货",
       "IN_TRANSIT": "运输中",
       "CUSTOMS": "清关中",
-      "DELIVERED": "已送达"
-    }
+      "DELIVERED": "已送达",
+      "OUT_FOR_DELIVERY": "派送中"
+    },
+    "shipmentRef": "货运"
   },
   "raiser": {
     "label": "提出人",
     "none": "未设置",
     "set": "设置提出人",
     "hint": "报价或退回的线索会回到此人。"
+  },
+  "rej": {
+    "pick": "选择原因…",
+    "otherText": "请说明原因（必填）",
+    "optText": "详情（可选）",
+    "actionNeeded": "已拒绝 – 待处理",
+    "revising": "已请求中国重新报价",
+    "title": "客户拒绝",
+    "count": "拒绝次数：{{n}}",
+    "target": "印度目标价",
+    "revise": "请求中国重新报价",
+    "close": "关闭线索（丢单）",
+    "closeConfirm": "以该拒绝原因将此线索关闭为丢单？",
+    "targetOpt": "目标价（可选）",
+    "notesOpt": "给中国的备注（可选）",
+    "reviseHint": "中国可见拒绝原因及您填写的目标价/备注，不会共享客户信息或您的销售价。",
+    "send": "发送给中国",
+    "history": "拒绝记录",
+    "open": "等待印度处理",
+    "res": {
+      "REVISE": "已请求重新报价",
+      "CLOSED": "已关闭为丢单"
+    },
+    "r": {
+      "PRICE": "价格太高",
+      "LEAD_TIME": "交期太长",
+      "MOQ": "起订量太高",
+      "QUALITY": "质量/规格不符",
+      "SHIPPING": "运费",
+      "OTHER_SUPPLIER": "选择了其他供应商",
+      "NO_RESPONSE": "无回复",
+      "OTHER": "其他"
+    }
+  },
+  "profile": {
+    "picture": "头像",
+    "upload": "上传照片",
+    "change": "更换照片",
+    "remove": "移除",
+    "zoom": "缩放",
+    "hint": "支持 JPG、PNG、WebP、HEIC，最大 5 MB。拖动调整位置。",
+    "notImage": "请选择图片文件。",
+    "tooBig": "图片不能超过 5 MB。"
+  },
+  "pw": {
+    "title": "修改密码",
+    "hint": "其他设备将被退出登录，当前设备保持登录。",
+    "current": "当前密码",
+    "new": "新密码（至少 10 个字符）",
+    "confirm": "确认新密码",
+    "submit": "更新密码",
+    "min": "新密码至少需要 10 个字符。",
+    "mismatch": "两次输入的密码不一致。",
+    "wrong": "当前密码错误。",
+    "done": "密码已更新，其他会话已退出登录。"
   }
 }

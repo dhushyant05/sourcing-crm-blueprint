@@ -2,7 +2,7 @@ import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shi
 import type { Role } from './roles';
 import { demo } from './demo';
 
-export interface Me { id: string; email: string; name: string; role: Role; language?: string | null }
+export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null }
 export interface QuotePrice { unitCost?: number; totalCost?: number; currency?: Currency; clientUnitPrice?: number; clientCurrency?: Currency }
 export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
 export interface Api {
@@ -11,6 +11,7 @@ export interface Api {
   deleteLead(id: string): Promise<void>;
   quotations(): Promise<Quotation[]>;
   shipments(): Promise<Shipment[]>;
+  updateShipment?(id: string, b: Record<string, unknown>): Promise<Shipment>;
   suppliers(): Promise<Supplier[]>;
   updateQuotePrice(id: string, p: QuotePrice): Promise<void>;
   /** Returns the new lead id. */
@@ -32,6 +33,11 @@ export interface Api {
   uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void): Promise<Attachment[]>;
   deleteAttachment(leadId: string, id: string): Promise<void>;
   setLanguage(lang: string): Promise<void>;
+  /** Upload (already cropped) or remove my picture; super admin can do it for any user via userId. */
+  setAvatar(file: Blob, userId?: string): Promise<string | null>;
+  removeAvatar(userId?: string): Promise<void>;
+  /** Returns a fresh token for this device; every other session is signed out. */
+  changePassword(current: string, next: string): Promise<string>;
   users(): Promise<User[]>;
   createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
   resetPassword(id: string, password: string): Promise<void>;
@@ -55,7 +61,9 @@ export interface Api {
   allQuotes(f?: { status?: string; office?: string; mine?: boolean }): Promise<LeadQuote[]>;
   saveCustomerQuote(id: string, c: Partial<Record<keyof CustomerQuote, string | number | null>>): Promise<LeadQuote>;
   quotePdf(id: string): Promise<LeadQuote>;
-  setQuoteStatus(id: string, status: string, reason?: string): Promise<LeadQuote>;
+  setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string): Promise<LeadQuote>;
+  reviseRejected?(leadId: string, b: { targetPrice?: number | null; targetCurrency?: string; notes?: string }): Promise<Lead>;
+  closeRejected?(leadId: string): Promise<Lead>;
   createOrder(quoteId: string, b: Record<string, unknown>): Promise<Order>;
   orders(): Promise<Order[]>;
   updateOrder(id: string, b: Record<string, unknown>): Promise<Order>;
@@ -96,7 +104,6 @@ export class ServerApi implements Api {
     return j.data as T;
   }
   private list = (plural: string) => this.req<Raw[]>('GET', `/records/${plural}`);
-  private get india() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('INDIA'); }
   private get china() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('CHINA'); }
 
   private mapLead = (n: Raw): Lead => ({
@@ -108,6 +115,24 @@ export class ServerApi implements Api {
   async lead(id: string) { try { return this.mapLead(await this.req<Raw>('GET', `/records/leads/${encodeURIComponent(id)}`)); } catch { return null; } }
   async assignLead(id: string, office: Office, assignedTo?: string | null) {
     return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/assign`, { office, ...(assignedTo !== undefined ? { assignedTo } : {}) }));
+  }
+  async setAvatar(file: Blob, userId?: string) {
+    const fd = new FormData(); fd.append('file', file, 'avatar.jpg');
+    const res = await fetch(userId ? `/api/users/${encodeURIComponent(userId)}/avatar` : '/api/me/avatar', { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
+    return (userId ? j.data?.avatarUrl : j.avatarUrl) ?? null;
+  }
+  async removeAvatar(userId?: string) {
+    const res = await fetch(userId ? `/api/users/${encodeURIComponent(userId)}/avatar` : '/api/me/avatar', { method: 'DELETE', headers: { authorization: `Bearer ${this.token}` } });
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+  }
+  async changePassword(current: string, next: string) {
+    const res = await fetch('/api/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: current, newPassword: next }), headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' } });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
+    return j.token as string;
   }
   staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
   async notifications() {
@@ -159,14 +184,8 @@ export class ServerApi implements Api {
       };
     });
   }
-  async shipments() {
-    const [ss, leads] = await Promise.all([this.list('shippingOrders'), this.india ? this.list('leads') : Promise.resolve([] as Raw[])]);
-    const client = new Map(leads.map((l) => [l.id, l.clientName]));
-    return ss.map((s): Shipment => ({
-      id: s.id, name: s.name, leadRef: s.leadRef, clientName: client.get(s.leadId), stage: s.shipmentStatus ?? 'BOOKED', carrier: s.forwarder,
-      trackingNumber: s.trackingNumber, origin: s.currentLocation ?? 'China', destination: 'India', eta: s.eta, updatedAt: s.updatedAt ?? s.createdAt,
-    }));
-  }
+  shipments() { return this.req<Shipment[]>('GET', '/shipments'); }
+  updateShipment(id: string, b: Record<string, unknown>) { return this.req<Shipment>('PATCH', `/shipments/${id}`, b); }
   async suppliers() {
     return (await this.list('suppliers')).map((s): Supplier => ({ id: s.id, name: s.name, phone: s.phone?.primaryPhoneNumber, wechat: s.wechatId, notes: s.notes }));
   }
@@ -202,7 +221,9 @@ export class ServerApi implements Api {
   }
   saveCustomerQuote(id: string, c: object) { return this.req<LeadQuote>('PUT', `/quotes/${encodeURIComponent(id)}/customer`, c); }
   quotePdf(id: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/pdf`); }
-  setQuoteStatus(id: string, status: string, reason?: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/status`, { status, reason }); }
+  setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/status`, { status, reason, reasonCode }); }
+  async reviseRejected(leadId: string, b: Record<string, unknown>) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/revise`, b)); }
+  async closeRejected(leadId: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/close`, {})); }
   createOrder(quoteId: string, b: Record<string, unknown>) { return this.req<Order>('POST', `/quotes/${encodeURIComponent(quoteId)}/order`, b); }
   orders() { return this.req<Order[]>('GET', '/orders'); }
   updateOrder(id: string, b: Record<string, unknown>) { return this.req<Order>('PATCH', `/orders/${encodeURIComponent(id)}`, b); }
@@ -247,6 +268,9 @@ export class DemoApi implements Api {
     Object.assign(l, { ownerOffice: office, assignedTo: to, assignedToName: demoStaff.find((s) => s.id === to)?.name ?? null, ...(office === 'CHINA' ? { assignedOffice: 'CHINA', status: l.status === 'NEW' ? 'ASSIGNED' : l.status } : {}) });
     return structuredClone(l);
   }
+  async setAvatar() { return null; }
+  async removeAvatar() {}
+  async changePassword(): Promise<string> { throw new Error('Not available in demo'); }
   async staff(office: Office) { return demoStaff.filter((s) => s.role.startsWith(office)); }
   async notifications() { return structuredClone({ data: demoNotes, unread: demoNotes.filter((n) => !n.read).length }); }
   async markNotificationRead(id?: string) { demoNotes.forEach((n) => { if (!id || n.id === id) n.read = true; }); }
@@ -285,7 +309,7 @@ export class DemoApi implements Api {
   async deleteLead(id: string) { demo.leads = demo.leads.filter((x) => x.id !== id); }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
   quotations() { return this.wait(demo.quotations); }
-  shipments() { return this.wait(demo.shipments); }
+  async shipments(): Promise<Shipment[]> { return []; }
   suppliers() { return this.wait(demo.suppliers); }
   async updateQuotePrice(id: string, p: QuotePrice) { const q = demo.quotations.find((x) => x.id === id); if (q) Object.assign(q, p); }
   async createLead(l: NewLead) {

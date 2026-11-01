@@ -49,7 +49,7 @@ describe.each(['CHINA_STAFF', 'CHINA_ADMIN'] as Role[])('%s', (role) => {
   it('sees only China-assigned leads, with no customer fields', async () => {
     const leads = await data(role, 'leads');
     expect(leads.map((l) => l.id)).toEqual(['lead-china-1']);
-    expect(keys(leads[0])).toEqual(['assignedChinaAgent', 'assignedOffice', 'assignedTo', 'assignedToName', 'createdAt', 'id', 'name', 'office', 'ownerOffice', 'productInterest', 'quantity', 'raisedBy', 'raisedByName', 'status']);
+    expect(keys(leads[0])).toEqual(['assignedChinaAgent', 'assignedOffice', 'assignedTo', 'assignedToName', 'createdAt', 'id', 'name', 'office', 'ownerOffice', 'productInterest', 'quantity', 'raisedBy', 'raisedByName', 'rejection', 'status']);
     expect(leads[0].name).toBe('Lead lead-chi');
   });
   it('sees suppliers with contact details', async () => {

@@ -4,6 +4,7 @@ import { useApp, useLoad } from '../lib/store';
 import { ROLES, type Role } from '../lib/roles';
 import type { User } from '../lib/types';
 import { useTranslation } from 'react-i18next';
+import { AvatarEditor } from '../components/AvatarEditor';
 import { Avatar, Chip, Empty, Field, PageHeader, SlideOver, TableSkeleton } from '../components/ui';
 
 /** Admin user management. The server only returns/permits users on the admin's own side; remove is super admin only. */
@@ -51,7 +52,7 @@ export function Team() {
             <tbody>
               {data.map((u) => (
                 <tr key={u.id} data-testid={`staff-${u.email}`}>
-                  <td className="td"><div className="flex items-center gap-3"><Avatar name={u.name} /><div><div className="font-medium text-ink-900 dark:text-white">{u.name}{isMe(u) && <span className="ml-2 rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-600 dark:bg-ink-800 dark:text-ink-300">{t('team.you')}</span>}</div><div className="text-xs text-ink-500">{u.email}</div></div></div></td>
+                  <td className="td"><div className="flex items-center gap-3"><Avatar name={u.name} src={u.avatarUrl} /><div><div className="font-medium text-ink-900 dark:text-white">{u.name}{isMe(u) && <span className="ml-2 rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-600 dark:bg-ink-800 dark:text-ink-300">{t('team.you')}</span>}</div><div className="text-xs text-ink-500">{u.email}</div></div></div></td>
                   <td className="td">{t(`role.${u.role}`)}</td>
                   <td className="td"><Chip value={u.active ? 'ACTIVE' : 'DISABLED'} /></td>
                   <td className="td whitespace-nowrap text-right">
@@ -86,7 +87,8 @@ export function Team() {
 }
 
 function EditStaff({ user, me, isSuper, roles, onClose, onSaved }: { user: User; me: boolean; isSuper: boolean; roles: Role[]; onClose: () => void; onSaved: () => void }) {
-  const { api } = useApp();
+  const { api, refreshPeople } = useApp();
+  const [pic, setPic] = useState(user.avatarUrl ?? null);
   const { t } = useTranslation();
   const [f, setF] = useState({ name: user.name, email: user.email, role: user.role, active: user.active, password: '' });
   const [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false);
@@ -108,6 +110,9 @@ function EditStaff({ user, me, isSuper, roles, onClose, onSaved }: { user: User;
     <SlideOver open onClose={onClose} title={t('team.editTitle', { name: user.name })} subtitle={user.email}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.cancel')}</button><button className="btn-primary" data-testid="staff-save" disabled={busy} onClick={() => void save()}>{t('common.save')}</button></>}>
       <div className="space-y-4" data-testid="staff-edit-form">
+        {isSuper && <Field label={t('profile.picture')}><AvatarEditor testid="staff-avatar" name={user.name} src={pic}
+          onSave={async (b) => { setPic(await api.setAvatar(b, user.id)); refreshPeople(); }}
+          onRemove={async () => { await api.removeAvatar(user.id); setPic(null); refreshPeople(); }} /></Field>}
         <Field label={t('common.name')}><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label={t('common.email')}><input className="input" type="email" value={f.email} disabled={!isSuper} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
         <Field label={t('common.role')}>

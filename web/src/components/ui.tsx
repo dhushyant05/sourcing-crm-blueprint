@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
+import { useApp } from '../lib/store';
 
 const tone: Record<string, string> = {
   NEW: 'bg-sky-50 text-sky-700 ring-sky-600/15 dark:bg-sky-500/10 dark:text-sky-300',
@@ -116,7 +117,11 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-export const Avatar = ({ name, className }: { name: string; className?: string }) => {
+/** Initials bubble, or the person's picture. `person` looks the name up in the staff picture map. */
+export const Avatar = ({ name, className, src, person }: { name: string; className?: string; src?: string | null; person?: boolean }) => {
+  const { people } = useApp();
+  const img = src ?? (person ? people[name] : undefined);
+  if (img) return <img src={img} alt={name} data-testid="avatar-img" className={clsx('h-8 w-8 shrink-0 rounded-full object-cover', className)} />;
   const hue = [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
   return (
     <span className={clsx('grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold text-white', className)}

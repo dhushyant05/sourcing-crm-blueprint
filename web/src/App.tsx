@@ -31,7 +31,7 @@ function Shell() {
       {route === 'leads' && <Leads search={search} openLead={setLead} />}
       {route === 'quotations' && <Quotations search={search} openLead={setLead} />}
       {route === 'orders' && <Orders search={search} openLead={setLead} />}
-      {route === 'shipping' && <Shipping search={search} />}
+      {route === 'shipping' && <Shipping search={search} openLead={setLead} />}
       {route === 'suppliers' && perms.suppliers && <Suppliers search={search} />}
       {route === 'users' && perms.manageUsers && <Team />}
       {route === 'settings' && <Settings />}

@@ -1,10 +1,11 @@
-import { Bell, CheckCheck, CornerDownLeft, Inbox, UserCheck, CheckCircle2, XCircle, Package } from 'lucide-react';
+import { Bell, CheckCheck, CornerDownLeft, Inbox, UserCheck, CheckCircle2, XCircle, Package, Ship } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
 import type { AppNotification } from '../lib/types';
 import { fmtDate } from '../i18n';
+import { Avatar } from './ui';
 import { desktopNotify, playBell, setupAlerts } from '../lib/live';
 
 /** Text uses only the SE reference + product summary (never customer details), so it is safe for China recipients. */
@@ -15,7 +16,7 @@ export function notifText(t: (k: string, o?: any) => string, n: AppNotification)
 }
 
 export function NotificationBell({ openLead }: { openLead: (id: string) => void }) {
-  const { api, session } = useApp();
+  const { api, session, people } = useApp();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false), [data, setData] = useState<{ data: AppNotification[]; unread: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -80,7 +81,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     openLead(n.leadId);
   };
   const unread = data?.unread ?? 0;
-  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' ? XCircle : n.kind.startsWith('ORDER') ? Package : UserCheck);
+  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' || n.kind === 'LEAD_CLOSED' ? XCircle : n.kind === 'REVISE_REQUESTED' ? CornerDownLeft : n.kind === 'ORDER_SHIPPED' ? Ship : n.kind.startsWith('ORDER') ? Package : n.kind === 'SHIPMENT_UPDATE' ? Ship : UserCheck);
   return (
     <div className="relative" ref={box}>
       <button data-testid="notif-bell" className="btn-ghost relative p-2" aria-label={t('header.notifications')} onClick={() => { setOpen(!open); if (!open) load(); }}>
@@ -99,7 +100,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
             {data?.data.map((n) => { const I = Icon(n); return (
               <li key={n.id}>
                 <button data-testid="notif-item" onClick={() => void click(n)} className={clsx('flex w-full gap-3 px-4 py-3 text-left transition hover:bg-ink-50 dark:hover:bg-ink-800', !n.read && 'bg-brand-50/50 dark:bg-brand-500/5')}>
-                  <span className={clsx('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', n.kind === 'RETURNED' ? 'bg-amber-100 text-amber-700' : n.kind === 'QUEUE' ? 'bg-ink-100 text-ink-600' : 'bg-brand-100 text-brand-700')}><I size={15} /></span>
+                  {n.byName && people[n.byName] ? <Avatar name={n.byName} src={people[n.byName]} className="mt-0.5" /> : <span className={clsx('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', n.kind === 'RETURNED' ? 'bg-amber-100 text-amber-700' : n.kind === 'QUEUE' ? 'bg-ink-100 text-ink-600' : 'bg-brand-100 text-brand-700')}><I size={15} /></span>}
                   <span className="min-w-0 flex-1">
                     <span className={clsx('block text-sm', n.read ? 'text-ink-600 dark:text-ink-300' : 'font-medium text-ink-900 dark:text-white')}>{notifText(t, n)}</span>
                     {n.product && <span className="block truncate text-xs text-ink-500">{n.product}</span>}

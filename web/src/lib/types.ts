@@ -1,7 +1,12 @@
 export type LeadStatus = 'NEW' | 'ASSIGNED' | 'SOURCING' | 'QUOTED' | 'APPROVED' | 'SHIPPING' | 'WON' | 'LOST';
 export type Currency = 'CNY' | 'USD' | 'INR';
 
+export interface Rejection { id: string; quoteId: string; reasonCode: string; reasonText: string | null; byName: string | null; at: string; resolution: 'REVISE' | 'CLOSED' | null;
+  targetPrice: number | null; targetCurrency: string | null; notes: string | null; resolvedByName: string | null; resolvedAt: string | null }
+export interface RejectionSummary { count: number; actionNeeded: boolean; revising: boolean; last: Rejection; history: Rejection[] }
+export const REJECT_REASONS = ['PRICE', 'LEAD_TIME', 'MOQ', 'QUALITY', 'SHIPPING', 'OTHER_SUPPLIER', 'NO_RESPONSE', 'OTHER'];
 export interface Lead {
+  rejection?: RejectionSummary | null;
   id: string; name: string; clientName?: string; contactPhone?: string; contactEmail?: string;
   productInterest?: string; quantity?: number; targetPrice?: number; targetCurrency?: Currency;
   status: LeadStatus; assignedOffice?: string; assignedChinaAgent?: string; sourceChannel?: string; createdAt: string; updatedAt?: string;
@@ -12,9 +17,9 @@ export interface Lead {
   raisedBy?: string | null; raisedByName?: string | null; assignedTo?: string | null; assignedToName?: string | null; ownerOffice?: Office;
 }
 export type Office = 'INDIA' | 'CHINA';
-export interface StaffLite { id: string; name: string; role: import('./roles').Role }
+export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -24,8 +29,10 @@ export interface Quotation {
   clientUnitPrice?: number; clientCurrency?: Currency; status: string; validityDate?: string; createdAt: string;
 }
 export interface Shipment {
-  id: string; name: string; leadRef?: string; clientName?: string; stage: string; carrier?: string; trackingNumber?: string;
-  origin?: string; destination?: string; eta?: string; updatedAt: string;
+  id: string; orderId: string; leadId: string; ref: string; leadRef: string | null; product: string | null; qty: number | null; leadStatus: string | null;
+  mode: string | null; incoterm: string | null; port: string | null; transit: string | null; carrier: string | null; tracking: string | null; container: string | null;
+  etd: string | null; eta: string | null; status: string; customsNote?: string | null; deliveredAt: string | null; production: string | null; expectedShip: string | null;
+  customer?: string | null; deliveryCity?: string | null; supplier?: string | null; createdAt: string; updatedAt: string;
 }
 export interface Supplier { id: string; name: string; phone?: string; wechat?: string; notes?: string; city?: string; category?: string; rating?: number; contactName?: string; }
 export type QuoteCurrency = 'USD' | 'CNY' | 'INR';
@@ -52,6 +59,7 @@ export interface CustomerQuote {
   otherCharges: number; otherLabel: string | null; validity: string | null; terms: string | null;
 }
 export interface Order {
+  shipmentId?: string | null; shipmentRef?: string | null;
   id: string; leadId: string; quoteId: string; leadRef: string | null; product: string; qty: number; expectedShip: string | null;
   production: string; tracking: string | null; container: string | null; etd: string | null; eta: string | null; indiaStatus: string;
   createdAt: string; updatedAt: string; leadStatus: string | null;
@@ -59,9 +67,11 @@ export interface Order {
   supplier?: QuoteSupplier | null; unitPrice?: number | null; currency?: string | null; shipCost?: number | null; shipCurrency?: string | null;
 }
 export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId' | 'shipTerm' | 'shipMode' | 'shipPort' | 'shipTransit' | 'shipCurrency'>> & { shipCost?: number | string | null } & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
-export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string }
+export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string; avatarUrl?: string | null }
 export interface BackupLink { label: string; url: string }
 
 export const PIPELINE: LeadStatus[] = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'WON'];
 // shippingOrder.shipmentStatus options in twenty-setup/schema.json
-export const SHIP_STAGES = ['BOOKED', 'IN_TRANSIT', 'AT_PORT', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+/** Gated: China books, then "Mark shipped" (→ IN_TRANSIT, needs tracking/container + ETD); only then India moves it on to DELIVERED. */
+export const SHIP_STAGES = ['PENDING', 'BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+export const CHINA_SHIP = ['PENDING', 'BOOKED'], INDIA_SHIP = ['IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];

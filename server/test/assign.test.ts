@@ -32,7 +32,7 @@ describe('lead assignment + notifications', () => {
 
     const staff = (await call('is', 'GET', '/api/staff?office=CHINA')).json().data;
     expect(staff.map((s: any) => s.name).sort()).toEqual(['ca', 'cs', 'cs2']);
-    expect(Object.keys(staff[0]).sort()).toEqual(['id', 'name', 'role']);
+    expect(Object.keys(staff[0]).sort()).toEqual(['avatarUrl', 'id', 'name', 'role']);
 
     const r = await call('is', 'POST', `/api/leads/${lead.id}/assign`, { office: 'CHINA', assignedTo: cs.id });
     expect(r.statusCode).toBe(200);

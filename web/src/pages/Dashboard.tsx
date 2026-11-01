@@ -17,7 +17,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const closed = leads?.filter((l) => ['WON', 'LOST'].includes(l.status)).length || 1;
   // Per currency — amounts in different currencies are never added together.
   const pipeline = totalsByCurrency(quotes ?? [], (q) => [q.clientCurrency, q.clientUnitPrice != null ? q.clientUnitPrice * q.quantity : undefined]);
-  const transit = ships?.filter((s) => s.stage !== 'DELIVERED').length ?? 0;
+  const transit = ships?.filter((s) => s.status !== 'DELIVERED').length ?? 0;
 
   const kpis = [
     { label: t('dashboard.openLeads'), value: String(open), delta: 12.5, series: [4, 6, 5, 8, 7, 9, 11, open], color: '#2a9fd6' },

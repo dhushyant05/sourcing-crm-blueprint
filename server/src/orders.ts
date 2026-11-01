@@ -9,7 +9,7 @@ import { BadQuote } from './quotes.js';
 
 export const PAYMENT = ['PENDING', 'PARTIAL', 'PAID'] as const;
 export const PRODUCTION = ['NEW', 'DEPOSIT_PAID', 'IN_PRODUCTION', 'READY', 'SHIPPED'] as const;
-export const INDIA_SHIP = ['NONE', 'IN_TRANSIT', 'CUSTOMS', 'DELIVERED'] as const;
+export const INDIA_SHIP = ['NONE', 'IN_TRANSIT', 'CUSTOMS', 'OUT_FOR_DELIVERY', 'DELIVERED'] as const;
 export interface Order {
   id: string; leadId: string; quoteId: string; leadRef: string | null; product: string; qty: number; agreedPrice: number; advance: number;
   paymentStatus: string; expectedShip: string | null; production: string; tracking: string | null; container: string | null;

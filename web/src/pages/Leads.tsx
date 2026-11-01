@@ -1,3 +1,4 @@
+import { RejectionPanel } from '../components/Rejection';
 import { clsx } from 'clsx';
 import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -23,17 +24,21 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   useEffect(() => { const h = () => reload(); window.addEventListener('se:leads-changed', h); return () => window.removeEventListener('se:leads-changed', h); }, [reload]);
   const [creating, setCreating] = useState(false);
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
-  const [drag, setDrag] = useState<string | null>(null);
+  const [drag, setDrag] = useState<string | null>(null), [moveErr, setMoveErr] = useState<string | null>(null);
   const leads = data?.filter((l) => matches(l, search));
   const pick = (v: 'board' | 'table') => { setView(v); localStorage.leadView = v; };
 
   const move = async (id: string, status: LeadStatus) => {
+    const prev = data;
+    setMoveErr(null);
     setData((d) => d && d.map((l) => (l.id === id ? { ...l, status, ...(['ASSIGNED', 'SOURCING', 'QUOTED'].includes(status) ? { assignedOffice: 'CHINA' } : {}) } : l)));
-    await api.updateLeadStatus(id, status);
+    // The server enforces the shipping gates (409/403): undo the optimistic move and say why.
+    try { await api.updateLeadStatus(id, status); } catch (e) { setData(prev); setMoveErr((e as Error).message); }
   };
 
   return (
     <>
+      {moveErr && <div role="alert" data-testid="move-err" className="mb-3 flex items-center rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{moveErr}<button className="ml-auto text-xs" onClick={() => setMoveErr(null)}>✕</button></div>}
       <PageHeader title={t('nav.leads')} subtitle={data ? t('leads.count', { n: data.length }) : t('common.loading')}
         actions={<>
           <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 text-sm dark:border-ink-700 dark:bg-ink-900" data-testid="mine-filter">
@@ -69,7 +74,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
                         <span>{t('common.pcs', { n: l.quantity?.toLocaleString() })}</span>
-                        <span className="flex items-center gap-1.5" title={l.assignedToName ?? t('assign.queue', { office: l.ownerOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia') })}>{l.ownerOffice && <span className="text-[10px] uppercase text-ink-400">{l.ownerOffice === 'CHINA' ? '中' : 'IN'}</span>}<Avatar name={l.assignedToName ?? l.assignedChinaAgent ?? '—'} className="h-6 w-6 text-[10px]" /></span>
+                        <span className="flex items-center gap-1.5" title={l.assignedToName ?? t('assign.queue', { office: l.ownerOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia') })}>{l.ownerOffice && <span className="text-[10px] uppercase text-ink-400">{l.ownerOffice === 'CHINA' ? '中' : 'IN'}</span>}<Avatar person name={l.assignedToName ?? l.assignedChinaAgent ?? '—'} className="h-6 w-6 text-[10px]" /></span>
                       </div>
                     </article>
                   ))}
@@ -92,7 +97,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
                       {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
-                      <td className="td"><Chip value={l.status} /></td>
+                      <td className="td"><Chip value={l.status} />{l.rejection?.actionNeeded && <RejChip />}</td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.assignedToName ?? l.assignedChinaAgent ?? '—'}</td>
                       <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
                     </tr>
@@ -234,7 +239,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const canTake = !isAdmin && myOffice === owner && !!session?.id && lead?.assignedTo !== session.id;
   return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
-      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
+      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.rejection?.actionNeeded && <RejChip />}<span>{lead.productInterest}</span></div>}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{role === 'SUPER_ADMIN' && <button className="btn-outline text-rose-600" data-testid="lead-delete" disabled={busy} onClick={() => void delLead()}><Trash2 size={15} />{t('common.delete')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
@@ -250,6 +255,10 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
                 <option value="">{t('assign.queueOpt', { office: officeName(mode) })}</option>
                 {staff?.map((s) => <option key={s.id} value={s.id}>{s.name} · {t(`role.${s.role}`)}</option>)}
               </select>
+              {!!staff?.length && <div className="mt-2 flex flex-wrap gap-1.5" data-testid="assign-people">{staff.map((s) => (
+                <button key={s.id} type="button" title={s.name} onClick={() => setPickTo(s.id)}
+                  className={'flex items-center gap-1.5 rounded-full border px-1.5 py-1 pr-2.5 text-xs ' + (pickTo === s.id ? 'border-brand-500 bg-white text-brand-700 dark:bg-ink-900' : 'border-transparent text-ink-600 hover:bg-white/70 dark:text-ink-300')}>
+                  <Avatar name={s.name} src={s.avatarUrl} className="!h-6 !w-6 text-[10px]" />{s.name}</button>))}</div>}
               <p className="mt-1 text-xs text-ink-500">{mode === 'CHINA' ? t('assign.sendHint') : owner === 'CHINA' ? t('assign.returnHint') : ''}</p>
               <div className="mt-2 flex gap-2"><button className="btn-primary" disabled={busy || !staff} onClick={() => void assign(mode, pickTo === 'default' ? undefined : pickTo || null)} data-testid="assign-confirm">{t('assign.confirm')}</button><button className="btn-outline" onClick={() => setMode(null)}>{t('common.cancel')}</button></div>
             </div>
@@ -286,11 +295,12 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
             {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
           </>)}
           <Attachments leadId={lead.id} canEdit={perms.customers} />
-          <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => setLead({ ...lead, status: st as Lead['status'] })} />
+          <RejectionPanel lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
+          <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
-            {[[t('leads.createdEvt'), lead.createdAt], ...(lead.assignedOffice === 'CHINA' ? [[t('leads.assignedTo', { who: lead.assignedToName || lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d]) => (
-              <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="text-ink-800 dark:text-ink-100">{t}</div><div className="text-xs text-ink-500">{fmtDate(d, { dateStyle: 'medium' })}</div></li>
+            {[[t('leads.createdEvt'), lead.createdAt], ...(lead.assignedOffice === 'CHINA' ? [[t('leads.assignedTo', { who: lead.assignedToName || lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d], i) => (
+              <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="flex items-center gap-2 text-ink-800 dark:text-ink-100">{i > 0 && (lead.assignedToName || lead.assignedChinaAgent) && <Avatar person name={lead.assignedToName || lead.assignedChinaAgent || ''} className="!h-5 !w-5 text-[9px]" />}{t}</div><div className="text-xs text-ink-500">{fmtDate(d, { dateStyle: 'medium' })}</div></li>
             ))}
           </ol>
         </>
@@ -377,3 +387,5 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
     )}
   </>);
 }
+
+export function RejChip() { const { t } = useTranslation(); return <span data-testid="rej-chip" className="ml-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">{t('rej.actionNeeded')}</span>; }

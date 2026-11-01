@@ -3,8 +3,10 @@ import { DemoApi, ServerApi, type Api, type Me } from './api';
 import { perms, type Role } from './roles';
 import { deviceLang, LANGS, setLang, type Lang } from '../i18n';
 
-export interface Session { id?: string; name: string; email: string; role: Role; demo: boolean }
-interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, token?: string): void; signOut(): void; setRole(r: Role): void }
+export interface Session { id?: string; name: string; email: string; role: Role; demo: boolean; avatarUrl?: string | null }
+interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, token?: string): void; signOut(): void; setRole(r: Role): void;
+  /** Staff name → picture URL (for avatars next to names). */ people: Record<string, string>; refreshPeople(): void;
+  updateSession(p: Partial<Session>): void; replaceToken(t: string): void }
 
 const C = createContext<Ctx>(null!);
 export const useApp = () => useContext(C);
@@ -28,7 +30,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((r) => (r.status === 401 ? (signOut(), null) : r.json()))
       .then((me: Me | null) => {
         if (!me?.role) return;
-        setSession((s) => (s ? { ...s, name: me.name, email: me.email, role: me.role } : s));
+        setSession((s) => (s ? { ...s, id: me.id, name: me.name, email: me.email, role: me.role, avatarUrl: me.avatarUrl ?? null } : s));
         // Device choice wins; otherwise adopt the language saved on the account.
         if (!deviceLang() && LANGS.includes(me.language as Lang)) setLang(me.language as Lang);
       })
@@ -36,7 +38,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   // Role switching is a demo-only preview; live roles come from the server.
   const setRole = useCallback((role: Role) => setSession((s) => (s?.demo ? { ...s, role } : s)), []);
-  return <C.Provider value={{ session, api, perms: perms(session?.role ?? 'INDIA_STAFF'), signIn, signOut, setRole }}>{children}</C.Provider>;
+  const [people, setPeople] = useState<Record<string, string>>({}), [pTick, setPTick] = useState(0);
+  useEffect(() => {
+    if (!token || session?.demo) { setPeople({}); return; }
+    fetch('/api/people', { headers: { authorization: `Bearer ${token}` } }).then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((j: { data: { name: string; avatarUrl: string | null }[] }) => setPeople(Object.fromEntries(j.data.filter((p) => p.avatarUrl).map((p) => [p.name, p.avatarUrl!]))))
+      .catch(() => {});
+  }, [token, pTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refreshPeople = useCallback(() => setPTick((n) => n + 1), []);
+  const updateSession = useCallback((p: Partial<Session>) => setSession((s) => (s ? { ...s, ...p } : s)), []);
+  const replaceToken = useCallback((t: string) => { sessionStorage.setItem('se.jwt', t); setToken(t); }, []);
+  return <C.Provider value={{ session, api, perms: perms(session?.role ?? 'INDIA_STAFF'), signIn, signOut, setRole, people, refreshPeople, updateSession, replaceToken }}>{children}</C.Provider>;
 }
 
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {

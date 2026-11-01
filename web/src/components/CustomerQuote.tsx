@@ -2,7 +2,7 @@ import { CheckCircle2, Download, FileDown, Mail, MessageCircle, Package, RotateC
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
-import { INCOTERMS, SHIP_MODES, type Lead, type LeadQuote } from '../lib/types';
+import { INCOTERMS, SHIP_MODES, type Lead, type LeadQuote , REJECT_REASONS } from '../lib/types';
 import { fmtDate } from '../i18n';
 
 export const inr = (n: number | null | undefined) => (n == null ? '—' : `₹ ${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -23,7 +23,7 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
     shipCost: String(c?.shipCost ?? ''), shipTerm: c?.shipTerm ?? '', shipMode: c?.shipMode ?? q.shipMode ?? '', port: c?.port ?? '', transit: c?.transit ?? '',
     otherCharges: String(c?.otherCharges ?? ''), otherLabel: c?.otherLabel ?? '', validity: c?.validity ?? q.validity ?? '', terms: c?.terms ?? '' });
   const [mode, setMode] = useState<'form' | 'preview' | null>(null), [f, setF] = useState(init);
-  const [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false), [reason, setReason] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false), [reason, setReason] = useState<string | null>(null), [code, setCode] = useState('');
   const [order, setOrder] = useState<{ advance: string; paymentStatus: string; expectedShip: string } | null>(null), [orderDone, setOrderDone] = useState(false);
   const run = async (fn: () => Promise<void>) => { setBusy(true); setErr(null); try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
   const n = (v: string) => (v.trim() === '' ? 0 : Number(v.replace(/,/g, '')));
@@ -42,7 +42,7 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
     window.open(href, '_blank', 'noopener');
     if (status === 'DRAFT') void run(async () => onChange(await api.setQuoteStatus(q.id, 'SENT')));
   };
-  const decide = (s: 'ACCEPTED' | 'REJECTED', why?: string) => run(async () => { const nq = await api.setQuoteStatus(q.id, s, why); onChange(nq); setReason(null); onLeadStatus?.(s === 'ACCEPTED' ? 'WON' : 'LOST'); });
+  const decide = (s: 'ACCEPTED' | 'REJECTED', why?: string) => run(async () => { const nq = await api.setQuoteStatus(q.id, s, why || undefined, s === 'REJECTED' ? code : undefined); onChange(nq); setReason(null); onLeadStatus?.(s === 'ACCEPTED' ? 'WON' : 'REJECTED'); });
   const inp = (k: keyof typeof f, label: string, ph?: string, mode: 'decimal' | 'text' = 'decimal') => (<div><label className="label" htmlFor={`cq-${q.id}-${k}`}>{label}</label>
     <input id={`cq-${q.id}-${k}`} data-testid={`cq-${k}`} className="input" inputMode={mode} placeholder={ph} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>);
   const sel = (k: 'shipTerm' | 'shipMode', label: string, opts: readonly string[], ns: string) => (<div><label className="label" htmlFor={`cq-${q.id}-${k}`}>{label}</label>
@@ -98,8 +98,10 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
       <button data-testid="cq-accept" className="btn-primary !py-1 text-xs" disabled={busy} onClick={() => void decide('ACCEPTED')}><CheckCircle2 size={13} />{t('cq.accept')}</button>
       <button data-testid="cq-reject" className="btn-outline !py-1 text-xs text-rose-600" disabled={busy} onClick={() => setReason('')}><XCircle size={13} />{t('cq.reject')}</button>
     </div>)}
-    {reason != null && (<div className="mt-2 flex gap-2"><input data-testid="cq-reason" className="input !py-1 text-xs" placeholder={t('cq.rejectReason')} value={reason} onChange={(e) => setReason(e.target.value)} />
-      <button data-testid="cq-reject-confirm" className="btn-primary !py-1 text-xs" disabled={busy || !reason.trim()} onClick={() => void decide('REJECTED', reason.trim())}>{t('common.save')}</button></div>)}
+    {reason != null && (<div className="mt-2 flex flex-wrap gap-2"><select data-testid="cq-reason-code" className="input !w-auto !py-1 text-xs" value={code} onChange={(e) => setCode(e.target.value)}>
+        <option value="">{t('rej.pick')}</option>{REJECT_REASONS.map((r) => <option key={r} value={r}>{t(`rej.r.${r}`)}</option>)}</select>
+      <input data-testid="cq-reason" className="input !py-1 text-xs flex-1" placeholder={code === 'OTHER' ? t('rej.otherText') : t('rej.optText')} value={reason} onChange={(e) => setReason(e.target.value)} />
+      <button data-testid="cq-reject-confirm" className="btn-primary !py-1 text-xs" disabled={busy || !code || (code === 'OTHER' && !reason.trim())} onClick={() => void decide('REJECTED', reason.trim())}>{t('common.save')}</button></div>)}
     {!mode && status === 'ACCEPTED' && !q.orderId && !orderDone && (order ? (<div data-testid="order-form" className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-brand-200 bg-white p-2 sm:grid-cols-4 dark:bg-ink-900">
       <div><label className="label">{t('orders.advance')}</label><input data-testid="of-advance" className="input" inputMode="decimal" value={order.advance} onChange={(e) => setOrder({ ...order, advance: e.target.value })} /></div>
       <div><label className="label">{t('orders.payment')}</label><select data-testid="of-payment" className="input" value={order.paymentStatus} onChange={(e) => setOrder({ ...order, paymentStatus: e.target.value })}>{['PENDING', 'PARTIAL', 'PAID'].map((p) => <option key={p} value={p}>{t(`orders.pay.${p}`)}</option>)}</select></div>
