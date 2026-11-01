@@ -122,6 +122,10 @@ describe('customer quote, PDF and orders', () => {
     expect((await call('is', 'GET', `/api/records/leads/${lead.id}`)).json().data.status).toBe('SHIPPING');
     expect((await call('is', 'GET', `/api/shipments/${cs1.id}`)).json().data).toMatchObject({ status: 'IN_TRANSIT', tracking: 'MSKU123', etd: '2026-12-02' });
     expect((await call('cs', 'PATCH', `/api/orders/${o.id}`, { production: 'READY' })).statusCode).toBe(409);
+    const tl = (await call('is', 'GET', `/api/leads/${lead.id}/timeline`)).json().data;
+    expect(tl.events.map((e: any) => e.kind)).toEqual(expect.arrayContaining(['ORDER_CREATED', 'SHIPPED']));
+    expect(tl.events.find((e: any) => e.kind === 'SHIPPED').data).toMatchObject({ tracking: 'MSKU123', etd: '2026-12-02' });
+    expect(tl.progress.stage).toBe('SHIPPED');
     expect((await call('cs', 'PATCH', `/api/shipments/${cs1.id}`, { status: 'BOOKED' })).statusCode).toBe(409);
     expect((await call('is', 'PATCH', `/api/records/leads/${lead.id}`, { status: 'QUOTED' })).statusCode).toBe(409);
     expect((await call('is', 'PATCH', `/api/shipments/${cs1.id}`, { status: 'OUT_FOR_DELIVERY' })).json().data.status).toBe('OUT_FOR_DELIVERY');

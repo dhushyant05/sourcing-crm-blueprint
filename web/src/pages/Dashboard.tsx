@@ -5,6 +5,7 @@ import { money, totalsByCurrency } from '../lib/currency';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Chip, dot, PageHeader, Skeleton, Sparkline, pretty } from '../components/ui';
 import type { Lead, Quotation, Shipment } from '../lib/types';
+import { SlaWidget } from '../components/Workflow';
 
 export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const { api, perms } = useApp();
@@ -48,6 +49,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
         ))}
       </div>
 
+      <div className="mt-6"><SlaWidget leads={leads} openLead={openLead} /></div>
       <div className="mt-6 grid gap-6 lg:grid-cols-5">
         <section className="card p-6 lg:col-span-3">
           <h2 className="font-semibold text-ink-900 dark:text-white">{t('dashboard.pipeline')}</h2>

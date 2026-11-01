@@ -448,7 +448,13 @@
     "LEAD_CLOSED": "{{by}} closed {{ref}} as Lost",
     "LEAD_CLOSED_nobody": "{{ref}} closed as Lost",
     "ORDER_SHIPPED": "{{by}} marked {{ref}} as shipped",
-    "ORDER_SHIPPED_nobody": "{{ref}} has shipped"
+    "ORDER_SHIPPED_nobody": "{{ref}} has shipped",
+    "SLA_WARN": "{{ref}} SLA: 80% of the time used — act soon",
+    "SLA_WARN_nobody": "{{ref}} SLA: 80% of the time used — act soon",
+    "SLA_BREACH": "{{ref}} SLA breached",
+    "SLA_BREACH_nobody": "{{ref}} SLA breached",
+    "PRIORITY": "{{by}} marked {{ref}} as priority",
+    "PRIORITY_nobody": "{{ref}} is now a priority lead"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -685,5 +691,72 @@
     "mismatch": "Passwords do not match.",
     "wrong": "Current password is wrong.",
     "done": "Password updated. Other sessions were signed out."
+  },
+  "sla": {
+    "priority": "Priority",
+    "mark": "Mark priority ({{h}}h SLA)",
+    "unmark": "Remove priority",
+    "left": "{{t}} left",
+    "overdue": "{{t}} overdue",
+    "due": "Due {{d}}",
+    "office": {
+      "INDIA": "India",
+      "CHINA": "China"
+    },
+    "line": "{{office}} clock · {{who}} · due {{d}}",
+    "queue": "Office queue",
+    "widget": "SLA clock",
+    "counts": "{{run}} running · {{warn}} at risk · {{breach}} breached",
+    "days": "last {{n}} days",
+    "onTime": "{{ok}}/{{total}} on time · {{b}} breached",
+    "none": "No running SLA clocks",
+    "topBreach": "Most breaches",
+    "settings": "SLA hours",
+    "settingsHint": "Time each office has to act on a lead it holds. Warning at 80%, admins alerted on breach.",
+    "normalH": "Normal lead (hours)",
+    "priorityH": "Priority lead (hours)"
+  },
+  "wf": {
+    "stageN": "Step {{n}} of {{of}}",
+    "lost": "Lost",
+    "on": "on",
+    "off": "off",
+    "target": "target",
+    "stage": {
+      "NEW": "New",
+      "CHINA": "With China",
+      "SOURCING": "Sourcing",
+      "QUOTED": "Quoted",
+      "CQ_SENT": "Quote sent",
+      "DECIDED": "Customer decided",
+      "ORDER": "Order",
+      "SHIPPED": "Shipped",
+      "DELIVERED": "Delivered"
+    },
+    "ev": {
+      "CREATED": "Lead created",
+      "SUMMARY": "Details updated",
+      "MEDIA_ADDED": "Files added",
+      "ASSIGNED": "Assigned to {{to}}",
+      "REASSIGNED": "Reassigned to {{to}}",
+      "QUEUED": "Sent to the {{office}} queue",
+      "RETURNED": "Returned to {{to}}",
+      "STATUS": "Status {{from}} → {{st}}",
+      "QUOTE_ADDED": "China quote #{{n}} added",
+      "QUOTE_EDITED": "China quote #{{n}} edited",
+      "CQ_PREPARED": "Customer quote #{{n}} prepared",
+      "CQ_SENT": "Customer quote #{{n}} sent",
+      "CQ_ACCEPTED": "Customer accepted quote #{{n}}",
+      "CQ_REJECTED": "Customer rejected quote #{{n}}",
+      "REVISE_REQUESTED": "Revised quote requested from China",
+      "LEAD_CLOSED": "Closed as Lost",
+      "ORDER_CREATED": "Order created",
+      "ORDER_UPDATE": "Order updated",
+      "SHIPPED": "Shipped by China",
+      "SHIPMENT_UPDATE": "Shipment: {{ship}}",
+      "PRIORITY": "Priority {{on}}",
+      "SLA_WARN": "SLA 80% warning",
+      "SLA_BREACH": "SLA breached ({{office}})"
+    }
   }
 }

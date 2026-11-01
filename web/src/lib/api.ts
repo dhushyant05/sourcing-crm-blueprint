@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -70,6 +70,12 @@ export interface Api {
   setRaiser(leadId: string, userId: string | null): Promise<Lead>;
   /** Downloads one file with the staff token (never a public URL) and returns a blob: URL. */
   attachmentUrl(leadId: string, a: Attachment): Promise<string>;
+  /** Workflow timeline (role-filtered on the server), progress stage and SLA clock. */
+  timeline?(leadId: string): Promise<Timeline>;
+  setPriority?(leadId: string, priority: boolean): Promise<{ priority: boolean; sla: Sla | null }>;
+  slaSettings?(): Promise<SlaSettings>;
+  saveSlaSettings?(s: SlaSettings): Promise<SlaSettings>;
+  slaReport?(days?: number): Promise<SlaReport>;
 }
 
 type Raw = Record<string, any>;
@@ -135,6 +141,11 @@ export class ServerApi implements Api {
     return j.token as string;
   }
   staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
+  timeline(id: string) { return this.req<Timeline>('GET', `/leads/${encodeURIComponent(id)}/timeline`); }
+  setPriority(id: string, priority: boolean) { return this.req<{ priority: boolean; sla: Sla | null }>('POST', `/leads/${encodeURIComponent(id)}/priority`, { priority }); }
+  slaSettings() { return this.req<SlaSettings>('GET', '/settings/sla'); }
+  saveSlaSettings(s: SlaSettings) { return this.req<SlaSettings>('PUT', '/settings/sla', s); }
+  slaReport(days = 30) { return this.req<SlaReport>('GET', `/sla/report?days=${days}`); }
   async notifications() {
     const res = await fetch('/api/notifications', { headers: { authorization: `Bearer ${this.token}` } });
     if (res.status === 401) this.onAuthError();

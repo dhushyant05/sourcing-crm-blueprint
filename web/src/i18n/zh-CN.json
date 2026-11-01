@@ -448,7 +448,13 @@
     "LEAD_CLOSED": "{{by}} 已将 {{ref}} 关闭为丢单",
     "LEAD_CLOSED_nobody": "{{ref}} 已关闭为丢单",
     "ORDER_SHIPPED": "{{by}} 已将 {{ref}} 标记为已发货",
-    "ORDER_SHIPPED_nobody": "{{ref}} 已发货"
+    "ORDER_SHIPPED_nobody": "{{ref}} 已发货",
+    "SLA_WARN": "{{ref}} 时限已用 80%，请尽快处理",
+    "SLA_WARN_nobody": "{{ref}} 时限已用 80%，请尽快处理",
+    "SLA_BREACH": "{{ref}} 已超时",
+    "SLA_BREACH_nobody": "{{ref}} 已超时",
+    "PRIORITY": "{{by}} 将 {{ref}} 标记为优先",
+    "PRIORITY_nobody": "{{ref}} 已设为优先线索"
   },
   "lq": {
     "title": "供应商报价",
@@ -685,5 +691,72 @@
     "mismatch": "两次输入的密码不一致。",
     "wrong": "当前密码错误。",
     "done": "密码已更新，其他会话已退出登录。"
+  },
+  "sla": {
+    "priority": "优先",
+    "mark": "标记优先（{{h}} 小时时限）",
+    "unmark": "取消优先",
+    "left": "剩余 {{t}}",
+    "overdue": "超时 {{t}}",
+    "due": "截止 {{d}}",
+    "office": {
+      "INDIA": "印度",
+      "CHINA": "中国"
+    },
+    "line": "{{office}}计时 · {{who}} · 截止 {{d}}",
+    "queue": "办公室队列",
+    "widget": "时限计时",
+    "counts": "{{run}} 个计时中 · {{warn}} 个临近 · {{breach}} 个超时",
+    "days": "近 {{n}} 天",
+    "onTime": "{{ok}}/{{total}} 按时 · {{b}} 超时",
+    "none": "没有计时中的线索",
+    "topBreach": "超时最多",
+    "settings": "时限（小时）",
+    "settingsHint": "各办公室处理所持线索的时间。用到 80% 提醒，超时通知管理员。",
+    "normalH": "普通线索（小时）",
+    "priorityH": "优先线索（小时）"
+  },
+  "wf": {
+    "stageN": "第 {{n}}/{{of}} 步",
+    "lost": "已流失",
+    "on": "开",
+    "off": "关",
+    "target": "目标价",
+    "stage": {
+      "NEW": "新建",
+      "CHINA": "中国处理",
+      "SOURCING": "寻源中",
+      "QUOTED": "已报价",
+      "CQ_SENT": "已发客户报价",
+      "DECIDED": "客户已决定",
+      "ORDER": "订单",
+      "SHIPPED": "已发货",
+      "DELIVERED": "已交付"
+    },
+    "ev": {
+      "CREATED": "创建线索",
+      "SUMMARY": "更新详情",
+      "MEDIA_ADDED": "添加文件",
+      "ASSIGNED": "分配给 {{to}}",
+      "REASSIGNED": "改派给 {{to}}",
+      "QUEUED": "进入{{office}}队列",
+      "RETURNED": "退回给 {{to}}",
+      "STATUS": "状态 {{from}} → {{st}}",
+      "QUOTE_ADDED": "添加中国报价 #{{n}}",
+      "QUOTE_EDITED": "修改中国报价 #{{n}}",
+      "CQ_PREPARED": "准备客户报价 #{{n}}",
+      "CQ_SENT": "发送客户报价 #{{n}}",
+      "CQ_ACCEPTED": "客户接受报价 #{{n}}",
+      "CQ_REJECTED": "客户拒绝报价 #{{n}}",
+      "REVISE_REQUESTED": "要求中国重新报价",
+      "LEAD_CLOSED": "关闭为流失",
+      "ORDER_CREATED": "创建订单",
+      "ORDER_UPDATE": "订单更新",
+      "SHIPPED": "中国已发货",
+      "SHIPMENT_UPDATE": "物流：{{ship}}",
+      "PRIORITY": "优先 {{on}}",
+      "SLA_WARN": "时限 80% 提醒",
+      "SLA_BREACH": "超时（{{office}}）"
+    }
   }
 }

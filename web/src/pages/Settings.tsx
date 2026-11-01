@@ -1,4 +1,5 @@
 import { Coins, HardDriveDownload, KeyRound, ShieldCheck } from 'lucide-react';
+import { SlaSettingsCard } from '../components/Workflow';
 import { useState, type FormEvent } from 'react';
 import { AvatarEditor } from '../components/AvatarEditor';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +29,7 @@ export function Settings() {
           </dl>
         </section>
         {!session?.demo && <PasswordCard />}
+        {!session?.demo && <SlaSettingsCard />}
         <section className="card p-6 lg:col-span-2">
           <h2 className="flex items-center gap-2 font-semibold text-ink-900 dark:text-white"><Coins size={18} className="text-ink-400" />{t('settings.currencies')}</h2>
           <p className="mt-1 text-sm text-ink-500">{t('settings.currenciesHint')}</p>

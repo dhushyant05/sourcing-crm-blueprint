@@ -18,6 +18,7 @@ import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
 import { RejectStore, REJECT_REASONS } from './rejections.js';
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
 import { AssignStore, type Assignment, type Office } from './assign.js';
+import { WorkflowStore, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 
 export interface AppOptions {
   twenty: TwentyLike;
@@ -33,9 +34,13 @@ export interface AppOptions {
   downloadsDir?: string;
   /** Lead reference counter (SE-YYMM-NNNN). Default: in-memory (tests). */
   refs?: RefCounter;
+  /** Clock for SLA (tests). */
+  now?: () => number;
+  /** SLA checker interval in ms (default 30 s; 0 = off, call app.slaTick() manually). */
+  slaTickMs?: number;
 }
 
-declare module 'fastify' { interface FastifyRequest { user?: User } }
+declare module 'fastify' { interface FastifyRequest { user?: User } interface FastifyInstance { slaTick: () => Promise<{ warn: number; breach: number }> } }
 
 export async function buildApp(o: AppOptions) {
   const app = Fastify({ logger: o.logger ?? false, trustProxy: true, bodyLimit: 1 << 20 });
@@ -71,6 +76,7 @@ export async function buildApp(o: AppOptions) {
     tracking: x.tracking, container: x.container, etd: x.etd, eta: x.eta, status: orderShipStatus(x), createdAt: x.createdAt });
   // Backfill: every order made before shipments existed gets its shipment now.
   for (const x of orders.all().reverse()) shipFor(x);
+  const wf = new WorkflowStore(o.users.database, o.now ?? Date.now);
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
@@ -80,7 +86,15 @@ export async function buildApp(o: AppOptions) {
     assignedTo: a?.assignedTo ?? null, assignedToName: (a?.assignedTo && names.get(a.assignedTo)) || null,
     ownerOffice: a?.ownerOffice ?? (rec.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'),
     rejection: rec.id ? rejects.summary(String(rec.id), names) : null,
+    priority: wf.priority(String(rec.id)), sla: slaView(String(rec.id), names),
   });
+  const slaView = (leadId: string, names?: Map<string, string>) => {
+    const c = wf.clock(leadId);
+    return c ? { office: c.office, startedAt: c.startedAt, dueAt: c.dueAt, breached: c.breached, assignee: c.assignee, assigneeName: (c.assignee && names?.get(c.assignee)) || null } : null;
+  };
+  const actorOf = (u: User | null) => (u ? { id: u.id, name: u.name, office: officeOf(u.role) ?? ('ADMIN' as const) } : null);
+  /** Log a timeline event. */
+  const ev = (leadId: string, kind: EventKind, actor: User | null, data: Record<string, unknown> = {}, vis: Vis = 'ALL') => wf.log(leadId, kind, actorOf(actor), data, vis);
   const userNames = () => new Map(o.users.list().map((u) => [u.id, u.name]));
   /**
    * Hands a lead to an office. `to` = specific member, null = office queue, undefined = default
@@ -110,10 +124,62 @@ export async function buildApp(o: AppOptions) {
     const changed = prev?.ownerOffice !== office || (prev?.assignedTo ?? null) !== to;
     assign.set(leadId, { ownerOffice: office, assignedTo: to });
     if (changed) {
+      const toName = to ? o.users.byId(to)?.name ?? null : null;
+      ev(leadId, returned ? 'RETURNED' : prev?.ownerOffice === office ? 'REASSIGNED' : !to ? 'QUEUED' : 'ASSIGNED', actor, { office, to: toName });
+      // Each handoff to another office starts that office's SLA clock; a reassignment within the office keeps it running.
+      if (prev?.ownerOffice !== office || wf.clock(leadId)) wf.start(leadId, office, to);
+    }
+    if (changed) {
       const recips = (to ? [to] : queueWatchers(office)).filter((id) => id !== actor?.id);
       assign.notify(recips, { leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null,
         kind: !to ? 'QUEUE' : returned ? 'RETURNED' : 'ASSIGNED', office, byName: actor?.name ?? null });
     }
+  };
+  const stopClock = (leadId: string, office?: Office) => wf.stop(leadId, office);
+  /** SLA watcher: 80% → the clock's assignee (or the office queue watchers); breach → office admins + super admin (+ assignee), logged on the timeline. */
+  const slaTick = async () => {
+    const { warn, breach } = wf.tick();
+    for (const [c, kind] of [...warn.map((c) => [c, 'SLA_WARN'] as const), ...breach.map((c) => [c, 'SLA_BREACH'] as const)]) {
+      const lead = await o.twenty.get(OBJECTS.lead, c.leadId).catch(() => null);
+      if (!lead) { wf.forgetLead(c.leadId); continue; }
+      const owner = c.assignee && o.users.byId(c.assignee)?.active ? [c.assignee] : [];
+      const recips = kind === 'SLA_WARN' ? (owner.length ? owner : queueWatchers(c.office)) : [...new Set([...queueWatchers(c.office), ...owner])];
+      if (kind === 'SLA_BREACH') wf.log(c.leadId, 'SLA_BREACH', null, { office: c.office, dueAt: c.dueAt, assignee: (c.assignee && o.users.byId(c.assignee)?.name) || null, priority: c.priority });
+      assign.notify(recips, { leadId: c.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office: c.office, byName: null });
+    }
+    return { warn: warn.length, breach: breach.length };
+  };
+  const tickMs = o.slaTickMs ?? 30000;
+  if (tickMs > 0) {
+    const t = setInterval(() => { slaTick().catch((e) => app.log.warn(e, 'sla tick failed')); }, tickMs);
+    t.unref?.(); app.addHook('onClose', async () => clearInterval(t));
+  }
+  app.decorate('slaTick', slaTick);
+  /** Workflow stage for the progress bar. */
+  const STAGES = ['NEW', 'CHINA', 'SOURCING', 'QUOTED', 'CQ_SENT', 'DECIDED', 'ORDER', 'SHIPPED', 'DELIVERED'] as const;
+  const stageOf = (lead: Rec, owner: Office | null) => {
+    const qs = quotes.list(String(lead.id)), ords = orders.all().filter((x) => x.leadId === lead.id), st = String(lead.status ?? 'NEW');
+    const lost = st === 'LOST' || (qs.some((q) => q.status === 'REJECTED') && !qs.some((q) => q.status === 'ACCEPTED' || q.status === 'SENT'));
+    let stage: (typeof STAGES)[number] = 'NEW';
+    if (st === 'DELIVERED' || ords.some((x) => x.indiaStatus === 'DELIVERED')) stage = 'DELIVERED';
+    else if (st === 'SHIPPING' || ords.some((x) => x.production === 'SHIPPED')) stage = 'SHIPPED';
+    else if (ords.length) stage = 'ORDER';
+    else if (st === 'WON' || st === 'LOST' || qs.some((q) => q.status === 'ACCEPTED' || q.status === 'REJECTED')) stage = 'DECIDED';
+    else if (qs.some((q) => q.status === 'SENT')) stage = 'CQ_SENT';
+    else if (st === 'QUOTED' || st === 'APPROVED' || (qs.length && owner === 'INDIA')) stage = 'QUOTED';
+    else if (st === 'SOURCING' || qs.length) stage = 'SOURCING';
+    else if (owner === 'CHINA' || lead.assignedOffice === 'CHINA' || st === 'ASSIGNED') stage = 'CHINA';
+    return { stage, index: STAGES.indexOf(stage), stages: STAGES, won: !lost && STAGES.indexOf(stage) >= 5, lost };
+  };
+  /** Role filter: China never sees India-only events (customer quote prices, payments); India never sees supplier identity. China does see the customer's rejection reason so it can revise. */
+  const viewEvent = (role: Role, e: LeadEvent) => {
+    const s = sides(role);
+    if (s.superAdmin) return e;
+    if (e.vis === 'INDIA' && !s.india) return null;
+    if (e.vis === 'CHINA' && !s.china) return null;
+    const data = { ...e.data };
+    if (!s.china) delete data.supplier;
+    return { ...e, data };
   };
   /** Body field `assignedTo` ('' / null = office queue). Stripped before the Twenty write. */
   const takeAssignee = (body: Rec): string | null | undefined => {
@@ -248,7 +314,7 @@ export async function buildApp(o: AppOptions) {
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
     if (files.length && lead?.id) uploads.commit(String(lead.id), files); else uploads.discard(files);
-    if (lead?.id) handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); // India queue; India admins are notified
+    if (lead?.id) { ev(String(lead.id), 'CREATED', null, { channel: 'WEBSITE', files: files.length }); handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); } // India queue; India admins are notified
     return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
   });
 
@@ -316,6 +382,7 @@ export async function buildApp(o: AppOptions) {
       if (uploads.list(id).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per lead', code: 'count' }); }
       const list = uploads.commit(id, m.files);
       await syncCount(id, list.length);
+      ev(id, 'MEDIA_ADDED', req.user!, { count: m.files.length });
       return reply.code(201).send({ data: list });
     });
     api.delete<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
@@ -367,6 +434,7 @@ export async function buildApp(o: AppOptions) {
       if (body.newSupplier && typeof body.newSupplier === 'object') body.supplierId = quotes.addSupplier(body.newSupplier as any, req.user!.id).id;
       const q = quotes.create(id, body, req.user!.id);
       const list = quotes.list(id);
+      ev(id, 'QUOTE_ADDED', req.user!, { n: list.findIndex((x) => x.id === q.id) + 1, supplier: q.supplierId ? quotes.supplier(q.supplierId)?.name ?? null : null });
       return reply.code(201).send({ data: viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(id)) });
     });
     api.patch<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid', async (req) => {
@@ -384,7 +452,9 @@ export async function buildApp(o: AppOptions) {
         delete b.newSupplier; for (const k of clientKeys) delete b[k];
         n = quotes.update(q.id, b);
       }
-      const list = quotes.list(q.leadId);
+      const list = quotes.list(q.leadId), qn = list.findIndex((x) => x.id === n.id) + 1;
+      if (chinaKeys.length) ev(q.leadId, 'QUOTE_EDITED', req.user!, { n: qn });
+      if (clientKeys.some((k) => k in (req.body ?? {}))) ev(q.leadId, 'CQ_PREPARED', req.user!, { n: qn, edit: true }, 'INDIA');
       return { data: viewQuote(req.user!, n, list.findIndex((x) => x.id === n.id), await leadRefOf(q.leadId)) };
     });
     api.delete<{ Params: { qid: string } }>('/api/quotes/:qid', async (req, reply) => {
@@ -454,7 +524,9 @@ export async function buildApp(o: AppOptions) {
     const chinaPeople = (q: Quote) => { const a = assign.get(q.leadId); const p = [q.createdBy, a?.ownerOffice === 'CHINA' ? a?.assignedTo : null].filter((x) => x && officeOf(o.users.byId(x)?.role as Role) === 'CHINA') as string[]; return p.length ? p : queueWatchers('CHINA'); };
     api.put<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/customer', async (req) => {
       indiaOnly(req.user!.role); const q = await quoteOf(req);
-      return { data: await refresh(req.user!, quotes.setCustomer(q.id, req.body ?? {})) };
+      const n = quotes.setCustomer(q.id, req.body ?? {});
+      ev(q.leadId, 'CQ_PREPARED', req.user!, { n: quotes.list(q.leadId).findIndex((x) => x.id === q.id) + 1, edit: !!q.cq }, 'INDIA');
+      return { data: await refresh(req.user!, n) };
     });
     api.post<{ Params: { qid: string } }>('/api/quotes/:qid/pdf', async (req) => {
       indiaOnly(req.user!.role); const q = await quoteOf(req);
@@ -472,7 +544,11 @@ export async function buildApp(o: AppOptions) {
       if (st === 'REJECTED' && rcode === 'OTHER' && !String(b.reason ?? '').trim()) throw bad('A reason is required when the customer rejects');
       if (st === 'DRAFT' && orders.byQuote(q.id)) throw bad('This quote already has an order');
       quotes.setStatus(q.id, st, st === 'REJECTED' ? (String(b.reason ?? '').trim() || rcode) : b.reason);
-      const lead = await leadOf(q.leadId);
+      const lead = await leadOf(q.leadId), qn = quotes.list(q.leadId).findIndex((x) => x.id === q.id) + 1;
+      if (st !== q.status && st !== 'DRAFT') {
+        ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', u, { n: qn, ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}) });
+        stopClock(q.leadId, 'INDIA'); // sending (or closing) the customer quote is India's next action
+      }
       if (st === 'ACCEPTED') {
         const p = rejects.pending(q.leadId); if (p) rejects.resolve(p.id, 'REVISE', u.id, {});
         const patch: Rec = { status: 'WON' };
@@ -501,6 +577,7 @@ export async function buildApp(o: AppOptions) {
       const to = maker && maker.active && officeOf(maker.role) === 'CHINA' ? maker.id : null;
       const patch: Rec = { assignedOffice: 'CHINA', status: 'SOURCING' };
       await o.twenty.update(OBJECTS.lead, String(lead.id), patch); Object.assign(lead, patch);
+      ev(String(lead.id), 'REVISE_REQUESTED', u, { reasonCode: p.reasonCode, reason: p.reasonText ?? null, targetPrice: b.targetPrice ?? null, targetCurrency: b.targetCurrency ?? null, notes: b.notes ?? null });
       handoff(lead, u, 'CHINA', to);
       const recips = (to ? [to] : queueWatchers('CHINA')).filter((x) => x !== u.id);
       assign.notify(recips, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'REVISE_REQUESTED', office: 'CHINA', byName: u.name });
@@ -511,6 +588,7 @@ export async function buildApp(o: AppOptions) {
       rejects.resolve(p.id, 'CLOSED', u.id, { notes: (req.body ?? {}).notes });
       const patch: Rec = { status: 'LOST', winLossReason: [p.reasonCode, p.reasonText].filter(Boolean).join(': ').slice(0, 500) };
       await o.twenty.update(OBJECTS.lead, String(lead.id), patch); Object.assign(lead, patch);
+      ev(String(lead.id), 'LEAD_CLOSED', u, { reasonCode: p.reasonCode, reason: p.reasonText ?? null }); stopClock(String(lead.id));
       const q = quotes.get(p.quoteId); if (q) tell(chinaPeople(q), lead, 'LEAD_CLOSED', 'CHINA', u);
       return { data: decorate(readFilter('lead', lead, await ctxOf(u.role))!, assign.get(String(lead.id)), userNames()) };
     });
@@ -555,6 +633,7 @@ export async function buildApp(o: AppOptions) {
         { qty: q.cq?.qty, agreedPrice: q.cq?.unitPrice, ...b }, u.id);
       shipFor(ord);
       tell(chinaPeople(q), lead, 'ORDER_NEW', 'CHINA', u);
+      ev(q.leadId, 'ORDER_CREATED', u, { qty: ord.qty });
       return reply.code(201).send({ data: viewOrder(u, ord, decorate(lead, assign.get(q.leadId), userNames())) });
     });
     api.get('/api/orders', async (req) => {
@@ -596,6 +675,13 @@ export async function buildApp(o: AppOptions) {
       if (newlyShipped && shipRank(sh.status) < shipRank('IN_TRANSIT')) sp.status = 'IN_TRANSIT';
       if (has('indiaStatus') && n.indiaStatus !== ord.indiaStatus && IND_TO_SHIP[n.indiaStatus] && SHIP_TO_IND[String(sp.status ?? sh.status)] !== n.indiaStatus) sp.status = IND_TO_SHIP[n.indiaStatus];
       const nsh = Object.keys(sp).length ? ships.update(sh.id, sp) : sh;
+      // Timeline: shipped is its own milestone; other field changes are logged (payment/price ones India-only).
+      const diff = (ks: string[]) => Object.fromEntries(ks.filter((k) => k in b && String((n as any)[k] ?? '') !== String((ord as any)[k] ?? '')).map((k) => [k, (n as any)[k]]));
+      if (newlyShipped) { ev(n.leadId, 'SHIPPED', u, { tracking: n.tracking, container: n.container, etd: n.etd, eta: n.eta }); stopClock(n.leadId, 'CHINA'); }
+      else { const pub = diff([...CHINA_KEYS, 'expectedShip']); if (Object.keys(pub).length) ev(n.leadId, 'ORDER_UPDATE', u, { fields: pub }); }
+      if (nsh.status !== sh.status && !newlyShipped) ev(n.leadId, 'SHIPMENT_UPDATE', u, { status: nsh.status });
+      const priv = diff(['qty', 'agreedPrice', 'advance', 'paymentStatus']); if (Object.keys(priv).length) ev(n.leadId, 'ORDER_UPDATE', u, { fields: priv }, 'INDIA');
+      if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') stopClock(n.leadId);
       if (newlyShipped) await setLeadStatus(n.leadId, lead, 'SHIPPING');
       if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') await setLeadStatus(n.leadId, lead, 'DELIVERED');
       const q = quotes.get(n.quoteId), l = lead ?? (await leadOf(n.leadId));
@@ -667,7 +753,7 @@ export async function buildApp(o: AppOptions) {
       if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can delete leads');
       const id = await attLead(req);
       for (const q of quotes.list(id)) uploads.removeAll(qKey(q.id));
-      quotes.removeLead(id); rejects.forgetLead(id); ships.removeLead(id); orders.removeLead(id); uploads.removeAll(id); assign.forgetLead(id);
+      quotes.removeLead(id); rejects.forgetLead(id); ships.removeLead(id); orders.removeLead(id); uploads.removeAll(id); assign.forgetLead(id); wf.forgetLead(id);
       if (!o.twenty.remove) return reply.code(501).send({ error: 'Not supported' });
       await o.twenty.remove(OBJECTS.lead, id);
       return reply.code(204).send();
@@ -708,7 +794,7 @@ export async function buildApp(o: AppOptions) {
         data = data.map((r) => decorate(r, all.get(String(r.id)), names));
         if (mine) data = data.filter((r) => r.assignedTo === mine);
       }
-      data = data.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+      data = data.sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
       return { data };
     });
     api.get<{ Params: { plural: string; id: string } }>('/api/records/:plural/:id', async (req, reply) => {
@@ -731,6 +817,8 @@ export async function buildApp(o: AppOptions) {
       if (obj === 'lead') {
         const actor = req.user!, office: Office = data.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA';
         assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'CHINA' ? null : actor.id });
+        ev(String(r.id), 'CREATED', actor, { channel: data.sourceChannel ?? null });
+        if (data.summary) ev(String(r.id), 'SUMMARY', actor);
         // India staff creating an India lead own it unless they pick someone else.
         handoff({ ...data, id: r.id }, actor, office, to !== undefined ? to : office === 'INDIA' && officeOf(actor.role) === 'INDIA' ? actor.id : undefined);
       }
@@ -769,6 +857,14 @@ export async function buildApp(o: AppOptions) {
         if (target && to !== undefined) assertAssign(req.user!, existing, target, to);
       }
       const r = Object.keys(data).length ? await o.twenty.update(OBJECTS[obj], req.params.id, data) : { id: req.params.id };
+      if (obj === 'lead') {
+        const id = String(existing.id);
+        if ('status' in data && data.status !== existing.status) {
+          ev(id, 'STATUS', req.user!, { from: existing.status ?? null, to: data.status });
+          if (['WON', 'LOST', 'DELIVERED'].includes(String(data.status))) stopClock(id);
+        }
+        if ('summary' in data && data.summary !== existing.summary) ev(id, 'SUMMARY', req.user!);
+      }
       if (target) handoff({ ...existing, ...data }, req.user!, target, to);
       for (const x of deliverOrders) await applyOrder(req.user!, x, { ...existing, ...data }, { indiaStatus: 'DELIVERED' });
       return { data: { id: r.id ?? req.params.id } };
@@ -811,6 +907,57 @@ export async function buildApp(o: AppOptions) {
       const office = req.query?.office === 'CHINA' ? 'CHINA' : 'INDIA';
       const a = avatars.urls();
       return { data: staffOf(office).map((u) => ({ id: u.id, name: u.name, role: u.role, avatarUrl: a.get(u.id) ?? null })) };
+    });
+    // ---- Timeline, priority, SLA ----
+    api.get<{ Params: { id: string } }>('/api/leads/:id/timeline', async (req) => {
+      const id = await attLead(req), lead = (await o.twenty.get(OBJECTS.lead, id))!, a = assign.get(id);
+      let events = wf.events(id);
+      if (!events.some((e) => e.kind === 'CREATED')) // older leads: synthesise the creation step
+        events = [{ id: `created-${id}`, leadId: id, at: new Date(String(lead.createdAt ?? Date.now())).toISOString(), kind: 'CREATED', actorId: a?.raisedBy ?? null,
+          actorName: (a?.raisedBy && o.users.byId(a.raisedBy)?.name) || null, actorOffice: a?.raisedBy ? 'INDIA' : null, data: { channel: lead.sourceChannel ?? null }, vis: 'ALL' }, ...events];
+      return { data: { events: events.map((e) => viewEvent(req.user!.role, e)).filter(Boolean), progress: stageOf(lead, a?.ownerOffice ?? null),
+        priority: wf.priority(id), sla: slaView(id, userNames()), settings: wf.sla() } };
+    });
+    api.post<{ Params: { id: string }; Body: { priority?: boolean } }>('/api/leads/:id/priority', async (req) => {
+      const u = req.user!;
+      if (!sides(u.role).india) throw new Forbidden('Only the India office or the super admin can set priority');
+      const id = await attLead(req), on = !!req.body?.priority;
+      if (wf.priority(id) !== on) {
+        const c = wf.setPriority(id, on);
+        ev(id, 'PRIORITY', u, { on, ...(c ? { dueAt: c.dueAt } : {}) });
+        const a = assign.get(id), who = c?.assignee ?? (a?.assignedTo || null);
+        const lead = (await o.twenty.get(OBJECTS.lead, id))!;
+        const recips = (who ? [who] : c ? queueWatchers(c.office) : []).filter((x) => x !== u.id);
+        if (recips.length) assign.notify(recips, { leadId: id, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'PRIORITY', office: c?.office ?? a?.ownerOffice ?? 'INDIA', byName: u.name });
+      }
+      return { data: { priority: wf.priority(id), sla: slaView(id, userNames()) } };
+    });
+    api.get('/api/settings/sla', async () => ({ data: wf.sla() }));
+    api.put<{ Body: { normalMinutes?: number; priorityMinutes?: number } }>('/api/settings/sla', async (req) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can change SLA hours');
+      return { data: wf.setSla(req.body ?? {}) };
+    });
+    api.get<{ Querystring: { days?: string } }>('/api/sla/report', async (req) => {
+      const u = req.user!;
+      if (!sides(u.role).admin) throw new Forbidden('Admins only');
+      const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30)), now = (o.now ?? Date.now)();
+      const since = new Date(now - days * 864e5).toISOString(), names = userNames();
+      const done = wf.runs(since).map((r) => ({ ...r, open: false }));
+      const open = wf.clocks().map((c) => ({ ...c, endedAt: null, open: true, breached: c.breached || new Date(now).toISOString() > c.dueAt }));
+      const all = [...done, ...open];
+      const office = (['INDIA', 'CHINA'] as Office[]).map((of) => {
+        const rs = all.filter((r) => r.office === of), closed = rs.filter((r) => !r.open);
+        const onTime = closed.filter((r) => !r.breached).length;
+        return { office: of, total: closed.length, onTime, breached: rs.filter((r) => r.breached).length, running: rs.filter((r) => r.open).length,
+          onTimePct: closed.length ? Math.round((onTime / closed.length) * 100) : null };
+      });
+      const m = new Map<string, { id: string | null; name: string | null; office: Office; total: number; breached: number }>();
+      for (const r of all) {
+        const k = `${r.office}:${r.assignee ?? ''}`;
+        const x = m.get(k) ?? { id: r.assignee, name: (r.assignee && names.get(r.assignee)) || null, office: r.office, total: 0, breached: 0 };
+        x.total++; if (r.breached) x.breached++; m.set(k, x);
+      }
+      return { data: { days, office, members: [...m.values()].sort((a, b) => b.breached - a.breached || b.total - a.total), settings: wf.sla() } };
     });
     api.get('/api/notifications', async (req) => assign.list(req.user!.id));
     // Real-time stream (Server-Sent Events). Sends `notification` events with the same privacy-safe payload as the list.

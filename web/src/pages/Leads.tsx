@@ -4,6 +4,7 @@ import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play,
 import { useEffect, useRef, useState } from 'react';
 import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
+import { PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
 import { LeadQuotes } from '../components/LeadQuotes';
 import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
@@ -72,6 +73,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       className={clsx('cursor-pointer rounded-xl border border-ink-200/70 bg-white p-3.5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift dark:border-ink-800 dark:bg-ink-900', drag === l.id && 'opacity-50')}>
                       <div className="text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>{perms.customers && <div className="mt-1"><RefTag v={l.leadRef} /></div>}
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
+                      {(l.priority || l.sla || l.rejection?.actionNeeded) && <div className="mt-2 flex flex-wrap gap-1">{l.priority && <PriorityBadge />}<SlaChip sla={l.sla} compact />{l.rejection?.actionNeeded && <RejChip />}</div>}
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
                         <span>{t('common.pcs', { n: l.quantity?.toLocaleString() })}</span>
                         <span className="flex items-center gap-1.5" title={l.assignedToName ?? t('assign.queue', { office: l.ownerOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia') })}>{l.ownerOffice && <span className="text-[10px] uppercase text-ink-400">{l.ownerOffice === 'CHINA' ? '中' : 'IN'}</span>}<Avatar person name={l.assignedToName ?? l.assignedChinaAgent ?? '—'} className="h-6 w-6 text-[10px]" /></span>
@@ -97,7 +99,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
                       {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
-                      <td className="td"><Chip value={l.status} />{l.rejection?.actionNeeded && <RejChip />}</td>
+                      <td className="td"><Chip value={l.status} />{l.rejection?.actionNeeded && <RejChip />}{l.priority && <span className="ml-1"><PriorityBadge /></span>}{l.sla && <span className="ml-1"><SlaChip sla={l.sla} compact /></span>}</td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.assignedToName ?? l.assignedChinaAgent ?? '—'}</td>
                       <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
                     </tr>
@@ -297,12 +299,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
           <Attachments leadId={lead.id} canEdit={perms.customers} />
           <RejectionPanel lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
           <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
-          <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
-          <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
-            {[[t('leads.createdEvt'), lead.createdAt], ...(lead.assignedOffice === 'CHINA' ? [[t('leads.assignedTo', { who: lead.assignedToName || lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d], i) => (
-              <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="flex items-center gap-2 text-ink-800 dark:text-ink-100">{i > 0 && (lead.assignedToName || lead.assignedChinaAgent) && <Avatar person name={lead.assignedToName || lead.assignedChinaAgent || ''} className="!h-5 !w-5 text-[9px]" />}{t}</div><div className="text-xs text-ink-500">{fmtDate(d, { dateStyle: 'medium' })}</div></li>
-            ))}
-          </ol>
+          <WorkflowPanel lead={lead} onPriority={(on) => setLead({ ...lead, priority: on })} />
         </>
       )}
     </SlideOver>
