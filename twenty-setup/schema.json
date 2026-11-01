@@ -275,7 +275,7 @@
           }
         },
         {
-          "name": "currency",
+          "name": "costCurrency",
           "label": "Supplier cost currency",
           "type": "SELECT",
           "options": [
@@ -491,7 +491,7 @@
           "type": "TEXT"
         },
         {
-          "name": "role",
+          "name": "seRole",
           "label": "Role",
           "type": "SELECT",
           "options": [
