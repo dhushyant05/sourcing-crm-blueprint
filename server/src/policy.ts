@@ -22,7 +22,7 @@ export const REF_OBJECTS = ['lead', 'sourcingRequest', 'quotation', 'shippingOrd
 const F: Record<ObjectName, string[]> = {
   lead: [...STD, 'clientName', 'contactPhone', 'contactEmail', 'productInterest', 'quantity', 'targetPrice', 'sourceChannel',
     'status', 'assignedOffice', 'assignedChinaAgent', 'chatwootConversationUrl', 'winLossReason',
-    'unit', 'deliveryCity', 'referenceUrl', 'enquiryMessage', 'contactName', 'attachmentCount'],
+    'unit', 'deliveryCity', 'referenceUrl', 'enquiryMessage', 'contactName', 'attachmentCount', 'summary'],
   sourcingRequest: [...STD, 'productDescription', 'quantity', 'targetPrice', 'deadline', 'assignedChinaAgent', 'sampleStatus',
     'status', 'chatwootThreadUrl', 'chatwootConversationId', 'leadId'],
   supplier: [...STD, 'phone', 'wechatId', 'notes', 'sourcingRequestId'],
@@ -36,7 +36,7 @@ const F: Record<ObjectName, string[]> = {
 export const FIELDS = Object.fromEntries(Object.entries(F).map(([k, v]) => [k, REF_OBJECTS.includes(k) ? [...v, 'leadRef'] : v])) as Record<ObjectName, string[]>;
 
 /** Customer-identifying lead fields. China never sees them. */
-const LEAD_CHINA = ['id', 'leadRef', 'attachmentCount', 'createdAt', 'updatedAt', 'office', 'productInterest', 'quantity', 'unit', 'referenceUrl', 'status', 'assignedOffice', 'assignedChinaAgent'];
+const LEAD_CHINA = ['id', 'leadRef', 'attachmentCount', 'createdAt', 'updatedAt', 'office', 'productInterest', 'quantity', 'unit', 'referenceUrl', 'status', 'assignedOffice', 'assignedChinaAgent', 'summary'];
 /** Supplier identity / raw cost on a quotation. India never sees them. */
 const QUOTE_INDIA = ['id', 'leadRef', 'name', 'createdAt', 'updatedAt', 'office', 'clientUnitPrice', 'clientCurrency', 'validityDate', 'pdfAttachment', 'sourcingRequestId'];
 const QUOTE_CHINA = FIELDS.quotation.filter((f) => !['clientUnitPrice', 'clientCurrency', 'pdfAttachment'].includes(f));

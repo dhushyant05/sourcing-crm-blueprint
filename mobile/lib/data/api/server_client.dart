@@ -61,6 +61,35 @@ class ServerClient {
     return j;
   }
 
+  /// Streams files to a multipart endpoint (videos up to 100 MB are not loaded into memory).
+  Future<dynamic> upload(String path, List<String> filePaths, {void Function(double)? onProgress}) async {
+    final req = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll({'Accept': 'application/json', if (token != null) 'Authorization': 'Bearer $token'});
+    for (final f in filePaths) {
+      req.files.add(await http.MultipartFile.fromPath('files', f, filename: f.split('/').last));
+    }
+    http.Response res;
+    try {
+      res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(minutes: 15)));
+    } on SocketException catch (e) {
+      throw OfflineException(e);
+    } on TimeoutException catch (e) {
+      throw OfflineException(e);
+    } on http.ClientException catch (e) {
+      throw OfflineException(e);
+    }
+    final j = res.body.isEmpty ? <String, dynamic>{} : jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw ApiException((j is Map ? j['error'] : null)?.toString() ?? 'HTTP ${res.statusCode}', statusCode: res.statusCode);
+    }
+    onProgress?.call(1);
+    return j;
+  }
+
+  /// Absolute URL + auth header, for streaming players (Range requests).
+  ({Uri uri, Map<String, String> headers}) authed(String path) =>
+      (uri: _uri(path), headers: {if (token != null) 'Authorization': 'Bearer $token'});
+
   Future<({String token, String email, String name, String role, String? language})> login(String email, String password) async {
     final j = await send('POST', '/api/auth/login', body: {'email': email, 'password': password}) as Map<String, dynamic>;
     final u = j['user'] as Map<String, dynamic>;

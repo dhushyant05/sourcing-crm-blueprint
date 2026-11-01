@@ -1399,6 +1399,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Installed version {version} (build {build})'**
   String updateInstalled(String version, String build);
+
+  /// No description provided for @summary.
+  ///
+  /// In en, this message translates to:
+  /// **'Product summary'**
+  String get summary;
+
+  /// No description provided for @summaryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Specs, material, size, colour, packaging, certifications…'**
+  String get summaryHint;
+
+  /// No description provided for @noSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'No summary yet'**
+  String get noSummary;
+
+  /// No description provided for @editSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit summary'**
+  String get editSummary;
+
+  /// No description provided for @mediaTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Product photos & videos'**
+  String get mediaTitle;
+
+  /// No description provided for @addPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos / videos'**
+  String get addPhotos;
+
+  /// No description provided for @takePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take photo'**
+  String get takePhoto;
+
+  /// No description provided for @recordVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Record video'**
+  String get recordVideo;
+
+  /// No description provided for @mediaHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos up to 10 MB, videos up to 100 MB, original quality'**
+  String get mediaHint;
+
+  /// No description provided for @uploadingFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {count} files…'**
+  String uploadingFiles(int count);
+
+  /// No description provided for @uploadedFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} files uploaded'**
+  String uploadedFiles(int count);
+
+  /// No description provided for @fileTooBig.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is too large (photos 10 MB, videos 100 MB)'**
+  String fileTooBig(String name);
+
+  /// No description provided for @uploadNeedsOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Lead saved offline. Add photos/videos once you are online.'**
+  String get uploadNeedsOnline;
+
+  /// No description provided for @deleteFileQ.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {name}?'**
+  String deleteFileQ(String name);
+
+  /// No description provided for @delete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get delete;
+
+  /// No description provided for @playVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Play video'**
+  String get playVideo;
+
+  /// No description provided for @agentOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'China agent (optional)'**
+  String get agentOptional;
+
+  /// No description provided for @assignedToChina.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned to the China office'**
+  String get assignedToChina;
 }
 
 class _AppLocalizationsDelegate

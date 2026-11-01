@@ -53,16 +53,35 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
       context: context,
       builder: (d) => AlertDialog(
         title: Text(context.l10n.assignToChinaAgent),
-        content: TextField(controller: c, decoration: InputDecoration(labelText: context.l10n.agentName)),
+        content: TextField(controller: c, decoration: InputDecoration(labelText: context.l10n.agentOptional)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d), child: Text(context.l10n.cancel)),
           FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: Text(context.l10n.assign)),
         ],
       ),
     );
-    if (agent == null || agent.isEmpty || !mounted) return;
+    if (agent == null || !mounted) return;
     final r = await context.read<Session>().repo.assignToChina(l.id, agent);
     if (mounted) showWriteResult(context, r, context.l10n.assignment);
+    _reload();
+  }
+
+  Future<void> _editSummary(Lead l) async {
+    final c = TextEditingController(text: l.summary);
+    final v = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(context.l10n.editSummary),
+        content: TextField(controller: c, minLines: 3, maxLines: 8, decoration: InputDecoration(hintText: context.l10n.summaryHint)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(context.l10n.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: Text(context.l10n.save)),
+        ],
+      ),
+    );
+    if (v == null || !mounted) return;
+    final r = await context.read<Session>().repo.updateLead(l.id, {'summary': v});
+    if (mounted) showWriteResult(context, r, context.l10n.summary);
     _reload();
   }
 
@@ -132,11 +151,21 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               ),
               if (p.canSeeCustomerDetails && l.enquiryMessage != null)
                 Card(child: ListTile(title: Text(context.l10n.enquiryMessage), subtitle: Text(l.enquiryMessage!))),
+              Card(
+                child: ListTile(
+                  key: const Key('lead-summary'),
+                  title: Text(context.l10n.summary),
+                  subtitle: Text((l.summary ?? '').isEmpty ? context.l10n.noSummary : l.summary!),
+                  trailing: p.canCreateLead
+                      ? IconButton(tooltip: context.l10n.editSummary, icon: const Icon(Icons.edit_outlined), onPressed: () => _editSummary(l))
+                      : null,
+                ),
+              ),
               const SizedBox(height: 8),
-              LeadAttachments(leadId: l.id),
+              LeadAttachments(leadId: l.id, canEdit: p.canCreateLead),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                if (p.canCreateLead && l.status == 'NEW')
+                if (p.canCreateLead && (l.status == 'NEW' || l.assignedOffice != 'CHINA') && !['WON', 'LOST'].contains(l.status))
                   FilledButton.tonalIcon(onPressed: () => _assign(l), icon: Icon(Icons.forward), label: Text(context.l10n.assignToChina)),
                 if (p.canCreateSourcingRequest)
                   FilledButton.tonalIcon(

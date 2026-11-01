@@ -704,4 +704,69 @@ class AppLocalizationsEn extends AppLocalizations {
   String updateInstalled(String version, String build) {
     return 'Installed version $version (build $build)';
   }
+
+  @override
+  String get summary => 'Product summary';
+
+  @override
+  String get summaryHint =>
+      'Specs, material, size, colour, packaging, certifications…';
+
+  @override
+  String get noSummary => 'No summary yet';
+
+  @override
+  String get editSummary => 'Edit summary';
+
+  @override
+  String get mediaTitle => 'Product photos & videos';
+
+  @override
+  String get addPhotos => 'Photos / videos';
+
+  @override
+  String get takePhoto => 'Take photo';
+
+  @override
+  String get recordVideo => 'Record video';
+
+  @override
+  String get mediaHint =>
+      'Photos up to 10 MB, videos up to 100 MB, original quality';
+
+  @override
+  String uploadingFiles(int count) {
+    return 'Uploading $count files…';
+  }
+
+  @override
+  String uploadedFiles(int count) {
+    return '$count files uploaded';
+  }
+
+  @override
+  String fileTooBig(String name) {
+    return '$name is too large (photos 10 MB, videos 100 MB)';
+  }
+
+  @override
+  String get uploadNeedsOnline =>
+      'Lead saved offline. Add photos/videos once you are online.';
+
+  @override
+  String deleteFileQ(String name) {
+    return 'Delete $name?';
+  }
+
+  @override
+  String get delete => 'Delete';
+
+  @override
+  String get playVideo => 'Play video';
+
+  @override
+  String get agentOptional => 'China agent (optional)';
+
+  @override
+  String get assignedToChina => 'Assigned to the China office';
 }

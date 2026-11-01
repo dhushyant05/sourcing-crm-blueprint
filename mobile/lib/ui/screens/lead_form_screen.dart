@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../services/session.dart';
 import '../widgets/currency_picker.dart';
 import '../widgets/common.dart';
+import '../widgets/media_picker.dart';
 
 /// Step 1: India agent creates a lead.
 class LeadFormScreen extends StatefulWidget {
@@ -19,6 +20,8 @@ class LeadFormScreen extends StatefulWidget {
 class _LeadFormScreenState extends State<LeadFormScreen> {
   final _form = GlobalKey<FormState>();
   final _client = TextEditingController(), _phone = TextEditingController(), _email = TextEditingController();
+  final _summary = TextEditingController();
+  final _media = <String>[];
   final _product = TextEditingController(), _qty = TextEditingController(), _price = TextEditingController();
   String _channel = 'PHONE', _currency = 'INR';
   bool _busy = false;
@@ -37,9 +40,23 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
         targetPrice: double.tryParse(_price.text),
         targetCurrency: _currency,
         sourceChannel: _channel,
+        summary: _summary.text.trim(),
       );
       if (!mounted) return;
       showWriteResult(context, r, context.l10n.lead);
+      final id = r.record?['id'] as String?;
+      if (_media.isNotEmpty) {
+        final m = ScaffoldMessenger.of(context);
+        final l = context.l10n;
+        if (id == null) {
+          m.showSnackBar(SnackBar(content: Text(l.uploadNeedsOnline)));
+        } else {
+          m.showSnackBar(SnackBar(content: Text(l.uploadingFiles(_media.length))));
+          final up = await repo.uploadAttachments(id, List.of(_media));
+          m.showSnackBar(SnackBar(content: Text(l.uploadedFiles(up.length))));
+        }
+      }
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -65,6 +82,20 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
           TextFormField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: context.l10n.email)),
           gap,
           TextFormField(controller: _product, decoration: InputDecoration(labelText: context.l10n.productInterest), validator: _req),
+          gap,
+          TextFormField(controller: _summary, minLines: 2, maxLines: 6,
+              decoration: InputDecoration(labelText: context.l10n.summary, hintText: context.l10n.summaryHint, alignLabelWithHint: true)),
+          gap,
+          OutlinedButton.icon(
+            icon: const Icon(Icons.add_a_photo_outlined),
+            label: Text(context.l10n.mediaTitle),
+            onPressed: () async {
+              final p = await pickMedia(context);
+              if (p.isNotEmpty) setState(() => _media.addAll(p));
+            },
+          ),
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(context.l10n.mediaHint, style: Theme.of(context).textTheme.bodySmall)),
+          if (_media.isNotEmpty) PendingMedia(paths: _media, onRemove: (p) => setState(() => _media.remove(p))),
           gap,
           Row(children: [
             Expanded(child: TextFormField(controller: _qty, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.l10n.quantity))),

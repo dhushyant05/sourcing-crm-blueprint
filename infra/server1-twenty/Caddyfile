@@ -7,5 +7,14 @@
 		Referrer-Policy no-referrer
 		-Server
 	}
-	reverse_proxy api:8080
+	# Lead photos/videos: 100 MB per video, up to 10 files per request (the API enforces the exact limits).
+	request_body {
+		max_size 1100MB
+	}
+	reverse_proxy api:8080 {
+		transport http {
+			read_timeout 15m
+			write_timeout 15m
+		}
+	}
 }

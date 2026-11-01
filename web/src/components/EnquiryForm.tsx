@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Camera, CheckCircle2, FileSpreadsheet, FileText, ImagePlus, Paperclip, Send, X } from 'lucide-react';
+import { Camera, CheckCircle2, Film, FileSpreadsheet, FileText, ImagePlus, Paperclip, Send, X } from 'lucide-react';
 
-export const MAX_FILES = 5, MAX_BYTES = 10 * 1024 * 1024;
-const EXT = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
-const ACCEPT = '.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/webp,image/heic,application/pdf';
+export const MAX_FILES = 5, MAX_BYTES = 10 * 1024 * 1024, MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+export const VIDEO_EXT = ['mp4', 'm4v', 'mov', '3gp', 'webm', 'mkv'];
+export const EXT = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', ...VIDEO_EXT];
+export const ACCEPT = '.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.mp4,.m4v,.mov,.3gp,.webm,.mkv,image/jpeg,image/png,image/webp,image/heic,application/pdf,video/*';
+export const isVideoName = (n: string) => VIDEO_EXT.includes((n.split('.').pop() ?? '').toLowerCase());
+/** Photos/documents up to 10 MB, videos up to 100 MB (same limits as the server). */
+export const tooBig = (f: File) => f.size > (isVideoName(f.name) ? MAX_VIDEO_BYTES : MAX_BYTES);
 const CODES = ['+91', '+86', '+971', '+1', '+44', '+65', '+61', '+977', '+880', '+94', '+60', '+966'];
 const UNITS = ['pcs', 'kg', 'ton', 'm', 'sqm', 'sets', 'cartons', 'containers'];
 const ext = (n: string) => (n.split('.').pop() ?? '').toLowerCase();
 export const fmtSize = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
 export function FileIcon({ name, className = 'h-5 w-5' }: { name: string; className?: string }) {
   const e = ext(name);
+  if (VIDEO_EXT.includes(e)) return <Film className={`${className} text-violet-600`} />;
   return e.startsWith('xls') ? <FileSpreadsheet className={`${className} text-accent-600`} /> : <FileText className={`${className} ${e === 'pdf' ? 'text-rose-500' : 'text-brand-600'}`} />;
 }
 
@@ -34,7 +39,7 @@ export function EnquiryForm() {
     for (const f of Array.from(list)) {
       if (next.length >= MAX_FILES) { setMsg(l('errCount')); break; }
       if (!EXT.includes(ext(f.name))) { setMsg(l('errType', { name: f.name })); continue; }
-      if (f.size > MAX_BYTES) { setMsg(l('errSize', { name: f.name })); continue; }
+      if (tooBig(f)) { setMsg(l('errSize', { name: f.name })); continue; }
       next.push({ file: f, url: /^image\/(jpeg|png|webp)$/.test(f.type) ? URL.createObjectURL(f) : undefined });
     }
     setFiles(next);

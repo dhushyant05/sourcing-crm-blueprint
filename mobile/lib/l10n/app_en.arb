@@ -360,5 +360,51 @@
         "type": "String"
       }
     }
-  }
+  },
+  "summary": "Product summary",
+  "summaryHint": "Specs, material, size, colour, packaging, certifications…",
+  "noSummary": "No summary yet",
+  "editSummary": "Edit summary",
+  "mediaTitle": "Product photos & videos",
+  "addPhotos": "Photos / videos",
+  "takePhoto": "Take photo",
+  "recordVideo": "Record video",
+  "mediaHint": "Photos up to 10 MB, videos up to 100 MB, original quality",
+  "uploadingFiles": "Uploading {count} files…",
+  "@uploadingFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "uploadedFiles": "{count} files uploaded",
+  "@uploadedFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileTooBig": "{name} is too large (photos 10 MB, videos 100 MB)",
+  "@fileTooBig": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadNeedsOnline": "Lead saved offline. Add photos/videos once you are online.",
+  "deleteFileQ": "Delete {name}?",
+  "@deleteFileQ": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "delete": "Delete",
+  "playVideo": "Play video",
+  "agentOptional": "China agent (optional)",
+  "assignedToChina": "Assigned to the China office"
 }

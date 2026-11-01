@@ -33,11 +33,13 @@ class Lead {
     this.leadRef,
     this.contactName,
     this.attachmentCount,
+    this.summary,
   });
   final String id;
   final String name;
   final String? unit, deliveryCity, referenceUrl, enquiryMessage, leadRef, contactName;
   final int? attachmentCount;
+  final String? summary;
   final String? clientName, contactPhone, contactEmail, productInterest;
   final double? quantity, targetPrice;
   final String? targetCurrency, sourceChannel;
@@ -47,7 +49,7 @@ class Lead {
   final bool pendingSync;
 
   static const gqlFields = '''id leadRef name createdAt clientName productInterest quantity status
-    sourceChannel assignedOffice assignedChinaAgent winLossReason
+    sourceChannel assignedOffice assignedChinaAgent winLossReason summary attachmentCount
     contactPhone { primaryPhoneNumber primaryPhoneCountryCode }
     contactEmail { primaryEmail }
     targetPrice { amountMicros currencyCode }
@@ -55,7 +57,7 @@ class Lead {
 
   /// Fields safe for China staff (no customer details).
   static const gqlFieldsRedacted = '''id leadRef name createdAt productInterest quantity status
-    assignedOffice assignedChinaAgent''';
+    assignedOffice assignedChinaAgent summary attachmentCount''';
 
   factory Lead.fromJson(Map<String, dynamic> j) => Lead(
         id: j['id'] as String,
@@ -84,6 +86,7 @@ class Lead {
         leadRef: j['leadRef'] as String?,
         contactName: j['contactName'] as String?,
         attachmentCount: _num(j['attachmentCount'])?.toInt(),
+        summary: j['summary'] as String?,
       );
 }
 
@@ -94,6 +97,7 @@ class LeadAttachment {
   final int size;
   final DateTime? createdAt;
   bool get isImage => RegExp(r'^image/(jpeg|png|webp)$').hasMatch(mime);
+  bool get isVideo => mime.startsWith('video/') || RegExp(r'\.(mp4|m4v|mov|3gp|webm|mkv)$', caseSensitive: false).hasMatch(name);
   factory LeadAttachment.fromJson(Map<String, dynamic> j) => LeadAttachment(
         id: j['id'] as String, name: (j['name'] as String?) ?? 'file', mime: (j['mime'] as String?) ?? 'application/octet-stream',
         size: (j['size'] as num?)?.toInt() ?? 0, createdAt: _date(j['createdAt']));

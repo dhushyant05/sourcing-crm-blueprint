@@ -100,3 +100,37 @@ describe('public enquiry', () => {
     expect(validateFile('a.xls', Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))).toBe('application/vnd.ms-excel');
   });
 });
+
+const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(64, 7)]);
+describe('lead media, summary and China assignment', () => {
+  it('India uploads photo+video, assigns to China by status; China sees summary + media, no customer data', async () => {
+    const { app, users } = await setup();
+    for (const [email, role] of [['i@x.in', 'INDIA_STAFF'], ['c@x.in', 'CHINA_STAFF']] as const) await users.create(email, role, role, 'demo-password-1');
+    const tok = async (email: string) => (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'demo-password-1' } })).json().token;
+    const it_ = await tok('i@x.in'), ct = await tok('c@x.in');
+    const h = (t: string) => ({ authorization: `Bearer ${t}` });
+    const c = await app.inject({ method: 'POST', url: '/api/records/leads', headers: h(it_), payload: { name: 'Acme – Bulbs', clientName: 'Acme', productInterest: 'Bulbs', summary: '9W warm white, E27', status: 'NEW' } });
+    expect(c.statusCode).toBe(201);
+    const id = c.json().data.id;
+    const up = form({}, [{ name: 'p.png', data: PNG }, { name: 'demo.mp4', data: MP4 }]);
+    const u = await app.inject({ method: 'POST', url: `/api/leads/${id}/attachments`, ...up, headers: { ...up.headers, ...h(it_) } });
+    expect(u.statusCode).toBe(201);
+    expect(u.json().data.map((a: any) => a.mime)).toEqual(['image/png', 'video/mp4']);
+    // China cannot upload, and cannot see it before assignment
+    const up2 = form({}, [{ name: 'p.png', data: PNG }]);
+    expect((await app.inject({ method: 'POST', url: `/api/leads/${id}/attachments`, ...up2, headers: { ...up2.headers, ...h(ct) } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/records/leads', headers: h(ct) })).json().data.find((l: any) => l.id === id)).toBeUndefined();
+    // Board drag to ASSIGNED (status only) hands the lead to China
+    expect((await app.inject({ method: 'PATCH', url: `/api/records/leads/${id}`, headers: h(it_), payload: { status: 'ASSIGNED' } })).statusCode).toBe(200);
+    const l = (await app.inject({ method: 'GET', url: '/api/records/leads', headers: h(ct) })).json().data.find((x: any) => x.id === id);
+    expect(l).toMatchObject({ assignedOffice: 'CHINA', summary: '9W warm white, E27', attachmentCount: 2 });
+    expect(l.clientName).toBeUndefined(); expect(l.name).not.toContain('Acme');
+    const list = (await app.inject({ method: 'GET', url: `/api/leads/${id}/attachments`, headers: h(ct) })).json().data;
+    const v = await app.inject({ method: 'GET', url: `/api/leads/${id}/attachments/${list[1].id}`, headers: { ...h(ct), range: 'bytes=0-11' } });
+    expect(v.statusCode).toBe(206);
+    expect(v.headers['content-range']).toBe(`bytes 0-11/${MP4.length}`);
+    expect(v.rawPayload.equals(MP4.subarray(0, 12))).toBe(true);
+    const full = await app.inject({ method: 'GET', url: `/api/leads/${id}/attachments/${list[1].id}`, headers: h(ct) });
+    expect(full.rawPayload.equals(MP4)).toBe(true); // original bytes
+  });
+});

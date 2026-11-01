@@ -695,4 +695,66 @@ class AppLocalizationsZh extends AppLocalizations {
   String updateInstalled(String version, String build) {
     return '已安装版本 $version（构建 $build）';
   }
+
+  @override
+  String get summary => '产品需求摘要';
+
+  @override
+  String get summaryHint => '规格、材质、尺寸、颜色、包装、认证…';
+
+  @override
+  String get noSummary => '暂无摘要';
+
+  @override
+  String get editSummary => '编辑摘要';
+
+  @override
+  String get mediaTitle => '产品照片和视频';
+
+  @override
+  String get addPhotos => '照片 / 视频';
+
+  @override
+  String get takePhoto => '拍照';
+
+  @override
+  String get recordVideo => '录制视频';
+
+  @override
+  String get mediaHint => '照片不超过 10 MB，视频不超过 100 MB，保持原始画质';
+
+  @override
+  String uploadingFiles(int count) {
+    return '正在上传 $count 个文件…';
+  }
+
+  @override
+  String uploadedFiles(int count) {
+    return '已上传 $count 个文件';
+  }
+
+  @override
+  String fileTooBig(String name) {
+    return '$name 太大（照片 10 MB，视频 100 MB）';
+  }
+
+  @override
+  String get uploadNeedsOnline => '线索已离线保存。联网后再添加照片/视频。';
+
+  @override
+  String deleteFileQ(String name) {
+    return '删除 $name？';
+  }
+
+  @override
+  String get delete => '删除';
+
+  @override
+  String get playVideo => '播放视频';
+
+  @override
+  String get agentOptional => '中国专员（可选）';
+
+  @override
+  String get assignedToChina => '已分配给中国办公室';
 }

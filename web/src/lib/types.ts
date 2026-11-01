@@ -4,8 +4,10 @@ export type Currency = 'CNY' | 'USD' | 'INR';
 export interface Lead {
   id: string; name: string; clientName?: string; contactPhone?: string; contactEmail?: string;
   productInterest?: string; quantity?: number; targetPrice?: number; targetCurrency?: Currency;
-  status: LeadStatus; assignedOffice?: string; assignedChinaAgent?: string; sourceChannel?: string; createdAt: string;
+  status: LeadStatus; assignedOffice?: string; assignedChinaAgent?: string; sourceChannel?: string; createdAt: string; updatedAt?: string;
   unit?: string; deliveryCity?: string; referenceUrl?: string; enquiryMessage?: string; leadRef?: string; contactName?: string; attachmentCount?: number;
+  /** Product requirement summary (India writes, China reads). */
+  summary?: string;
 }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {

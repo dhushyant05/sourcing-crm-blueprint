@@ -4,7 +4,7 @@ import { demo } from './demo';
 
 export interface Me { id: string; email: string; name: string; role: Role; language?: string | null }
 export interface QuotePrice { unitCost?: number; totalCost?: number; currency?: Currency; clientUnitPrice?: number; clientCurrency?: Currency }
-export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency }
+export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
@@ -12,7 +12,15 @@ export interface Api {
   shipments(): Promise<Shipment[]>;
   suppliers(): Promise<Supplier[]>;
   updateQuotePrice(id: string, p: QuotePrice): Promise<void>;
-  createLead(l: NewLead): Promise<void>;
+  /** Returns the new lead id. */
+  createLead(l: NewLead): Promise<string>;
+  /** India side: edit lead fields (e.g. summary). */
+  updateLead(id: string, data: Partial<Pick<Lead, 'summary' | 'assignedChinaAgent' | 'status' | 'assignedOffice'>>): Promise<void>;
+  /** Hand the lead to the China office (assignedOffice=CHINA, status ASSIGNED). */
+  assignToChina(id: string, agent?: string): Promise<void>;
+  /** India side: upload product photos / videos / documents to a lead. */
+  uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void): Promise<Attachment[]>;
+  deleteAttachment(leadId: string, id: string): Promise<void>;
   setLanguage(lang: string): Promise<void>;
   users(): Promise<User[]>;
   createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
@@ -74,7 +82,7 @@ export class ServerApi implements Api {
     if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
     return URL.createObjectURL(await res.blob());
   }
-  async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); }
+  async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); } // server sets assignedOffice=CHINA for China stages
   async quotations() {
     const [qs, srs, aps, sups] = await Promise.all([this.list('quotations'), this.list('sourcingRequests'), this.list('clientApprovals'),
       this.china ? this.list('suppliers') : Promise.resolve([] as Raw[])]);
@@ -104,11 +112,35 @@ export class ServerApi implements Api {
   }
   async updateQuotePrice(id: string, p: QuotePrice) { await this.req('PATCH', `/records/quotations/${id}`, p); }
   async createLead(l: NewLead) {
-    await this.req('POST', '/records/leads', {
+    const r = await this.req<{ id: string }>('POST', '/records/leads', {
       name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',
+      assignedOffice: 'INDIA', office: 'INDIA', ...(l.summary ? { summary: l.summary } : {}),
       ...(l.targetPrice ? { targetPrice: micros(l.targetPrice, l.targetCurrency) } : {}),
     });
+    return r.id;
   }
+  async updateLead(id: string, data: Record<string, unknown>) { await this.req('PATCH', `/records/leads/${id}`, data); }
+  async assignToChina(id: string, agent?: string) {
+    await this.req('PATCH', `/records/leads/${id}`, { assignedOffice: 'CHINA', status: 'ASSIGNED', ...(agent ? { assignedChinaAgent: agent } : {}) });
+  }
+  /** XHR (not fetch) so large videos show upload progress. */
+  uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void) {
+    return new Promise<Attachment[]>((resolve, reject) => {
+      const fd = new FormData(); files.forEach((f) => fd.append('files', f, f.name));
+      const x = new XMLHttpRequest();
+      x.open('POST', `/api/leads/${encodeURIComponent(leadId)}/attachments`);
+      x.setRequestHeader('authorization', `Bearer ${this.token}`);
+      x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
+      x.onload = () => {
+        let j: any = {}; try { j = JSON.parse(x.responseText); } catch { /* empty */ }
+        if (x.status === 401) this.onAuthError();
+        if (x.status >= 400) reject(new HttpError(j.error ?? `HTTP ${x.status}`, x.status)); else resolve(j.data as Attachment[]);
+      };
+      x.onerror = () => reject(new HttpError('Network error', 0));
+      x.send(fd);
+    });
+  }
+  async deleteAttachment(leadId: string, id: string) { await this.req('DELETE', `/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(id)}`); }
   async setLanguage(language: string) { await this.req('PATCH', '/me', { language }); }
   users() { return this.req<User[]>('GET', '/users'); }
   async createUser(u: { email: string; name: string; role: Role; password: string }) { await this.req('POST', '/users', u); }
@@ -129,9 +161,19 @@ export class DemoApi implements Api {
   suppliers() { return this.wait(demo.suppliers); }
   async updateQuotePrice(id: string, p: QuotePrice) { const q = demo.quotations.find((x) => x.id === id); if (q) Object.assign(q, p); }
   async createLead(l: NewLead) {
-    demo.leads.unshift({ id: `L${demo.leads.length + 1}`, name: l.clientName, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity,
+    const id = `L${demo.leads.length + 1}`;
+    demo.leads.unshift({ id, name: l.clientName, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, summary: l.summary,
       targetPrice: l.targetPrice, targetCurrency: l.targetCurrency, status: 'NEW', createdAt: new Date().toISOString() });
+    return id;
   }
+  async updateLead(id: string, data: Partial<Lead>) { const l = demo.leads.find((x) => x.id === id); if (l) Object.assign(l, data); }
+  async assignToChina(id: string, agent?: string) { await this.updateLead(id, { assignedOffice: 'CHINA', status: 'ASSIGNED', ...(agent ? { assignedChinaAgent: agent } : {}) }); }
+  async uploadAttachments(leadId: string, files: File[]) {
+    const list = (demo.attachments[leadId] ??= []);
+    for (const f of files) { const id = crypto.randomUUID(); demo.files[id] = URL.createObjectURL(f); list.push({ id, name: f.name, mime: f.type || 'application/octet-stream', size: f.size, createdAt: new Date().toISOString() }); }
+    return structuredClone(list);
+  }
+  async deleteAttachment(leadId: string, id: string) { demo.attachments[leadId] = (demo.attachments[leadId] ?? []).filter((a) => a.id !== id); }
   async setLanguage() {}
   users() { return this.wait(demo.users); }
   async createUser(u: { email: string; name: string; role: Role }) {

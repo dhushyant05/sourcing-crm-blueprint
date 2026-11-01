@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
-import { MAX_FILE_BYTES, MAX_FILES, UploadStore, validateFile } from './uploads.js';
-import { capabilities, isRole, manageableRoles, type Role } from './roles.js';
-import { canRead, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
+import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged } from './uploads.js';
+import { capabilities, isRole, manageableRoles, sides, type Role } from './roles.js';
+import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { TwentyLike } from './twenty.js';
 import type { UserStore, User } from './users.js';
 
@@ -91,43 +91,54 @@ export async function buildApp(o: AppOptions) {
   // Public website enquiry -> a NEW lead for the India office. No auth; honeypot + per-IP rate limit (5/hour).
   // Accepts multipart/form-data (with up to 5 attachments, 10 MB each) or plain JSON.
   const uploads = new UploadStore(o.uploadsDir ?? `${process.env.TMPDIR ?? '/tmp'}/se-uploads-${process.pid}`);
-  await app.register(multipart, { limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fields: 40, fieldSize: 4000 } });
+  await app.register(multipart, { limits: { fileSize: MAX_VIDEO_BYTES, files: MAX_STAFF_FILES, fields: 40, fieldSize: 4000 } });
+  /** Reads a multipart body: files are streamed to staging (validated by magic bytes), fields collected. */
+  const readMultipart = async (req: FastifyRequest, maxFiles: number) => {
+    const fields: Record<string, string> = {}; const files: Staged[] = [];
+    const bad = (status: number, error: string, code: string) => { uploads.discard(files); return { fields, files, err: { status, error, code } }; };
+    try {
+      for await (const part of req.parts()) {
+        if (part.type === 'file') {
+          const f = await uploads.stage(part.filename ?? 'file', part.file);
+          if (f.error === 'empty') continue;
+          if (f.error === 'size') return bad(413, `Too large: ${part.filename} (photos/documents 10 MB, videos 100 MB)`, 'size');
+          if (f.error === 'type') return bad(415, `File type not allowed: ${part.filename}`, 'type');
+          files.push(f);
+          if (files.length > maxFiles) return bad(413, `Up to ${maxFiles} files`, 'count');
+        } else fields[part.fieldname] = String(part.value ?? '');
+      }
+    } catch (e: any) {
+      if (e?.code === 'FST_FILES_LIMIT') return bad(413, `Up to ${maxFiles} files`, 'count');
+      if (e?.code === 'FST_REQ_FILE_TOO_LARGE') return bad(413, 'Videos must be 100 MB or smaller', 'size');
+      uploads.discard(files); throw e;
+    }
+    return { fields, files, err: null };
+  };
   const enq = new Map<string, number[]>();
   const UNITS = ['pcs', 'kg', 'ton', 'm', 'sqm', 'sets', 'cartons', 'containers'];
   app.post('/api/public/enquiry', async (req, reply) => {
-    const b: Record<string, string> = {}; const files: { name: string; mime: string; data: Buffer }[] = [];
+    const b: Record<string, string> = {}; let files: Staged[] = [];
     if (req.isMultipart()) {
-      try {
-        for await (const part of req.parts()) {
-          if (part.type === 'file') {
-            const data = await part.toBuffer();
-            if (!data.length) continue;
-            const mime = validateFile(part.filename ?? '', data);
-            if (!mime) return reply.code(415).send({ error: `File type not allowed: ${part.filename}`, code: 'type' });
-            files.push({ name: part.filename ?? 'file', mime, data });
-          } else b[part.fieldname] = String(part.value ?? '');
-        }
-      } catch (e: any) {
-        if (e?.code === 'FST_REQ_FILE_TOO_LARGE') return reply.code(413).send({ error: 'Each file must be 10 MB or smaller', code: 'size' });
-        if (e?.code === 'FST_FILES_LIMIT') return reply.code(413).send({ error: 'Up to 5 files', code: 'count' });
-        throw e;
-      }
+      const m = await readMultipart(req, MAX_FILES);
+      if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
+      Object.assign(b, m.fields); files = m.files;
     } else Object.assign(b, Object.fromEntries(Object.entries((req.body ?? {}) as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])));
+    const reject = (code: number, body: unknown) => { uploads.discard(files); return reply.code(code).send(body); };
     const str = (k: string, max = 200) => (b[k] ?? '').trim().slice(0, max);
-    if (str('website')) return reply.code(202).send({ ok: true }); // bot filled the hidden field
+    if (str('website')) return reject(202, { ok: true }); // bot filled the hidden field
     const now = Date.now(), hits = (enq.get(req.ip) ?? []).filter((t) => now - t < 3600e3);
-    if (hits.length >= 5) return reply.code(429).send({ error: 'Too many enquiries, please try again later' });
+    if (hits.length >= 5) return reject(429, { error: 'Too many enquiries, please try again later' });
 
     const name = str('name', 120), email = str('email', 160), product = str('product', 1000);
     const code = str('phoneCode', 6) || '+91';
     let digits = str('phone', 40).replace(/[\s\-().]/g, '');
     if (digits.startsWith(code)) digits = digits.slice(code.length);
-    if (!name || !product || !digits) return reply.code(400).send({ error: 'Name, mobile number and product are required', code: 'required' });
+    if (!name || !product || !digits) return reject(400, { error: 'Name, mobile number and product are required', code: 'required' });
     if (!/^\+\d{1,4}$/.test(code) || !/^\d{6,14}$/.test(digits) || (code === '+91' && !/^[6-9]\d{9}$/.test(digits)))
-      return reply.code(400).send({ error: 'Invalid mobile number', code: 'phone' });
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Invalid email', code: 'email' });
+      return reject(400, { error: 'Invalid mobile number', code: 'phone' });
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reject(400, { error: 'Invalid email', code: 'email' });
     const ref = str('referenceUrl', 500);
-    if (ref && !/^https?:\/\/[^\s]+$/i.test(ref)) return reply.code(400).send({ error: 'Reference link must start with http:// or https://', code: 'url' });
+    if (ref && !/^https?:\/\/[^\s]+$/i.test(ref)) return reject(400, { error: 'Reference link must start with http:// or https://', code: 'url' });
     const currency = ['USD', 'CNY', 'INR'].includes(str('currency', 3)) ? str('currency', 3) : 'INR';
     const price = Number(str('targetPrice', 20)), qty = Number(str('quantity', 12));
     const unit = UNITS.includes(str('unit', 12)) ? str('unit', 12) : 'pcs';
@@ -143,9 +154,10 @@ export async function buildApp(o: AppOptions) {
       ...(email ? { contactEmail: { primaryEmail: email } } : {}),
       ...(city ? { deliveryCity: city } : {}), ...(ref ? { referenceUrl: { primaryLinkUrl: ref } } : {}),
       ...(msg ? { enquiryMessage: msg } : {}), contactName: name, leadRef, attachmentCount: files.length,
+      ...(str('summary', 2000) ? { summary: str('summary', 2000) } : {}),
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
-    if (files.length && lead?.id) uploads.save(String(lead.id), files);
+    if (files.length && lead?.id) uploads.commit(String(lead.id), files); else uploads.discard(files);
     return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
   });
 
@@ -173,13 +185,46 @@ export async function buildApp(o: AppOptions) {
     };
     api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => ({ data: uploads.list(await attLead(req)) }));
     api.get<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
-      const f = uploads.read(await attLead(req), req.params.fid);
+      const f = uploads.file(await attLead(req), req.params.fid);
       if (!f) return reply.code(404).send({ error: 'Not found' });
-      const inline = /^image\/(jpeg|png|webp)$|^application\/pdf$/.test(f.meta.mime);
-      reply.header('content-type', f.meta.mime).header('cache-control', 'private, no-store')
+      const inline = /^image\/(jpeg|png|webp)$|^application\/pdf$|^video\//.test(f.meta.mime);
+      reply.header('content-type', f.meta.mime).header('cache-control', 'private, no-store').header('accept-ranges', 'bytes')
         .header('content-security-policy', "default-src 'none'; sandbox")
         .header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.meta.name)}`);
-      return reply.send(f.data);
+      // HTTP Range so videos can be played/seeked without downloading the whole file first. Original bytes, never re-encoded.
+      const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+      if (m && (m[1] || m[2])) {
+        let start = m[1] ? Number(m[1]) : Math.max(0, f.size - Number(m[2])), end = m[1] && m[2] ? Math.min(Number(m[2]), f.size - 1) : f.size - 1;
+        if (start >= f.size || start > end) return reply.code(416).header('content-range', `bytes */${f.size}`).send();
+        return reply.code(206).header('content-range', `bytes ${start}-${end}/${f.size}`).header('content-length', end - start + 1)
+          .send(createReadStream(f.path, { start, end }));
+      }
+      return reply.header('content-length', f.size).send(createReadStream(f.path));
+    });
+    // India side (and super admin) attach product photos/videos to a lead from the web or Android app.
+    const attWrite = async (req: FastifyRequest<{ Params: { id: string } }>) => {
+      if (!sides(req.user!.role).india) throw new Forbidden('Only the India office can change lead files');
+      return attLead(req);
+    };
+    const syncCount = async (leadId: string, n: number) => {
+      try { await o.twenty.update(OBJECTS.lead, leadId, { attachmentCount: n }); } catch (e) { app.log.warn(e, 'attachmentCount sync failed'); }
+    };
+    api.post<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req, reply) => {
+      const id = await attWrite(req);
+      if (!req.isMultipart()) return reply.code(400).send({ error: 'multipart/form-data expected' });
+      const m = await readMultipart(req, MAX_STAFF_FILES);
+      if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
+      if (uploads.list(id).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per lead', code: 'count' }); }
+      const list = uploads.commit(id, m.files);
+      await syncCount(id, list.length);
+      return reply.code(201).send({ data: list });
+    });
+    api.delete<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
+      const id = await attWrite(req);
+      const rest = uploads.remove(id, req.params.fid);
+      if (!rest) return reply.code(404).send({ error: 'Not found' });
+      await syncCount(id, rest.length);
+      return { data: rest };
     });
 
     // ---- Generic filtered records API (used by mobile and web) ----
@@ -212,6 +257,7 @@ export async function buildApp(o: AppOptions) {
       const obj = objOf(req.params.plural);
       const data = { ...writeCheck(req.user!.role, obj, 'create', req.body ?? {}) };
       // The reference is always assigned here (incl. offline mobile leads when they sync), never by the client.
+      if (obj === 'lead') { data.assignedOffice ??= CHINA_LEAD_STATUSES.includes(String(data.status)) ? 'CHINA' : 'INDIA'; data.office ??= 'INDIA'; }
       const leadRef = obj === 'lead' ? await nextRef() : await inheritRef(obj, data);
       if (leadRef) data.leadRef = leadRef;
       const r = await o.twenty.create(OBJECTS[obj], data);
@@ -222,6 +268,9 @@ export async function buildApp(o: AppOptions) {
       const existing = await o.twenty.get(OBJECTS[obj], req.params.id);
       if (!existing || !readFilter(obj, existing, await ctxOf(role))) return reply.code(404).send({ error: 'Not found' });
       const data = { ...writeCheck(role, obj, 'update', req.body ?? {}, existing) };
+      // Handing a lead to China = assignedOffice CHINA. Moving it to a China stage (board drag, status change) implies that,
+      // otherwise China would never see it (China only reads assignedOffice=CHINA leads).
+      if (obj === 'lead' && !('assignedOffice' in data) && existing.assignedOffice !== 'CHINA' && CHINA_LEAD_STATUSES.includes(String(data.status))) data.assignedOffice = 'CHINA';
       if (('leadId' in data || 'sourcingRequestId' in data || 'quotationId' in data) && obj !== 'lead') {
         const leadRef = await inheritRef(obj, { ...existing, ...data });
         if (leadRef) data.leadRef = leadRef;

@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
-import { Download, KanbanSquare, Plus, Rows3 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { FileIcon, fmtSize } from '../components/EnquiryForm';
+import { Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
 import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus } from '../lib/types';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +25,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   const pick = (v: 'board' | 'table') => { setView(v); localStorage.leadView = v; };
 
   const move = async (id: string, status: LeadStatus) => {
-    setData((d) => d && d.map((l) => (l.id === id ? { ...l, status } : l)));
+    setData((d) => d && d.map((l) => (l.id === id ? { ...l, status, ...(['ASSIGNED', 'SOURCING', 'QUOTED'].includes(status) ? { assignedOffice: 'CHINA' } : {}) } : l)));
     await api.updateLeadStatus(id, status);
   };
 
@@ -103,38 +103,101 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
 function NewLead({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const { api } = useApp();
   const { t } = useTranslation();
-  const blank = { clientName: '', productInterest: '', quantity: '100', price: '', currency: 'INR' as Currency };
+  const blank = { clientName: '', productInterest: '', quantity: '100', price: '', currency: 'INR' as Currency, summary: '' };
   const [f, setF] = useState(blank), [err, setErr] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]), [pct, setPct] = useState<number | null>(null);
   const submit = async () => {
     try {
-      await api.createLead({ clientName: f.clientName, productInterest: f.productInterest, quantity: Number(f.quantity) || 1,
-        targetPrice: Number(f.price) > 0 ? Number(f.price) : undefined, targetCurrency: f.currency });
-      setF(blank); onCreated();
-    } catch (e) { setErr((e as Error).message); }
+      setErr(null); setPct(files.length ? 0 : null);
+      const id = await api.createLead({ clientName: f.clientName, productInterest: f.productInterest, quantity: Number(f.quantity) || 1,
+        targetPrice: Number(f.price) > 0 ? Number(f.price) : undefined, targetCurrency: f.currency, summary: f.summary.trim() || undefined });
+      if (files.length) await api.uploadAttachments(id, files, setPct);
+      setF(blank); setFiles([]); setPct(null); onCreated();
+    } catch (e) { setPct(null); setErr((e as Error).message); }
   };
   return (
     <SlideOver open={open} onClose={onClose} title={t('leads.new')}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.cancel')}</button><button className="btn-primary" form="new-lead">{t('leads.create')}</button></>}>
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.cancel')}</button><button className="btn-primary" form="new-lead" disabled={pct != null}>{t('leads.create')}</button></>}>
       <form id="new-lead" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <div><label className="label">{t('leads.clientName')}</label><input className="input" required value={f.clientName} onChange={(e) => setF({ ...f, clientName: e.target.value })} /></div>
         <div><label className="label">{t('common.product')}</label><input className="input" required value={f.productInterest} onChange={(e) => setF({ ...f, productInterest: e.target.value })} /></div>
         <div><label className="label">{t('common.quantity')}</label><input className="input" inputMode="numeric" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></div>
         <MoneyInput id="target-price" label={t('leads.targetPrice')} value={f.price} currency={f.currency} onValue={(price) => setF({ ...f, price })} onCurrency={(currency) => setF({ ...f, currency })} />
+        <div><label className="label" htmlFor="lead-summary">{t('leads.summary')}</label><textarea id="lead-summary" className="input min-h-24" placeholder={t('leads.summaryHint')} value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></div>
+        <div>
+          <label className="label">{t('leads.media')}</label>
+          <FilePicker onPick={(fs) => setFiles((cur) => [...cur, ...fs])} onError={setErr} />
+          {files.length > 0 && <ul className="mt-2 space-y-1">{files.map((x, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm"><FileIcon name={x.name} /><span className="min-w-0 flex-1 truncate">{x.name}</span><span className="text-xs text-ink-400">{fmtSize(x.size)}</span>
+              <button type="button" aria-label={t('common.remove')} onClick={() => setFiles((c) => c.filter((_, j) => j !== i))} className="text-ink-400 hover:text-rose-600"><Trash2 size={14} /></button></li>))}</ul>}
+          {pct != null && <p className="mt-2 text-xs text-ink-500">{t('leads.uploading', { pct })}</p>}
+        </div>
         {err && <p role="alert" className="text-sm text-rose-600">{err}</p>}
       </form>
     </SlideOver>
   );
 }
 
-export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () => void }) {
-  const { perms } = useApp();
+/** Photo / video / document picker used by staff (validates type and size like the server). */
+function FilePicker({ onPick, onError }: { onPick: (f: File[]) => void; onError: (m: string | null) => void }) {
   const { t } = useTranslation();
+  const ref = useRef<HTMLInputElement>(null), cam = useRef<HTMLInputElement>(null), vid = useRef<HTMLInputElement>(null);
+  const take = (list: FileList | null) => {
+    if (!list) return; const ok: File[] = []; onError(null);
+    for (const f of Array.from(list)) {
+      const e = (f.name.split('.').pop() ?? '').toLowerCase();
+      if (!EXT.includes(e)) { onError(t('landing.contact.errType', { name: f.name })); continue; }
+      if (tooBig(f)) { onError(t('leads.errSize', { name: f.name })); continue; }
+      ok.push(f);
+    }
+    if (ok.length) onPick(ok);
+  };
+  const inp = (r: React.RefObject<HTMLInputElement | null>, accept: string, capture?: boolean, multiple = true) =>
+    <input ref={r} type="file" multiple={multiple} accept={accept} capture={capture ? 'environment' : undefined} className="hidden" onChange={(e) => { take(e.target.files); e.target.value = ''; }} />;
+  return (<>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" className="btn-outline" onClick={() => ref.current?.click()}><Upload size={15} />{t('leads.addMedia')}</button>
+      <button type="button" className="btn-outline sm:hidden" onClick={() => cam.current?.click()}>{t('landing.contact.camera')}</button>
+      <button type="button" className="btn-outline sm:hidden" onClick={() => vid.current?.click()}>{t('leads.recordVideo')}</button>
+    </div>
+    <p className="mt-1 text-xs text-ink-400">{t('leads.mediaHint')}</p>
+    {inp(ref, ACCEPT)}{inp(cam, 'image/*', true, false)}{inp(vid, 'video/*', true, false)}
+  </>);
+}
+
+export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClose: () => void }) {
+  const { api, perms } = useApp();
+  const { t } = useTranslation();
+  const [lead, setLead] = useState<Lead | null>(initial);
+  const [assigning, setAssigning] = useState(false), [agent, setAgent] = useState(''), [busy, setBusy] = useState(false);
+  const [editSum, setEditSum] = useState<string | null>(null), [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { setLead(initial); setAssigning(false); setEditSum(null); setMsg(null); setAgent(initial?.assignedChinaAgent ?? ''); }, [initial]);
+  const assign = async () => {
+    if (!lead) return; setBusy(true); setMsg(null);
+    try { await api.assignToChina(lead.id, agent.trim() || undefined); setLead({ ...lead, assignedOffice: 'CHINA', status: 'ASSIGNED', assignedChinaAgent: agent.trim() || lead.assignedChinaAgent }); setAssigning(false); setMsg(t('leads.assignedOk')); }
+    catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
+  const saveSummary = async () => {
+    if (!lead || editSum == null) return; setBusy(true);
+    try { await api.updateLead(lead.id, { summary: editSum.trim() }); setLead({ ...lead, summary: editSum.trim() }); setEditSum(null); }
+    catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
+  const inChina = lead?.assignedOffice === 'CHINA';
   return (
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{perms.customers && <button className="btn-primary">{t('leads.assignChina')}</button>}</>}>
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{perms.customers && !assigning && <button className="btn-primary" data-testid="assign-china" onClick={() => setAssigning(true)}><Send size={15} />{inChina ? t('leads.reassignChina') : t('leads.assignChina')}</button>}</>}>
       {lead && (
         <>
+          {assigning && (
+            <div className="mb-5 rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-500/30 dark:bg-brand-500/10">
+              <label className="label" htmlFor="china-agent">{t('leads.chinaAgentOpt')}</label>
+              <input id="china-agent" className="input" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={t('leads.chinaAgentPh')} />
+              <p className="mt-1 text-xs text-ink-500">{t('leads.assignHint')}</p>
+              <div className="mt-2 flex gap-2"><button className="btn-primary" disabled={busy} onClick={() => void assign()} data-testid="assign-confirm">{t('leads.assignConfirm')}</button><button className="btn-outline" onClick={() => setAssigning(false)}>{t('common.cancel')}</button></div>
+            </div>
+          )}
+          {msg && <p role="status" className="mb-4 rounded-lg bg-ink-50 px-3 py-2 text-sm text-ink-700 dark:bg-ink-800 dark:text-ink-200">{msg}</p>}
           <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.request')}</h3>
           <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
             <Field label={t('leads.reference')}><span className="font-mono">{lead.leadRef ?? '—'}</span></Field>
@@ -142,9 +205,16 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
             <Field label={t('common.quantity')}>{lead.unit && lead.unit !== 'pcs' ? `${lead.quantity?.toLocaleString() ?? ''} ${t(`landing.contact.units.${lead.unit}`)}` : t('common.pcs', { n: lead.quantity?.toLocaleString() })}</Field>
             {perms.clientPricing && <Field label={t('leads.targetPrice')}><Money v={lead.targetPrice} c={lead.targetCurrency} /></Field>}
             <Field label={t('leads.channel')}>{lead.sourceChannel}</Field>
+            <Field label={t('leads.office')}>{lead.assignedOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia')}</Field>
             <Field label={t('common.chinaAgent')}>{lead.assignedChinaAgent}</Field>
             {lead.referenceUrl && <Field label={t('leads.refLink')}><a href={lead.referenceUrl} target="_blank" rel="noreferrer noopener" className="break-all text-brand-600 underline">{lead.referenceUrl}</a></Field>}
           </dl>
+          <h3 className="mt-6 flex items-center text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.summary')}
+            {perms.customers && editSum == null && <button className="ml-auto inline-flex items-center gap-1 normal-case text-brand-600" onClick={() => setEditSum(lead.summary ?? '')}><Pencil size={12} />{t('common.edit')}</button>}</h3>
+          {editSum != null ? (
+            <div className="mt-2"><textarea data-testid="summary-edit" className="input min-h-24" value={editSum} onChange={(e) => setEditSum(e.target.value)} placeholder={t('leads.summaryHint')} />
+              <div className="mt-2 flex gap-2"><button className="btn-primary" disabled={busy} onClick={() => void saveSummary()}>{t('common.save')}</button><button className="btn-outline" onClick={() => setEditSum(null)}>{t('common.cancel')}</button></div></div>
+          ) : <p data-testid="lead-summary" className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.summary || <span className="text-ink-400">{t('leads.noSummary')}</span>}</p>}
           {perms.customers && (<>
             <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.customer')}</h3>
             <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
@@ -154,10 +224,10 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
             </dl>
             {lead.enquiryMessage && <><h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.message')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{lead.enquiryMessage}</p></>}
           </>)}
-          <Attachments leadId={lead.id} />
+          <Attachments leadId={lead.id} canEdit={perms.customers} />
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
-            {[[t('leads.createdEvt'), lead.createdAt], [t('leads.assignedTo', { who: lead.assignedChinaAgent ?? 'China' }), lead.createdAt]].map(([t, d]) => (
+            {[[t('leads.createdEvt'), lead.createdAt], ...(inChina ? [[t('leads.assignedTo', { who: lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d]) => (
               <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="text-ink-800 dark:text-ink-100">{t}</div><div className="text-xs text-ink-500">{fmtDate(d, { dateStyle: 'medium' })}</div></li>
             ))}
           </ol>
@@ -168,11 +238,29 @@ export function LeadPanel({ lead, onClose }: { lead: Lead | null; onClose: () =>
 }
 
 /** Enquiry photos/documents. Files are fetched with the staff token and shown via blob: URLs, never public links. */
-function Attachments({ leadId }: { leadId: string }) {
+function Attachments({ leadId, canEdit }: { leadId: string; canEdit: boolean }) {
   const { api } = useApp();
   const { t } = useTranslation();
   const [list, setList] = useState<Attachment[] | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [videos, setVideos] = useState<Record<string, string>>({});
+  const [pct, setPct] = useState<number | null>(null), [err, setErr] = useState<string | null>(null);
+  const upload = async (fs: File[]) => {
+    setPct(0); setErr(null);
+    try { setList(await api.uploadAttachments(leadId, fs, setPct)); } catch (e) { setErr((e as Error).message); } finally { setPct(null); }
+  };
+  const del = async (a: Attachment) => {
+    if (!confirm(t('leads.deleteFile', { name: a.name }))) return;
+    try { await api.deleteAttachment(leadId, a.id); setList((l) => l && l.filter((x) => x.id !== a.id)); } catch (e) { setErr((e as Error).message); }
+  };
+  /** Videos are fetched with the staff token (original file) and played from a blob: URL. */
+  const play = async (a: Attachment) => {
+    if (videos[a.id]) return;
+    setVideos((v) => ({ ...v, [a.id]: 'loading' }));
+    try { const u = await api.attachmentUrl(leadId, a); setVideos((v) => ({ ...v, [a.id]: u })); }
+    catch (e) { setErr((e as Error).message); setVideos((v) => { const n = { ...v }; delete n[a.id]; return n; }); }
+  };
+  useEffect(() => () => Object.values(videos).forEach((u) => u.startsWith('blob:') && URL.revokeObjectURL(u)), [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     let live = true; const made: string[] = [];
     setList(null); setThumbs({});
@@ -195,16 +283,27 @@ function Attachments({ leadId }: { leadId: string }) {
   };
   return (<>
     <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.attachments')}{list && list.length > 0 && ` · ${list.length}`}</h3>
+    {canEdit && <div className="mt-2"><FilePicker onPick={(fs) => void upload(fs)} onError={setErr} /></div>}
+    {pct != null && <p className="mt-2 text-xs text-ink-500">{t('leads.uploading', { pct })}</p>}
+    {err && <p role="alert" className="mt-2 text-sm text-rose-600">{err}</p>}
     {!list ? <p className="mt-2 text-sm text-ink-400">{t('leads.loadingFiles')}</p> : list.length === 0 ? <p className="mt-2 text-sm text-ink-400">{t('leads.noAttachments')}</p> : (
-      <ul className="mt-3 grid grid-cols-2 gap-3">
+      <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {list.map((a) => (
           <li key={a.id} className="overflow-hidden rounded-xl border border-ink-100 dark:border-ink-800">
-            <button className="block w-full" onClick={() => open(a, false)} title={t('leads.open')}>
-              {thumbs[a.id] ? <img src={thumbs[a.id]} alt={a.name} className="h-28 w-full object-cover" /> : <span className="grid h-28 place-items-center bg-ink-50 dark:bg-ink-800"><FileIcon name={a.name} className="h-10 w-10" /></span>}
-            </button>
+            {a.mime.startsWith('video/') || isVideoName(a.name) ? (
+              videos[a.id] && videos[a.id] !== 'loading'
+                ? <video data-testid="lead-video" src={videos[a.id]} controls playsInline className="h-40 w-full bg-black object-contain" />
+                : <button className="relative grid h-28 w-full place-items-center bg-ink-900 text-white" onClick={() => void play(a)} title={t('leads.play')}>
+                    {videos[a.id] === 'loading' ? <span className="text-xs">{t('leads.loadingVideo')}</span> : <Play size={34} />}</button>
+            ) : (
+              <button className="block w-full" onClick={() => open(a, false)} title={t('leads.open')}>
+                {thumbs[a.id] ? <img src={thumbs[a.id]} alt={a.name} className="h-28 w-full object-cover" /> : <span className="grid h-28 place-items-center bg-ink-50 dark:bg-ink-800"><FileIcon name={a.name} className="h-10 w-10" /></span>}
+              </button>
+            )}
             <div className="flex items-center gap-2 p-2">
               <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium text-ink-800 dark:text-ink-100">{a.name}</div><div className="text-[11px] text-ink-400">{fmtSize(a.size)}</div></div>
               <button onClick={() => open(a, true)} aria-label={`${t('leads.download')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"><Download size={15} /></button>
+              {canEdit && <button onClick={() => void del(a)} aria-label={`${t('common.remove')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
             </div>
           </li>
         ))}

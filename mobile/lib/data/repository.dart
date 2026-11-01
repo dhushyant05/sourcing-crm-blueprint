@@ -95,7 +95,7 @@ class SourceEasyRepository {
 
   Future<WriteResult> createLead({required String clientName, String? phone, String? email,
       required String productInterest, double? quantity, double? targetPrice, String targetCurrency = 'INR',
-      String? sourceChannel}) {
+      String? sourceChannel, String? summary}) {
     assert(perms.canCreateLead);
     return _write('lead', {
       'name': '$clientName — $productInterest',
@@ -107,6 +107,7 @@ class SourceEasyRepository {
       if (targetPrice != null)
         'targetPrice': {'amountMicros': (targetPrice * 1e6).round(), 'currencyCode': targetCurrency},
       'sourceChannel': ?sourceChannel,
+      if (summary != null && summary.isNotEmpty) 'summary': summary,
       'status': 'NEW',
       'assignedOffice': 'INDIA',
       'office': 'BOTH',
@@ -122,11 +123,23 @@ class SourceEasyRepository {
   Future<List<int>> attachmentBytes(String leadId, LeadAttachment a) =>
       api.getBytes('/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(a.id)}');
 
+  /// India side: add product photos/videos/documents to a lead (needs a connection; files are big).
+  Future<List<LeadAttachment>> uploadAttachments(String leadId, List<String> paths) async {
+    final j = await api.upload('/api/leads/${Uri.encodeComponent(leadId)}/attachments', paths) as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList();
+  }
+
+  Future<void> deleteAttachment(String leadId, String fileId) =>
+      api.send('DELETE', '/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(fileId)}');
+
+  ({Uri uri, Map<String, String> headers}) attachmentStream(String leadId, LeadAttachment a) =>
+      api.authed('/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(a.id)}');
+
   Future<WriteResult> updateLead(String id, Map<String, dynamic> data) => _write('lead', data, id: id);
 
   /// Step 2: hand a lead to a China agent.
   Future<WriteResult> assignToChina(String leadId, String agent) =>
-      updateLead(leadId, {'assignedChinaAgent': agent, 'assignedOffice': 'CHINA', 'status': 'ASSIGNED'});
+      updateLead(leadId, {if (agent.isNotEmpty) 'assignedChinaAgent': agent, 'assignedOffice': 'CHINA', 'status': 'ASSIGNED'});
 
   // ---------- Sourcing ----------
   Future<List<SourcingRequest>> sourcingRequests({String? leadId}) async {
