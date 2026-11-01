@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { buildApp } from '../src/app.js';
 import { UserStore } from '../src/users.js';
 import { sniff, validateFile } from '../src/uploads.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 const PDF = Buffer.from('%PDF-1.4\n%test\n');
@@ -20,8 +20,8 @@ function form(fields: Record<string, string>, files: { name: string; data: Buffe
 }
 
 async function setup() {
-  const twenty = new MockTwenty(), users = new UserStore();
-  const app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'se-up-')) });
+  const { db, bus, users, twenty } = await testEnv();
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'se-up-')) });
   return { app, twenty, users };
 }
 const base = { name: 'Ravi', company: 'Ravi Traders', phoneCode: '+91', phone: '90000 00000', product: 'LED bulbs' };

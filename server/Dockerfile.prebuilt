@@ -1,0 +1,15 @@
+# Small-RAM deploy: dist/ and web/dist are built elsewhere (npm run build in server/ and web/);
+# this image only installs production deps. Context: a folder with server/{package*.json,dist,assets,migrations} and web/dist.
+FROM node:24-slim
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080 WEB_DIR=/app/web
+WORKDIR /app/server
+COPY server/package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+COPY server/dist ./dist
+COPY server/assets ./assets
+COPY server/migrations ./migrations
+COPY web/dist /app/web
+RUN mkdir -p /data && chown node:node /data
+USER node
+EXPOSE 8080
+CMD ["node", "dist/index.js"]

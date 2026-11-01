@@ -1,19 +1,19 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
 export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null }
-export interface QuotePrice { unitCost?: number; totalCost?: number; currency?: Currency; clientUnitPrice?: number; clientCurrency?: Currency }
 export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
   deleteLead(id: string): Promise<void>;
-  quotations(): Promise<Quotation[]>;
   shipments(): Promise<Shipment[]>;
   updateShipment?(id: string, b: Record<string, unknown>): Promise<Shipment>;
-  suppliers(): Promise<Supplier[]>;
-  updateQuotePrice(id: string, p: QuotePrice): Promise<void>;
+  /** China side + super admin: supplier directory with activity stats (search on the server). */
+  suppliers(q?: string): Promise<Supplier[]>;
+  supplier(id: string): Promise<SupplierDetail>;
+  saveSupplier(s: Partial<Supplier> & { name: string }, id?: string): Promise<Supplier>;
   /** Returns the new lead id. */
   createLead(l: NewLead): Promise<string>;
   /** India side: edit lead fields (e.g. summary). */
@@ -98,10 +98,10 @@ export async function login(email: string, password: string): Promise<{ token: s
 
 /**
  * Client for the Source Easy server's REST API. The server already removed every record/field the
- * signed-in role may not see; this class only reshapes Twenty field names into the dashboard's view models.
+ * signed-in role may not see; this class only reshapes the server's lead fields into the dashboard's view models.
  */
 export class ServerApi implements Api {
-  private token: string; private role: Role; private onAuthError: () => void;
+  private token: string; readonly role: Role; private onAuthError: () => void;
   constructor(token: string, role: Role, onAuthError: () => void) { this.token = token; this.role = role; this.onAuthError = onAuthError; }
   private async req<T = any>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`/api${path}`, {
@@ -113,8 +113,6 @@ export class ServerApi implements Api {
     if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
     return j.data as T;
   }
-  private list = (plural: string) => this.req<Raw[]>('GET', `/records/${plural}`);
-  private get china() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('CHINA'); }
 
   private mapLead = (n: Raw): Lead => ({
       ...n, contactPhone: n.contactPhone?.primaryPhoneNumber && [n.contactPhone.primaryPhoneCallingCode, n.contactPhone.primaryPhoneNumber].filter(Boolean).join(' '),
@@ -187,28 +185,17 @@ export class ServerApi implements Api {
   }
   async deleteLead(id: string) { await this.req('DELETE', `/records/leads/${encodeURIComponent(id)}`); }
   async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); } // server sets assignedOffice=CHINA for China stages
-  async quotations() {
-    const [qs, srs, aps, sups] = await Promise.all([this.list('quotations'), this.list('sourcingRequests'), this.list('clientApprovals'),
-      this.china ? this.list('suppliers') : Promise.resolve([] as Raw[])]);
-    const sr = new Map(srs.map((s) => [s.id, s])), sup = new Map(sups.map((s) => [s.id, s.name]));
-    return qs.map((q): Quotation => {
-      const s = sr.get(q.sourcingRequestId);
-      const ap = aps.filter((a) => a.quotationId === q.id).sort((a, b) => String(b.decidedAt).localeCompare(String(a.decidedAt)))[0];
-      const quantity = s?.quantity ?? (q.unitCost ? Math.round(q.totalCost / q.unitCost) : 1);
-      return {
-        id: q.id, name: q.name, leadRef: q.leadRef ?? s?.leadRef, leadId: s?.leadId, productName: s?.productDescription ?? s?.name, supplierName: sup.get(q.supplierId),
-        unitCost: q.unitCost ?? undefined, totalCost: q.totalCost ?? undefined, currency: q.currency ?? undefined, quantity,
-        clientUnitPrice: q.clientUnitPrice ?? undefined, clientCurrency: q.clientCurrency ?? undefined,
-        status: ap?.status ?? (q.clientUnitPrice ? 'SENT' : 'DRAFT'), validityDate: q.validityDate, createdAt: q.createdAt,
-      };
-    });
-  }
   shipments() { return this.req<Shipment[]>('GET', '/shipments'); }
   updateShipment(id: string, b: Record<string, unknown>) { return this.req<Shipment>('PATCH', `/shipments/${id}`, b); }
-  async suppliers() {
-    return (await this.list('suppliers')).map((s): Supplier => ({ id: s.id, name: s.name, phone: s.phone?.primaryPhoneNumber, wechat: s.wechatId, notes: s.notes }));
+  suppliers(q?: string) { return this.req<Supplier[]>('GET', `/suppliers${q ? `?q=${encodeURIComponent(q)}` : ''}`); }
+  async supplier(id: string) {
+    const d = await this.req<Omit<SupplierDetail, 'quoteCount'> & { quotes: SupplierDetail['quotes'] } & Record<string, unknown>>('GET', `/suppliers/${encodeURIComponent(id)}`);
+    return { ...d, quoteCount: d.quotes.length } as SupplierDetail;
   }
-  async updateQuotePrice(id: string, p: QuotePrice) { await this.req('PATCH', `/records/quotations/${id}`, p); }
+  saveSupplier(s: Partial<Supplier> & { name: string }, id?: string) {
+    const b = { name: s.name, contact: s.contact ?? null, phone: s.phone ?? null, wechat: s.wechat ?? null, city: s.city ?? null, notes: s.notes ?? null };
+    return id ? this.req<Supplier>('PATCH', `/suppliers/${encodeURIComponent(id)}`, b) : this.req<Supplier>('POST', '/suppliers', b);
+  }
   async createLead(l: NewLead) {
     const r = await this.req<{ id: string }>('POST', '/records/leads', {
       name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',
@@ -327,10 +314,14 @@ export class DemoApi implements Api {
   async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
   async deleteLead(id: string) { demo.leads = demo.leads.filter((x) => x.id !== id); }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
-  quotations() { return this.wait(demo.quotations); }
   async shipments(): Promise<Shipment[]> { return []; }
-  suppliers() { return this.wait(demo.suppliers); }
-  async updateQuotePrice(id: string, p: QuotePrice) { const q = demo.quotations.find((x) => x.id === id); if (q) Object.assign(q, p); }
+  suppliers(q?: string) { return this.wait(demo.suppliers.filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()))); }
+  async supplier(id: string) { const s = demo.suppliers.find((x) => x.id === id)!; return { ...s, quotes: [], quoteCount: 0 }; }
+  async saveSupplier(s: Partial<Supplier> & { name: string }, id?: string) {
+    const cur = id ? demo.suppliers.find((x) => x.id === id) : undefined;
+    if (cur) { Object.assign(cur, s); return cur; }
+    const n: Supplier = { quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null, ...s, id: `S${demo.suppliers.length + 1}` }; demo.suppliers.push(n); return n;
+  }
   async createLead(l: NewLead) {
     const id = `L${demo.leads.length + 1}`;
     demo.leads.unshift({ id, name: l.clientName, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, summary: l.summary,

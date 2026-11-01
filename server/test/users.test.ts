@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { UserStore } from '../src/users.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PW = 'correct-horse-1';
 async function setup() {
-  const twenty = new MockTwenty(), users = new UserStore();
-  const app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40) });
+  const { db, bus, users, twenty } = await testEnv();
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40) });
   const mk = (email: string, role: any) => users.create(email, email.split('@')[0], role, PW);
   const sa = await mk('sa@x.in', 'SUPER_ADMIN'), ia = await mk('ia@x.in', 'INDIA_ADMIN'), is = await mk('is@x.in', 'INDIA_STAFF'), cs = await mk('cs@x.in', 'CHINA_STAFF');
   const login = async (email: string, password = PW) => {
@@ -15,7 +15,7 @@ async function setup() {
   };
   const call = (tok: string | null, method: any, url: string, payload?: object) =>
     app.inject({ method, url, payload, headers: { authorization: `Bearer ${tok}` } });
-  return { app, twenty, users, sa, ia, is, cs, login, call };
+  return { db, bus, app, twenty, users, sa, ia, is, cs, login, call };
 }
 
 describe('staff management', () => {
@@ -77,19 +77,19 @@ describe('staff management', () => {
     expect((await call(S2, 'DELETE', `/api/users/${sa.id}`)).statusCode).toBe(204); // two existed
     expect((await call(S2, 'DELETE', `/api/users/${sa2.id}`)).statusCode).toBe(403); // self
     const sa3 = await users.create('sa3@x.in', 'sa3', 'SUPER_ADMIN', PW);
-    users.update(sa3.id, { active: false }); // inactive SA does not count
+    await users.update(sa3.id, { active: false }); // inactive SA does not count
     const S3 = S2; void S3;
     expect(users.activeSuperAdmins()).toBe(1);
     void ia;
   });
 
   it('never removes the last active super admin', async () => {
-    const { users, sa } = await setup();
-    const app2 = await buildApp({ twenty: new MockTwenty(), users, jwtSecret: 'x'.repeat(40) });
+    const { users, sa, db, bus } = await setup();
+    const app2 = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40) });
     // simulate a second (inactive-turned-active) SA trying to demote the last other one after the first is disabled
     const b = await users.create('b@x.in', 'b', 'SUPER_ADMIN', PW);
     const tok = (await app2.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'b@x.in', password: PW } })).json().token;
-    users.update(b.id, { active: false }); users.update(b.id, { active: true });
+    await users.update(b.id, { active: false }); users.update(b.id, { active: true });
     const t2 = (await app2.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'b@x.in', password: PW } })).json().token;
     void tok;
     // disable sa -> b is the only active SA; now b can't be demoted by anyone (only self, which is blocked) and sa cannot be... check via store count

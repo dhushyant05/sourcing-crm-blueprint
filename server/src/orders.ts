@@ -1,9 +1,9 @@
 /**
  * Orders (v1): created by India from an accepted quote, linked to the lead's SE reference.
  * India fields: qty, agreed INR price, advance received, payment status, expected ship date, India-side shipment status (customs / delivered).
- * China fields: production status, tracking / container no, ETD / ETA. Stored in the server's SQLite DB.
+ * China fields: production status, tracking / container no, ETD / ETA. Stored in PostgreSQL.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from './db.js';
 import { randomUUID } from 'node:crypto';
 import { BadQuote } from './quotes.js';
 
@@ -27,28 +27,23 @@ export const INDIA_KEYS = ['qty', 'agreedPrice', 'advance', 'paymentStatus', 'ex
 export const CHINA_KEYS = ['production', 'tracking', 'container', 'etd', 'eta'];
 
 export class OrderStore {
-  constructor(private db: DatabaseSync) {
-    db.exec(`CREATE TABLE IF NOT EXISTS orders (
-      id TEXT PRIMARY KEY, lead_id TEXT NOT NULL, quote_id TEXT NOT NULL UNIQUE, lead_ref TEXT, product TEXT NOT NULL, qty REAL NOT NULL, agreed_price REAL NOT NULL,
-      advance REAL NOT NULL DEFAULT 0, payment_status TEXT NOT NULL, expected_ship TEXT, production TEXT NOT NULL, tracking TEXT, container TEXT, etd TEXT, eta TEXT,
-      india_status TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS o_lead ON orders(lead_id);`);
-  }
+  constructor(private db: Db) {}
   private o = (r: any): Order => ({ id: r.id, leadId: r.lead_id, quoteId: r.quote_id, leadRef: r.lead_ref, product: r.product, qty: r.qty, agreedPrice: r.agreed_price,
     advance: r.advance, paymentStatus: r.payment_status, expectedShip: r.expected_ship, production: r.production, tracking: r.tracking, container: r.container,
     etd: r.etd, eta: r.eta, indiaStatus: r.india_status, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at });
-  all(): Order[] { return (this.db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all() as any[]).map(this.o); }
-  get(id: string): Order | null { const r = this.db.prepare('SELECT * FROM orders WHERE id = ?').get(id); return r ? this.o(r) : null; }
-  byQuote(qid: string): Order | null { const r = this.db.prepare('SELECT * FROM orders WHERE quote_id = ?').get(qid); return r ? this.o(r) : null; }
-  create(x: { leadId: string; quoteId: string; leadRef: string | null; product: string }, b: Record<string, unknown>, by: string): Order {
+  async all(): Promise<Order[]> { return ((await this.db.all('SELECT * FROM orders ORDER BY created_at DESC, id')) as any[]).map(this.o); }
+  async byLead(leadId: string): Promise<Order[]> { return (await this.db.all('SELECT * FROM orders WHERE lead_id = ? ORDER BY created_at DESC, id', leadId)).map(this.o); }
+  async get(id: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE id = ?', id)); return r ? this.o(r) : null; }
+  async byQuote(qid: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE quote_id = ?', qid)); return r ? this.o(r) : null; }
+  async create(x: { leadId: string; quoteId: string; leadRef: string | null; product: string }, b: Record<string, unknown>, by: string): Promise<Order> {
     const id = randomUUID(), at = new Date().toISOString();
-    this.db.prepare(`INSERT INTO orders (id, lead_id, quote_id, lead_ref, product, qty, agreed_price, advance, payment_status, expected_ship, production, india_status, created_by, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, x.leadId, x.quoteId, x.leadRef, x.product, n(b.qty, 'Quantity', true), n(b.agreedPrice, 'Agreed price', true), n(b.advance, 'Advance'),
-      one(b.paymentStatus ?? 'PENDING', PAYMENT, 'Payment status'), date(b.expectedShip, 'Expected ship date'), 'NEW', 'NONE', by, at, at);
-    return this.get(id)!;
+    (await this.db.run(`INSERT INTO orders (id, lead_id, quote_id, lead_ref, product, qty, agreed_price, advance, payment_status, expected_ship, production, india_status, created_by, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, x.leadId, x.quoteId, x.leadRef, x.product, n(b.qty, 'Quantity', true), n(b.agreedPrice, 'Agreed price', true), n(b.advance, 'Advance'),
+      one(b.paymentStatus ?? 'PENDING', PAYMENT, 'Payment status'), date(b.expectedShip, 'Expected ship date'), 'NEW', 'NONE', by, at, at));
+    return (await this.get(id))!;
   }
-  update(id: string, b: Record<string, unknown>): Order {
-    const c = this.get(id)!, h = (k: string) => k in b;
+  async update(id: string, b: Record<string, unknown>): Promise<Order> {
+    const c = (await this.get(id))!, h = (k: string) => k in b;
     const v = {
       qty: h('qty') ? n(b.qty, 'Quantity', true) : c.qty, agreedPrice: h('agreedPrice') ? n(b.agreedPrice, 'Agreed price', true) : c.agreedPrice,
       advance: h('advance') ? n(b.advance, 'Advance') : c.advance, paymentStatus: h('paymentStatus') ? one(b.paymentStatus, PAYMENT, 'Payment status') : c.paymentStatus,
@@ -56,10 +51,9 @@ export class OrderStore {
       production: h('production') ? one(b.production, PRODUCTION, 'Production status') : c.production, tracking: h('tracking') ? s(b.tracking) : c.tracking,
       container: h('container') ? s(b.container) : c.container, etd: h('etd') ? date(b.etd, 'ETD') : c.etd, eta: h('eta') ? date(b.eta, 'ETA') : c.eta,
     };
-    this.db.prepare(`UPDATE orders SET qty=?, agreed_price=?, advance=?, payment_status=?, expected_ship=?, india_status=?, production=?, tracking=?, container=?, etd=?, eta=?, updated_at=? WHERE id=?`)
-      .run(v.qty, v.agreedPrice, v.advance, v.paymentStatus, v.expectedShip, v.indiaStatus, v.production, v.tracking, v.container, v.etd, v.eta, new Date().toISOString(), id);
-    return this.get(id)!;
+    (await this.db.run(`UPDATE orders SET qty=?, agreed_price=?, advance=?, payment_status=?, expected_ship=?, india_status=?, production=?, tracking=?, container=?, etd=?, eta=?, updated_at=? WHERE id=?`, v.qty, v.agreedPrice, v.advance, v.paymentStatus, v.expectedShip, v.indiaStatus, v.production, v.tracking, v.container, v.etd, v.eta, new Date().toISOString(), id));
+    return (await this.get(id))!;
   }
-  removeLead(leadId: string) { this.db.prepare('DELETE FROM orders WHERE lead_id = ?').run(leadId); }
-  removeQuote(qid: string) { this.db.prepare('DELETE FROM orders WHERE quote_id = ?').run(qid); }
+  async removeLead(leadId: string) { (await this.db.run('DELETE FROM orders WHERE lead_id = ?', leadId)); }
+  async removeQuote(qid: string) { (await this.db.run('DELETE FROM orders WHERE quote_id = ?', qid)); }
 }

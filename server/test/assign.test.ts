@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { UserStore } from '../src/users.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PW = 'correct-horse-1';
 async function setup() {
-  const twenty = new MockTwenty(), users = new UserStore();
-  const app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40) });
+  const { db, bus, users, twenty } = await testEnv();
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40) });
   const mk = (email: string, role: any) => users.create(email, email.split('@')[0], role, PW);
   const sa = await mk('sa@x.in', 'SUPER_ADMIN'), ia = await mk('ia@x.in', 'INDIA_ADMIN'), is = await mk('is@x.in', 'INDIA_STAFF'),
     is2 = await mk('is2@x.in', 'INDIA_STAFF'), ca = await mk('ca@x.in', 'CHINA_ADMIN'), cs = await mk('cs@x.in', 'CHINA_STAFF'), cs2 = await mk('cs2@x.in', 'CHINA_STAFF');

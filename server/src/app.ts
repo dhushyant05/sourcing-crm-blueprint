@@ -6,10 +6,12 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
-import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged } from './uploads.js';
+import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged, type Attachment } from './uploads.js';
 import { capabilities, isRole, manageableRoles, sides, type Role } from './roles.js';
-import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
-import type { TwentyLike } from './twenty.js';
+import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
+import type { Db } from './db.js';
+import type { Bus } from './bus.js';
+import { LeadStore } from './leads.js';
 import type { UserStore, User } from './users.js';
 import { QuoteStore, QUOTE_STATUSES, cqTotals, type Quote } from './quotes.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
@@ -21,7 +23,8 @@ import { AssignStore, type Assignment, type Office, type NotifKind } from './ass
 import { WorkflowStore, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 
 export interface AppOptions {
-  twenty: TwentyLike;
+  db: Db;
+  bus: Bus;
   users: UserStore;
   jwtSecret: string;
   jwtTtl?: string;
@@ -32,8 +35,6 @@ export interface AppOptions {
   uploadsDir?: string;
   /** Persistent folder holding source-easy.apk + version.json (published by infra/app-servers/publish-apk.sh). */
   downloadsDir?: string;
-  /** Lead reference counter (SE-YYMM-NNNN). Default: in-memory (tests). */
-  refs?: RefCounter;
   /** Clock for SLA (tests). */
   now?: () => number;
   /** SLA checker interval in ms (default 30 s; 0 = off, call app.slaTick() manually). */
@@ -44,59 +45,56 @@ declare module 'fastify' { interface FastifyRequest { user?: User } interface Fa
 
 export async function buildApp(o: AppOptions) {
   const app = Fastify({ logger: o.logger ?? false, trustProxy: true, bodyLimit: 1 << 20 });
-  const refs = o.refs ?? new RefCounter();
-  let seeded: Promise<void> | null = null;
-  /** Next shared lead reference. First call also syncs the counter with refs already stored in Twenty. */
-  const nextRef = async () => {
-    seeded ??= o.twenty.list(OBJECTS.lead).then((ls) => ls.forEach((l) => refs.seen(l.leadRef)));
-    await seeded;
-    return refs.next();
-  };
-  /** Child records inherit the lead's reference: sourcing request & shipment via leadId, quotation via its sourcing request. */
-  const inheritRef = async (obj: ObjectName, data: Rec): Promise<string | undefined> => {
-    const ref = async (plural: string, id: unknown) => (id ? (await o.twenty.get(plural, String(id)))?.leadRef as string | undefined : undefined);
-    if (obj === 'sourcingRequest') return ref(OBJECTS.lead, data.leadId);
-    if (obj === 'quotation') return ref(OBJECTS.sourcingRequest, data.sourcingRequestId);
-    if (obj === 'shippingOrder') return (await ref(OBJECTS.lead, data.leadId)) ?? (await ref(OBJECTS.quotation, data.quotationId));
-    return undefined;
-  };
-  const fails = new Map<string, { n: number; until: number }>();
+  const refs = new RefCounter(o.db);
+  const leadDb = new LeadStore(o.db);
+  /** Next shared lead reference (atomic counter in PostgreSQL). */
+  const nextRef = () => refs.next();
+  // Another API process changed a user (or a token was revoked): reload, and close that user's live streams if revoked.
+  const revokeSubs = new Map<string, Set<() => void>>();
+  o.users.onChange = (id) => { void o.bus.publish('se:revoke', { id, v: o.users.tokenVersion(id) ?? null, pid: process.pid }).catch(() => undefined); };
+  o.bus.subscribe('se:revoke', (m: { id: string; v: number | null; pid: number }) => {
+    void (async () => {
+      if (m.pid !== process.pid) await o.users.reload();
+      const u = o.users.byId(m.id);
+      for (const f of revokeSubs.get(m.id) ?? []) f();
+    })().catch(() => undefined);
+  });
 
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
-  const assign = new AssignStore(o.users.database);
-  const quotes = new QuoteStore(o.users.database);
-  const orders = new OrderStore(o.users.database);
-  const ships = new ShipmentStore(o.users.database);
-  const rejects = new RejectStore(o.users.database);
+  const assign = new AssignStore(o.db, o.bus);
+  const quotes = new QuoteStore(o.db);
+  const orders = new OrderStore(o.db);
+  const ships = new ShipmentStore(o.db);
+  const rejects = new RejectStore(o.db);
   /** Shipment fields from the customer quote (falls back to China's shipping offer). */
   const shipFrom = (q: Quote | null) => ({ mode: q?.cq?.shipMode ?? q?.shipMode ?? null, incoterm: q?.cq?.shipTerm ?? q?.shipTerm ?? null,
     port: q?.cq?.port ?? q?.shipPort ?? null, transit: q?.cq?.transit ?? q?.shipTransit ?? null });
   const orderShipStatus = (x: Order) => (x.indiaStatus !== 'NONE' && x.indiaStatus ? x.indiaStatus : x.production === 'SHIPPED' ? 'IN_TRANSIT' : 'PENDING');
-  const shipFor = (x: Order) => ships.byOrder(x.id) ?? ships.create({ orderId: x.id, leadId: x.leadId, leadRef: x.leadRef, ...shipFrom(quotes.get(x.quoteId)),
+  const shipFor = async (x: Order) => (await ships.byOrder(x.id)) ?? ships.create({ orderId: x.id, leadId: x.leadId, leadRef: x.leadRef, ...shipFrom(await quotes.get(x.quoteId)),
     tracking: x.tracking, container: x.container, etd: x.etd, eta: x.eta, status: orderShipStatus(x), createdAt: x.createdAt });
-  // Backfill: every order made before shipments existed gets its shipment now.
-  for (const x of orders.all().reverse()) shipFor(x);
-  const wf = new WorkflowStore(o.users.database, o.now ?? Date.now);
+  // Every order has its shipment.
+  for (const x of (await orders.all()).reverse()) await shipFor(x);
+  const wf = new WorkflowStore(o.db, o.now ?? Date.now);
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
   /** Adds raisedBy/assignedTo (+ names) to a filtered lead. Only staff names/ids, never customer data. */
-  const decorate = (rec: Rec, a: Assignment | null | undefined, names: Map<string, string>) => ({
+  const decorate = async (rec: Rec, a: Assignment | null | undefined, names: Map<string, string>) => ({
     ...rec, raisedBy: a?.raisedBy ?? null, raisedByName: (a?.raisedBy && names.get(a.raisedBy)) || null,
     assignedTo: a?.assignedTo ?? null, assignedToName: (a?.assignedTo && names.get(a.assignedTo)) || null,
     ownerOffice: a?.ownerOffice ?? (rec.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'),
-    rejection: rec.id ? rejects.summary(String(rec.id), names) : null,
-    priority: wf.priority(String(rec.id)), sla: slaView(String(rec.id), names),
-    ...leadMetaView(rec, names),
+    rejection: rec.id ? await rejects.summary(String(rec.id), names) : null,
+    priority: await wf.priority(String(rec.id)), sla: await slaView(String(rec.id), names),
+    ...(await leadMetaView(rec, names)),
   });
-  const leadMetaView = (rec: Rec, names: Map<string, string>) => {
-    const m = rec.id ? wf.meta(String(rec.id)) : null;
+  const leadMetaView = async (rec: Rec, names: Map<string, string>) => {
+    const m = rec.id ? await wf.meta(String(rec.id)) : null;
     if (!m) return {};
     return { ...(m.closedAt ? { status: 'CLOSED', closedAt: m.closedAt, closedByName: (m.closedBy && names.get(m.closedBy)) || null } : {}),
       followUp: m.followUp, createdFromRef: m.fromRef, createdFromId: m.fromId };
   };
-  const slaView = (leadId: string, names?: Map<string, string>) => {
-    const c = wf.clock(leadId);
+  const slaView = async (leadId: string, names?: Map<string, string>) => {
+    const c = await wf.clock(leadId);
     return c ? { office: c.office, startedAt: c.startedAt, dueAt: c.dueAt, breached: c.breached, assignee: c.assignee, assigneeName: (c.assignee && names?.get(c.assignee)) || null } : null;
   };
   const actorOf = (u: User | null) => (u ? { id: u.id, name: u.name, office: officeOf(u.role) ?? ('ADMIN' as const) } : null);
@@ -111,8 +109,8 @@ export async function buildApp(o: AppOptions) {
   const indiaOwner = (u: User | null | undefined) => !!u && u.active && (officeOf(u.role) === 'INDIA' || u.role === 'SUPER_ADMIN');
   /** Who hears about an unowned India/China lead: that office's admins, plus the super admin(s). */
   const queueWatchers = (office: Office) => o.users.list().filter((u) => u.active && (u.role === 'SUPER_ADMIN' || (officeOf(u.role) === office && u.role.endsWith('ADMIN')))).map((u) => u.id);
-  const handoff = (lead: Rec, actor: User | null, office: Office, to: string | null | undefined) => {
-    const leadId = String(lead.id), prev = assign.get(leadId);
+  const handoff = async (lead: Rec, actor: User | null, office: Office, to: string | null | undefined) => {
+    const leadId = String(lead.id), prev = await assign.get(leadId);
     if (to) {
       const u = o.users.byId(to);
       if (!u || !u.active || (officeOf(u.role) !== office && !(office === 'INDIA' && u.role === 'SUPER_ADMIN'))) throw bad(`Assignee must be an active ${office} staff member`);
@@ -121,7 +119,7 @@ export async function buildApp(o: AppOptions) {
     // the India member/super admin who sends it to China, or the India member it gets assigned to.
     if (!prev?.raisedBy) {
       const by = office === 'CHINA' && indiaOwner(actor) ? actor!.id : office === 'INDIA' && to ? to : null;
-      if (by) assign.set(leadId, { raisedBy: by });
+      if (by) await assign.set(leadId, { raisedBy: by });
     }
     if (to === undefined) {
       const r = prev?.raisedBy ? o.users.byId(prev.raisedBy) : null;
@@ -129,37 +127,37 @@ export async function buildApp(o: AppOptions) {
     }
     const returned = office === 'INDIA' && prev?.ownerOffice === 'CHINA';
     const changed = prev?.ownerOffice !== office || (prev?.assignedTo ?? null) !== to;
-    assign.set(leadId, { ownerOffice: office, assignedTo: to });
+    await assign.set(leadId, { ownerOffice: office, assignedTo: to });
     if (changed) {
       const toName = to ? o.users.byId(to)?.name ?? null : null;
-      ev(leadId, returned ? 'RETURNED' : prev?.ownerOffice === office ? 'REASSIGNED' : !to ? 'QUEUED' : 'ASSIGNED', actor, { office, to: toName });
+      await ev(leadId, returned ? 'RETURNED' : prev?.ownerOffice === office ? 'REASSIGNED' : !to ? 'QUEUED' : 'ASSIGNED', actor, { office, to: toName });
       // Each handoff to another office starts that office's SLA clock; a reassignment within the office keeps it running.
-      if (prev?.ownerOffice !== office || wf.clock(leadId)) wf.start(leadId, office, to);
+      if (prev?.ownerOffice !== office || (await wf.clock(leadId))) await wf.start(leadId, office, to);
     }
     if (changed) {
       const recips = (to ? [to] : queueWatchers(office)).filter((id) => id !== actor?.id);
-      assign.notify(recips, { leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null,
+      await assign.notify(recips, { leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null,
         kind: !to ? 'QUEUE' : returned ? 'RETURNED' : 'ASSIGNED', office, byName: actor?.name ?? null });
     }
   };
   const stopClock = (leadId: string, office?: Office) => wf.stop(leadId, office);
   /** SLA watcher: 80% → the clock's assignee (or the office queue watchers); breach → office admins + super admin (+ assignee), logged on the timeline. */
   const slaTick = async () => {
-    const { warn, breach } = wf.tick();
+    const { warn, breach } = await wf.tick();
     for (const [c, kind] of [...warn.map((c) => [c, 'SLA_WARN'] as const), ...breach.map((c) => [c, 'SLA_BREACH'] as const)]) {
-      const lead = await o.twenty.get(OBJECTS.lead, c.leadId).catch(() => null);
-      if (!lead) { wf.forgetLead(c.leadId); continue; }
+      const lead = await leadDb.get(c.leadId);
+      if (!lead) { await wf.forgetLead(c.leadId); continue; }
       const owner = c.assignee && o.users.byId(c.assignee)?.active ? [c.assignee] : [];
       const recips = kind === 'SLA_WARN' ? (owner.length ? owner : queueWatchers(c.office)) : [...new Set([...queueWatchers(c.office), ...owner])];
-      if (kind === 'SLA_BREACH') wf.log(c.leadId, 'SLA_BREACH', null, { office: c.office, dueAt: c.dueAt, assignee: (c.assignee && o.users.byId(c.assignee)?.name) || null, priority: c.priority });
-      assign.notify(recips, { leadId: c.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office: c.office, byName: null });
+      if (kind === 'SLA_BREACH') await wf.log(c.leadId, 'SLA_BREACH', null, { office: c.office, dueAt: c.dueAt, assignee: (c.assignee && o.users.byId(c.assignee)?.name) || null, priority: c.priority });
+      await assign.notify(recips, { leadId: c.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office: c.office, byName: null });
     }
-    for (const f of wf.dueFollowUps()) {
-      const lead = await o.twenty.get(OBJECTS.lead, f.leadId).catch(() => null); if (!lead) continue;
-      const a = assign.get(f.leadId);
+    for (const f of await wf.dueFollowUps()) {
+      const lead = await leadDb.get(f.leadId); if (!lead) continue;
+      const a = await assign.get(f.leadId);
       const recips = [...new Set([f.by, a?.raisedBy, a?.ownerOffice === 'INDIA' ? a?.assignedTo : null].filter((x): x is string => !!x && !!o.users.byId(x)?.active))];
-      wf.log(f.leadId, 'FOLLOW_UP_DUE', null, { date: f.date });
-      if (recips.length) assign.notify(recips, { leadId: f.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'FOLLOW_UP', office: 'INDIA', byName: null, detail: f.date });
+      await wf.log(f.leadId, 'FOLLOW_UP_DUE', null, { date: f.date });
+      if (recips.length) await assign.notify(recips, { leadId: f.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'FOLLOW_UP', office: 'INDIA', byName: null, detail: f.date });
     }
     return { warn: warn.length, breach: breach.length };
   };
@@ -169,28 +167,30 @@ export async function buildApp(o: AppOptions) {
     t.unref?.(); app.addHook('onClose', async () => clearInterval(t));
     // One-off: open leads created before SLA clocks existed get a clock (from now) for the office that holds them.
     const bf = setTimeout(() => { void (async () => {
-      if (!wf.once('clock-backfill-v1')) return;
-      const ls = (await o.twenty.list(OBJECTS.lead, {})) as Rec[]; let n = 0;
+      if (!(await wf.once('clock-backfill-v1'))) return;
+      const ls = await leadDb.list(); let n = 0;
       for (const l of ls) {
         const id = String(l.id), st = String(l.status ?? 'NEW');
-        if (['WON', 'LOST', 'DELIVERED', 'SHIPPING', 'CLOSED'].includes(st) || wf.clock(id)) continue;
-        const a = assign.get(id), office = (a?.ownerOffice ?? (l.assignedOffice as Office) ?? 'INDIA') as Office;
-        wf.start(id, office, a?.assignedTo ?? null); n++;
+        if (['WON', 'LOST', 'DELIVERED', 'SHIPPING', 'CLOSED'].includes(st) || (await wf.clock(id))) continue;
+        const a = await assign.get(id), office = (a?.ownerOffice ?? (l.assignedOffice as Office) ?? 'INDIA') as Office;
+        await wf.start(id, office, a?.assignedTo ?? null); n++;
       }
       app.log.info({ n }, 'sla clock backfill');
     })().catch((e) => app.log.warn(e, 'sla clock backfill failed')); }, 5000);
     bf.unref?.(); app.addHook('onClose', async () => clearTimeout(bf));
   }
   app.decorate('slaTick', slaTick);
+  // Live data-change events go through Redis (`se:data`) so every API process can push them to its SSE streams.
   const dataSubs = new Set<(d: Rec) => void>();
+  o.bus.subscribe('se:data', (d: Rec) => { for (const f of dataSubs) { try { f(d); } catch { /* broken stream */ } } });
   const onLiveData = (f: (d: Rec) => void) => { dataSubs.add(f); return () => { dataSubs.delete(f); }; };
-  const liveData = (d: Rec) => { for (const f of dataSubs) { try { f(d); } catch { /* broken stream */ } } };
+  const liveData = (d: Rec) => o.bus.publish('se:data', d).catch((e) => app.log.warn(e, 'live publish failed'));
   /** Workflow stage for the progress bar. */
   const STAGES = ['NEW', 'CHINA', 'SOURCING', 'QUOTED', 'CQ_SENT', 'DECIDED', 'ORDER', 'SHIPPED', 'DELIVERED'] as const;
-  const stageOf = (lead: Rec, owner: Office | null) => {
+  const stageOf = async (lead: Rec, owner: Office | null) => {
     // While a revised quote is being sourced after a rejection, the rejected quotes no longer decide the stage.
-    const revising = !!rejects.summary(String(lead.id), new Map())?.revising;
-    const qs = quotes.list(String(lead.id)).filter((q) => !(revising && q.status === 'REJECTED')), ords = orders.all().filter((x) => x.leadId === lead.id), st = String(lead.status ?? 'NEW');
+    const revising = !!(await rejects.summary(String(lead.id), new Map()))?.revising;
+    const qs = (await quotes.list(String(lead.id))).filter((q) => !(revising && q.status === 'REJECTED')), ords = await orders.byLead(String(lead.id)), st = String(lead.status ?? 'NEW');
     const lost = st === 'LOST' || (qs.some((q) => q.status === 'REJECTED') && !qs.some((q) => q.status === 'ACCEPTED' || q.status === 'SENT'));
     let stage: (typeof STAGES)[number] = 'NEW';
     if (st === 'DELIVERED' || ords.some((x) => x.indiaStatus === 'DELIVERED')) stage = 'DELIVERED';
@@ -213,7 +213,7 @@ export async function buildApp(o: AppOptions) {
     if (!s.china) delete data.supplier;
     return { ...e, data };
   };
-  /** Body field `assignedTo` ('' / null = office queue). Stripped before the Twenty write. */
+  /** Body field `assignedTo` ('' / null = office queue). Stripped before the lead write. */
   const takeAssignee = (body: Rec): string | null | undefined => {
     if (!('assignedTo' in body)) return undefined;
     const v = body.assignedTo; delete body.assignedTo;
@@ -245,12 +245,12 @@ export async function buildApp(o: AppOptions) {
     } catch { return reply.code(401).send({ error: 'Session expired' }); }
   }
   const ctxOf = async (role: Role): Promise<Ctx> => ({ role });
-  const avatars = new AvatarStore(o.users.database);
+  const avatars = await new AvatarStore(o.db).load();
   const avatarOf = (id: string) => avatars.urls().get(id) ?? null;
   const me = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, language: u.language ?? null, avatarUrl: avatarOf(u.id), capabilities: capabilities(u.role) });
   // Public by design (an <img> cannot send a bearer token); ids are random UUIDs and pictures are low-sensitivity.
   app.get<{ Params: { id: string } }>('/api/avatars/:id', async (req, reply) => {
-    const a = avatars.get(req.params.id); if (!a) return reply.code(404).send({ error: 'Not found' });
+    const a = await avatars.get(req.params.id); if (!a) return reply.code(404).send({ error: 'Not found' });
     return reply.header('content-type', 'image/webp').header('cache-control', 'public, max-age=31536000, immutable').send(a.data);
   });
   /** Reads one image file from a multipart request into memory (max 5 MB). */
@@ -268,17 +268,26 @@ export async function buildApp(o: AppOptions) {
 
   app.post<{ Body: { email?: string; password?: string } }>('/api/auth/login', async (req, reply) => {
     const { email = '', password = '' } = req.body ?? {};
-    const key = `${req.ip}|${email.toLowerCase()}`, f = fails.get(key);
-    if (f && f.n >= 5 && f.until > Date.now()) return reply.code(429).send({ error: 'Too many attempts, try again in a few minutes' });
+    // Failed-login counter in Redis (shared by every API process): 5 failures → 10 min lock.
+    const key = `se:fail:${req.ip}|${email.toLowerCase()}`;
+    if (Number((await o.bus.get(key)) ?? 0) >= 5) return reply.code(429).send({ error: 'Too many attempts, try again in a few minutes' });
     const u = await o.users.verify(email, password);
-    if (!u) { fails.set(key, { n: (f?.n ?? 0) + 1, until: Date.now() + 10 * 60e3 }); return reply.code(401).send({ error: 'Invalid email or password' }); }
-    fails.delete(key);
+    if (!u) { await o.bus.incr(key, 600); return reply.code(401).send({ error: 'Invalid email or password' }); }
+    await o.bus.del(key);
     return { token: sign(u), user: me(u) };
   });
 
   // Public website enquiry -> a NEW lead for the India office. No auth; honeypot + per-IP rate limit (5/hour).
   // Accepts multipart/form-data (with up to 5 attachments, 10 MB each) or plain JSON.
   const uploads = new UploadStore(o.uploadsDir ?? `${process.env.TMPDIR ?? '/tmp'}/se-uploads-${process.pid}`);
+  /** Indexes a folder's files in lead_media (the bytes stay on disk) and keeps the lead's attachmentCount in step. */
+  const mediaSync = async (key: string, list: Attachment[]) => {
+    await o.db.tx(async (t) => {
+      await t.run('DELETE FROM lead_media WHERE owner_key = ?', key);
+      for (const a of list) await t.run('INSERT INTO lead_media (id, owner_key, name, mime, size, created_at) VALUES (?,?,?,?,?,?)', a.id, key, a.name, a.mime, a.size, a.createdAt);
+      if (!key.startsWith('q_')) await t.run('UPDATE leads SET attachment_count = ?, updated_at = now() WHERE id = ?', list.length, key);
+    });
+  };
   await app.register(multipart, { limits: { fileSize: MAX_VIDEO_BYTES, files: MAX_STAFF_FILES, fields: 40, fieldSize: 4000 } });
   /** Reads a multipart body: files are streamed to staging (validated by magic bytes), fields collected. */
   const readMultipart = async (req: FastifyRequest, maxFiles: number) => {
@@ -302,7 +311,6 @@ export async function buildApp(o: AppOptions) {
     }
     return { fields, files, err: null };
   };
-  const enq = new Map<string, number[]>();
   const UNITS = ['pcs', 'kg', 'ton', 'm', 'sqm', 'sets', 'cartons', 'containers'];
   app.post('/api/public/enquiry', async (req, reply) => {
     const b: Record<string, string> = {}; let files: Staged[] = [];
@@ -314,8 +322,8 @@ export async function buildApp(o: AppOptions) {
     const reject = (code: number, body: unknown) => { uploads.discard(files); return reply.code(code).send(body); };
     const str = (k: string, max = 200) => (b[k] ?? '').trim().slice(0, max);
     if (str('website')) return reject(202, { ok: true }); // bot filled the hidden field
-    const now = Date.now(), hits = (enq.get(req.ip) ?? []).filter((t) => now - t < 3600e3);
-    if (hits.length >= 5) return reject(429, { error: 'Too many enquiries, please try again later' });
+    const enqKey = `se:enq:${req.ip}:${Math.floor(Date.now() / 3600e3)}`;
+    if (Number((await o.bus.get(enqKey)) ?? 0) >= 5) return reject(429, { error: 'Too many enquiries, please try again later' });
 
     const name = str('name', 120), email = str('email', 160), product = str('product', 1000);
     const code = str('phoneCode', 6) || '+91';
@@ -330,11 +338,11 @@ export async function buildApp(o: AppOptions) {
     const currency = ['USD', 'CNY', 'INR'].includes(str('currency', 3)) ? str('currency', 3) : 'INR';
     const price = Number(str('targetPrice', 20)), qty = Number(str('quantity', 12));
     const unit = UNITS.includes(str('unit', 12)) ? str('unit', 12) : 'pcs';
-    hits.push(now); enq.set(req.ip, hits);
+    await o.bus.incr(enqKey, 3600);
 
     const leadRef = await nextRef();
     const company = str('company', 160), msg = str('message', 2000), city = str('deliveryCity', 120);
-    const lead = await o.twenty.create('leads', {
+    const lead = await leadDb.create({
       name: `${company || name} — ${product}`.slice(0, 200), clientName: company || name, productInterest: product,
       ...(qty > 0 ? { quantity: qty, unit } : {}),
       ...(price > 0 ? { targetPrice: { amountMicros: Math.round(price * 1e6), currencyCode: currency } } : {}),
@@ -345,8 +353,8 @@ export async function buildApp(o: AppOptions) {
       ...(str('summary', 2000) ? { summary: str('summary', 2000) } : {}),
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
-    if (files.length && lead?.id) uploads.commit(String(lead.id), files); else uploads.discard(files);
-    if (lead?.id) { ev(String(lead.id), 'CREATED', null, { channel: 'WEBSITE', files: files.length }); handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); } // India queue; India admins are notified
+    if (files.length) await mediaSync(String(lead.id), uploads.commit(String(lead.id), files)); else uploads.discard(files);
+    { await ev(String(lead.id), 'CREATED', null, { channel: 'WEBSITE', files: files.length }); await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); } // India queue; India admins are notified
     return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
   });
 
@@ -358,17 +366,17 @@ export async function buildApp(o: AppOptions) {
       const path = req.url.split('?')[0]; let m: RegExpMatchArray | null; let type = '', id: string | null = null, leadId: string | null = null;
       if ((m = path.match(/^\/api\/(?:records\/leads|leads)\/([^/]+)(\/quotes)?/))) { type = m[2] ? 'quote' : 'lead'; id = m[1]; leadId = m[1]; }
       else if (path === '/api/records/leads') { type = 'lead'; }
-      else if ((m = path.match(/^\/api\/quotes\/([^/]+)(\/order)?/))) { type = m[2] ? 'order' : 'quote'; id = m[1]; leadId = quotes.get(m[1])?.leadId ?? null; }
-      else if ((m = path.match(/^\/api\/orders\/([^/]+)/))) { type = 'order'; id = m[1]; leadId = orders.get(m[1])?.leadId ?? null; }
-      else if ((m = path.match(/^\/api\/shipments\/([^/]+)/))) { type = 'shipment'; id = m[1]; leadId = ships.get(m[1])?.leadId ?? null; }
+      else if ((m = path.match(/^\/api\/quotes\/([^/]+)(\/order)?/))) { type = m[2] ? 'order' : 'quote'; id = m[1]; leadId = (await quotes.get(m[1]))?.leadId ?? null; }
+      else if ((m = path.match(/^\/api\/orders\/([^/]+)/))) { type = 'order'; id = m[1]; leadId = (await orders.get(m[1]))?.leadId ?? null; }
+      else if ((m = path.match(/^\/api\/shipments\/([^/]+)/))) { type = 'shipment'; id = m[1]; leadId = (await ships.get(m[1]))?.leadId ?? null; }
       else if (path.startsWith('/api/suppliers')) type = 'supplier';
       else return;
-      liveData({ type, id, leadId, at: Date.now() });
+      await liveData({ type, id, leadId, at: Date.now() });
     });
     api.get('/api/me', async (req) => me(req.user!));
     // Per-user UI language (devices also keep their own choice).
     api.patch<{ Body: { language?: string } }>('/api/me', async (req, reply) => {
-      try { return me(o.users.setLanguage(req.user!.id, String(req.body?.language ?? ''))); }
+      try { return me(await o.users.setLanguage(req.user!.id, String(req.body?.language ?? ''))); }
       catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
     });
     api.post<{ Body: { currentPassword: string; newPassword: string } }>('/api/me/password', async (req, reply) => {
@@ -378,7 +386,7 @@ export async function buildApp(o: AppOptions) {
       return { token: sign(o.users.byId(req.user!.id)!) };
     });
     api.post('/api/me/avatar', async (req) => { await avatars.set(req.user!.id, await readImage(req)); return me(req.user!); });
-    api.delete('/api/me/avatar', async (req) => { avatars.remove(req.user!.id); return me(req.user!); });
+    api.delete('/api/me/avatar', async (req) => { await avatars.remove(req.user!.id); return me(req.user!); });
     // Names + pictures of active staff, to show avatars next to names (timeline, notifications…).
     api.get('/api/people', async () => { const a = avatars.urls(); return { data: o.users.list().filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, avatarUrl: a.get(u.id) ?? null })) }; });
 
@@ -386,7 +394,7 @@ export async function buildApp(o: AppOptions) {
     const attLead = async (req: FastifyRequest<{ Params: { id: string } }>) => {
       // Product photos/documents: any side that can read the lead (China only sees China-assigned leads).
       const role = req.user!.role;
-      const r = await o.twenty.get(OBJECTS.lead, req.params.id);
+      const r = await leadDb.get(req.params.id);
       if (!r || !readFilter('lead', r, await ctxOf(role))) throw Object.assign(new Error('Not found'), { status: 404 });
       return String(r.id);
     };
@@ -416,9 +424,7 @@ export async function buildApp(o: AppOptions) {
       if (!sides(req.user!.role).india) throw new Forbidden('Only the India office can change lead files');
       return attLead(req);
     };
-    const syncCount = async (leadId: string, n: number) => {
-      try { await o.twenty.update(OBJECTS.lead, leadId, { attachmentCount: n }); } catch (e) { app.log.warn(e, 'attachmentCount sync failed'); }
-    };
+    const syncCount = (leadId: string, list: Parameters<typeof mediaSync>[1]) => mediaSync(leadId, list);
     api.post<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req, reply) => {
       const id = await attWrite(req);
       if (!req.isMultipart()) return reply.code(400).send({ error: 'multipart/form-data expected' });
@@ -426,61 +432,61 @@ export async function buildApp(o: AppOptions) {
       if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
       if (uploads.list(id).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per lead', code: 'count' }); }
       const list = uploads.commit(id, m.files);
-      await syncCount(id, list.length);
-      ev(id, 'MEDIA_ADDED', req.user!, { count: m.files.length });
+      await syncCount(id, list);
+      await ev(id, 'MEDIA_ADDED', req.user!, { count: m.files.length });
       return reply.code(201).send({ data: list });
     });
     api.delete<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
       const id = await attWrite(req);
       const rest = uploads.remove(id, req.params.fid);
       if (!rest) return reply.code(404).send({ error: 'Not found' });
-      await syncCount(id, rest.length);
+      await syncCount(id, rest);
       return { data: rest };
     });
 
     // ---- Supplier quotes on a lead (China writes; India reads a redacted view + adds its selling price) ----
     const qKey = (id: string) => `q_${id.replace(/-/g, '')}`.slice(0, 64);
     const quoteOf = async (req: FastifyRequest<{ Params: { qid: string } }>) => {
-      const q = quotes.get(req.params.qid);
+      const q = await quotes.get(req.params.qid);
       if (!q) throw Object.assign(new Error('Not found'), { status: 404 });
       await attLead({ ...req, params: { id: q.leadId } } as any); // 404 unless this user can read the lead
       return q;
     };
     const canEditQuote = (role: Role, uid: string, q: Quote) => role === 'SUPER_ADMIN' || role === 'CHINA_ADMIN' || (role === 'CHINA_STAFF' && q.createdBy === uid);
     /** China + super admin: everything. India: no supplier id/identity/contact, neutral file names. */
-    const viewQuote = (u: { role: Role; id: string }, q: Quote, i: number, ref: string | null) => {
+    const viewQuote = async (u: { role: Role; id: string }, q: Quote, i: number, ref: string | null) => {
       const role = u.role;
       const s = sides(role), names = userNames();
       const files = uploads.list(qKey(q.id));
       const base = { id: q.id, leadId: q.leadId, product: q.product, unitPrice: q.unitPrice, currency: q.currency, moq: q.moq, leadTime: q.leadTime,
         validity: q.validity, notes: q.notes, createdAt: q.createdAt, updatedAt: q.updatedAt,
         shipCost: q.shipCost, shipCurrency: q.shipCurrency, shipTerm: q.shipTerm, shipMode: q.shipMode, shipPort: q.shipPort, shipTransit: q.shipTransit,
-        status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt, rejectReason: q.rejectReason, orderId: orders.byQuote(q.id)?.id ?? null };
+        status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt, rejectReason: q.rejectReason, orderId: (await orders.byQuote(q.id))?.id ?? null };
       const client = { clientPrice: q.clientPrice, clientCurrency: q.clientCurrency, clientNotes: q.clientNotes, cq: q.cq, cqTotals: q.cq ? cqTotals(q.cq) : null,
         pdfUrl: q.pdfToken ? `/api/public/cq/${q.pdfToken}.pdf` : null };
       if (s.china) {
-        const sup = q.supplierId ? quotes.supplier(q.supplierId) : null;
+        const sup = q.supplierId ? await quotes.supplier(q.supplierId) : null;
         return { ...base, ...(s.india ? client : {}), supplierId: q.supplierId, supplier: sup, createdBy: q.createdBy, createdByName: names.get(q.createdBy) ?? null, canEdit: canEditQuote(role, u.id, q), files };
       }
       return { ...base, ...client, label: `${ref ?? 'Quote'}-Q${i + 1}`,
         files: files.map((f, k) => ({ ...f, name: `${ref ?? 'quote'}-Q${i + 1}-${k + 1}${(/\.[A-Za-z0-9]{1,5}$/.exec(f.name)?.[0] ?? '').toLowerCase()}` })) };
     };
-    const leadRefOf = async (id: string) => { try { return ((await o.twenty.get(OBJECTS.lead, id)) as any)?.leadRef ?? null; } catch { return null; } };
+    const leadRefOf = async (id: string) => ((await leadDb.get(id))?.leadRef as string | undefined) ?? null;
     const chinaOnly = (role: Role) => { if (!sides(role).china) throw new Forbidden('Only the China office can do this'); };
     api.get<{ Params: { id: string } }>('/api/leads/:id/quotes', async (req) => {
       const id = await attLead(req), ref = await leadRefOf(id);
-      return { data: quotes.list(id).map((q, i) => viewQuote(req.user!, q, i, ref)) };
+      return { data: await Promise.all((await quotes.list(id)).map((q, i) => viewQuote(req.user!, q, i, ref))) };
     });
     api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/leads/:id/quotes', async (req, reply) => {
       chinaOnly(req.user!.role);
       const id = await attLead(req);
-      if (quotes.count(id) >= 50) return reply.code(413).send({ error: 'Up to 50 quotes per lead' });
+      if ((await quotes.count(id)) >= 50) return reply.code(413).send({ error: 'Up to 50 quotes per lead' });
       let body = { ...(req.body ?? {}) } as Record<string, unknown>;
-      if (body.newSupplier && typeof body.newSupplier === 'object') body.supplierId = quotes.addSupplier(body.newSupplier as any, req.user!.id).id;
-      const q = quotes.create(id, body, req.user!.id);
-      const list = quotes.list(id);
-      ev(id, 'QUOTE_ADDED', req.user!, { n: list.findIndex((x) => x.id === q.id) + 1, supplier: q.supplierId ? quotes.supplier(q.supplierId)?.name ?? null : null });
-      return reply.code(201).send({ data: viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(id)) });
+      if (body.newSupplier && typeof body.newSupplier === 'object') body.supplierId = (await quotes.addSupplier(body.newSupplier as any, req.user!.id)).id;
+      const q = await quotes.create(id, body, req.user!.id);
+      const list = await quotes.list(id);
+      await ev(id, 'QUOTE_ADDED', req.user!, { n: list.findIndex((x) => x.id === q.id) + 1, supplier: q.supplierId ? (await quotes.supplier(q.supplierId))?.name ?? null : null });
+      return reply.code(201).send({ data: await viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(id)) });
     });
     api.patch<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid', async (req) => {
       const q = await quoteOf(req), role = req.user!.role, s = sides(role), b = { ...(req.body ?? {}) };
@@ -488,24 +494,24 @@ export async function buildApp(o: AppOptions) {
       let n = q;
       if (clientKeys.some((k) => k in b)) {
         if (!s.india) throw new Forbidden('Only the India office sets the customer price');
-        n = quotes.setClient(q.id, Object.fromEntries(clientKeys.filter((k) => k in b).map((k) => [k, b[k]])));
+        n = await quotes.setClient(q.id, Object.fromEntries(clientKeys.filter((k) => k in b).map((k) => [k, b[k]])));
       }
       const chinaKeys = Object.keys(b).filter((k) => !clientKeys.includes(k));
       if (chinaKeys.length) {
         if (!canEditQuote(role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can edit it');
-        if (b.newSupplier && typeof b.newSupplier === 'object') b.supplierId = quotes.addSupplier(b.newSupplier as any, req.user!.id).id;
+        if (b.newSupplier && typeof b.newSupplier === 'object') b.supplierId = (await quotes.addSupplier(b.newSupplier as any, req.user!.id)).id;
         delete b.newSupplier; for (const k of clientKeys) delete b[k];
-        n = quotes.update(q.id, b);
+        n = await quotes.update(q.id, b);
       }
-      const list = quotes.list(q.leadId), qn = list.findIndex((x) => x.id === n.id) + 1;
-      if (chinaKeys.length) ev(q.leadId, 'QUOTE_EDITED', req.user!, { n: qn });
-      if (clientKeys.some((k) => k in (req.body ?? {}))) ev(q.leadId, 'CQ_PREPARED', req.user!, { n: qn, edit: true }, 'INDIA');
-      return { data: viewQuote(req.user!, n, list.findIndex((x) => x.id === n.id), await leadRefOf(q.leadId)) };
+      const list = await quotes.list(q.leadId), qn = list.findIndex((x) => x.id === n.id) + 1;
+      if (chinaKeys.length) await ev(q.leadId, 'QUOTE_EDITED', req.user!, { n: qn });
+      if (clientKeys.some((k) => k in (req.body ?? {}))) await ev(q.leadId, 'CQ_PREPARED', req.user!, { n: qn, edit: true }, 'INDIA');
+      return { data: await viewQuote(req.user!, n, list.findIndex((x) => x.id === n.id), await leadRefOf(q.leadId)) };
     });
     api.delete<{ Params: { qid: string } }>('/api/quotes/:qid', async (req, reply) => {
       const q = await quoteOf(req);
       if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can delete it');
-      quotes.remove(q.id); uploads.removeAll(qKey(q.id)); { const x = orders.byQuote(q.id); if (x) ships.removeOrder(x.id); } orders.removeQuote(q.id);
+      await quotes.remove(q.id); uploads.removeAll(qKey(q.id)); await mediaSync(qKey(q.id), []); { const x = await orders.byQuote(q.id); if (x) await ships.removeOrder(x.id); } await orders.removeQuote(q.id);
       return reply.code(204).send();
     });
     api.post<{ Params: { qid: string } }>('/api/quotes/:qid/files', async (req, reply) => {
@@ -515,9 +521,9 @@ export async function buildApp(o: AppOptions) {
       const m = await readMultipart(req, MAX_STAFF_FILES);
       if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
       if (uploads.list(qKey(q.id)).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per quote', code: 'count' }); }
-      uploads.commit(qKey(q.id), m.files);
-      const list = quotes.list(q.leadId);
-      return reply.code(201).send({ data: viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(q.leadId)) });
+      await mediaSync(qKey(q.id), uploads.commit(qKey(q.id), m.files));
+      const list = await quotes.list(q.leadId);
+      return reply.code(201).send({ data: await viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(q.leadId)) });
     });
     api.get<{ Params: { qid: string; fid: string } }>('/api/quotes/:qid/files/:fid', async (req, reply) => {
       const q = await quoteOf(req);
@@ -525,58 +531,59 @@ export async function buildApp(o: AppOptions) {
       const f = uploads.file(qKey(q.id), req.params.fid);
       if (!f) return reply.code(404).send({ error: 'Not found' });
       if (sides(req.user!.role).china) return sendFile(req, reply, f);
-      const ref = await leadRefOf(q.leadId), i = quotes.list(q.leadId).findIndex((x) => x.id === q.id);
+      const ref = await leadRefOf(q.leadId), i = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id);
       return sendFile(req, reply, f, `${ref ?? 'quote'}-Q${i + 1}-${k + 1}${(/\.[A-Za-z0-9]{1,5}$/.exec(f.meta.name)?.[0] ?? '').toLowerCase()}`);
     });
     api.delete<{ Params: { qid: string; fid: string } }>('/api/quotes/:qid/files/:fid', async (req, reply) => {
       const q = await quoteOf(req);
       if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can remove files');
-      if (!uploads.remove(qKey(q.id), req.params.fid)) return reply.code(404).send({ error: 'Not found' });
+      const rest = uploads.remove(qKey(q.id), req.params.fid); if (!rest) return reply.code(404).send({ error: 'Not found' });
+      await mediaSync(qKey(q.id), rest);
       return reply.code(204).send();
     });
     // ---- All quotes across leads (role-filtered) ----
     const readableLeads = async (role: Role) => {
-      const [rows, ctx] = await Promise.all([o.twenty.list(OBJECTS.lead, {}), ctxOf(role)]);
-      const all = assign.all(), names = userNames(), m = new Map<string, Rec>();
-      for (const r of rows) { const f = readFilter('lead', r, ctx); if (f) m.set(String(f.id), decorate(f, all.get(String(f.id)), names)); }
+      const [rows, ctx] = await Promise.all([leadDb.list(), ctxOf(role)]);
+      const all = await assign.all(), names = userNames(), m = new Map<string, Rec>();
+      for (const r of rows) { const f = readFilter('lead', r, ctx); if (f) m.set(String(f.id), await decorate(f, all.get(String(f.id)), names)); }
       return m;
     };
-    const quoteRow = (u: { role: Role; id: string }, q: Quote, lead: Rec, keepFiles = false) => {
-      const i = quotes.list(q.leadId).findIndex((x) => x.id === q.id);
-      const v: any = viewQuote(u, q, i, (lead.leadRef as string) ?? null);
+    const quoteRow = async (u: { role: Role; id: string }, q: Quote, lead: Rec, keepFiles = false) => {
+      const i = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id);
+      const v: any = await viewQuote(u, q, i, (lead.leadRef as string) ?? null);
       if (!keepFiles) delete v.files; // the all-quotes list omits files; single-quote responses keep them (the lead panel renders them)
       return { ...v, label: `${lead.leadRef ?? 'Quote'}-Q${i + 1}`, leadRef: lead.leadRef ?? null, leadStatus: lead.status ?? null, ownerOffice: lead.ownerOffice,
         assignedTo: lead.assignedTo ?? null, assignedToName: lead.assignedToName ?? null, raisedBy: lead.raisedBy ?? null };
     };
     api.get<{ Querystring: { status?: string; office?: string; mine?: string } }>('/api/quotes', async (req) => {
       const u = req.user!, leads = await readableLeads(u.role), q = req.query ?? {};
-      let rows = quotes.all().filter((x) => leads.has(x.leadId)).map((x) => quoteRow(u, x, leads.get(x.leadId)!));
+      let rows = await Promise.all((await quotes.all()).filter((x) => leads.has(x.leadId)).map((x) => quoteRow(u, x, leads.get(x.leadId)!)));
       if (q.status) rows = rows.filter((r) => r.status === String(q.status).toUpperCase());
       if (q.office) rows = rows.filter((r) => r.ownerOffice === String(q.office).toUpperCase());
       if (q.mine === '1' || q.mine === 'true') rows = rows.filter((r) => r.assignedTo === u.id || r.raisedBy === u.id || (r as any).createdBy === u.id);
       return { data: rows };
     });
     const indiaOnly = (role: Role) => { if (!sides(role).india) throw new Forbidden('Only the India office can do this'); };
-    const leadOf = async (id: string) => (await o.twenty.get(OBJECTS.lead, id)) as Rec;
-    const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, quotes.get(q.id)!, decorate(l, assign.get(q.leadId), userNames()), true); };
+    const leadOf = async (id: string) => { const l = await leadDb.get(id); if (!l) throw Object.assign(new Error('Not found'), { status: 404 }); return l; };
+    const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, (await quotes.get(q.id))!, await decorate(l, await assign.get(q.leadId), userNames()), true); };
     /** Notify about a lead-level event (quote decided, order created/updated). */
-    const tell = (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'LEAD_CLOSED', office: Office, actor: User) => {
+    const tell = async (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'LEAD_CLOSED', office: Office, actor: User) => {
       const ids = [...new Set(recips.filter((x): x is string => !!x && x !== actor.id && !!o.users.byId(x)?.active))];
-      if (ids.length) assign.notify(ids, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office, byName: actor.name });
+      if (ids.length) await assign.notify(ids, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office, byName: actor.name });
     };
     /** India side of a lead: its raiser/assignee, else India admins + super admin. China side: who quoted, else China assignee, else China admins. */
-    const indiaPeople = (leadId: string) => { const a = assign.get(leadId); const p = [a?.ownerOffice === 'INDIA' ? a?.assignedTo : null, a?.raisedBy].filter(Boolean) as string[]; return p.length ? p : queueWatchers('INDIA'); };
-    const chinaPeople = (q: Quote) => { const a = assign.get(q.leadId); const p = [q.createdBy, a?.ownerOffice === 'CHINA' ? a?.assignedTo : null].filter((x) => x && officeOf(o.users.byId(x)?.role as Role) === 'CHINA') as string[]; return p.length ? p : queueWatchers('CHINA'); };
+    const indiaPeople = async (leadId: string) => { const a = await assign.get(leadId); const p = [a?.ownerOffice === 'INDIA' ? a?.assignedTo : null, a?.raisedBy].filter(Boolean) as string[]; return p.length ? p : queueWatchers('INDIA'); };
+    const chinaPeople = async (q: Quote) => { const a = await assign.get(q.leadId); const p = [q.createdBy, a?.ownerOffice === 'CHINA' ? a?.assignedTo : null].filter((x) => x && officeOf(o.users.byId(x)?.role as Role) === 'CHINA') as string[]; return p.length ? p : queueWatchers('CHINA'); };
     api.put<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/customer', async (req) => {
       indiaOnly(req.user!.role); const q = await quoteOf(req);
-      const n = quotes.setCustomer(q.id, req.body ?? {});
-      ev(q.leadId, 'CQ_PREPARED', req.user!, { n: quotes.list(q.leadId).findIndex((x) => x.id === q.id) + 1, edit: !!q.cq }, 'INDIA');
+      const n = await quotes.setCustomer(q.id, req.body ?? {});
+      await ev(q.leadId, 'CQ_PREPARED', req.user!, { n: (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1, edit: !!q.cq }, 'INDIA');
       return { data: await refresh(req.user!, n) };
     });
     api.post<{ Params: { qid: string } }>('/api/quotes/:qid/pdf', async (req) => {
       indiaOnly(req.user!.role); const q = await quoteOf(req);
       if (!q.cq) throw bad('Prepare the customer quote first');
-      if (!q.pdfToken) quotes.setToken(q.id, randomBytes(32).toString('base64url'));
+      if (!q.pdfToken) await quotes.setToken(q.id, randomBytes(32).toString('base64url'));
       return { data: await refresh(req.user!, q) };
     });
     api.post<{ Params: { qid: string }; Body: { status?: string; reason?: string } }>('/api/quotes/:qid/status', async (req) => {
@@ -587,62 +594,62 @@ export async function buildApp(o: AppOptions) {
       const rcode = String((b as Rec).reasonCode ?? (st === 'REJECTED' && String(b.reason ?? '').trim() ? 'OTHER' : '')).toUpperCase();
       if (st === 'REJECTED' && !REJECT_REASONS.includes(rcode as any)) throw bad('A reason is required when the customer rejects');
       if (st === 'REJECTED' && rcode === 'OTHER' && !String(b.reason ?? '').trim()) throw bad('A reason is required when the customer rejects');
-      if (st === 'DRAFT' && orders.byQuote(q.id)) throw bad('This quote already has an order');
-      quotes.setStatus(q.id, st, st === 'REJECTED' ? (String(b.reason ?? '').trim() || rcode) : b.reason);
-      const lead = await leadOf(q.leadId), qn = quotes.list(q.leadId).findIndex((x) => x.id === q.id) + 1;
+      if (st === 'DRAFT' && (await orders.byQuote(q.id))) throw bad('This quote already has an order');
+      await quotes.setStatus(q.id, st, st === 'REJECTED' ? (String(b.reason ?? '').trim() || rcode) : b.reason);
+      const lead = await leadOf(q.leadId), qn = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1;
       if (st !== q.status && st !== 'DRAFT') {
-        ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', u, { n: qn, ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}) });
-        stopClock(q.leadId, 'INDIA'); // sending (or closing) the customer quote is India's next action
+        await ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', u, { n: qn, ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}) });
+        await stopClock(q.leadId, 'INDIA'); // sending (or closing) the customer quote is India's next action
       }
       if (st === 'ACCEPTED') {
-        const p = rejects.pending(q.leadId); if (p) rejects.resolve(p.id, 'REVISE', u.id, {});
+        const p = await rejects.pending(q.leadId); if (p) await rejects.resolve(p.id, 'REVISE', u.id, {});
         const patch: Rec = { status: 'WON' };
-        await o.twenty.update(OBJECTS.lead, q.leadId, patch); Object.assign(lead, patch);
-        tell(chinaPeople(q), lead, 'QUOTE_ACCEPTED', 'CHINA', u);
+        await leadDb.update(q.leadId, patch); Object.assign(lead, patch);
+        await tell(await chinaPeople(q), lead, 'QUOTE_ACCEPTED', 'CHINA', u);
       }
       if (st === 'REJECTED') {
         // Not LOST yet: back to the India owner (raiser) with "Rejected – action needed".
-        rejects.add(q.leadId, q.id, rcode, b.reason, u.id);
-        handoff(lead, u, 'INDIA', undefined);
-        tell(chinaPeople(q), lead, 'QUOTE_REJECTED', 'CHINA', u);
+        await rejects.add(q.leadId, q.id, rcode, b.reason, u.id);
+        await handoff(lead, u, 'INDIA', undefined);
+        await tell(await chinaPeople(q), lead, 'QUOTE_REJECTED', 'CHINA', u);
       }
       return { data: await refresh(u, q) };
     });
     // ---- Customer rejection follow-up (India): request a revised quote from China, or close as LOST ----
     const rejLead = async (u: User, id: string) => {
       if (!sides(u.role).india) throw new Forbidden('Only the India office handles customer rejections');
-      const lead = await leadOf(id); if (!lead) throw Object.assign(new Error('Not found'), { status: 404 });
-      const p = rejects.pending(id); if (!p) throw bad('This lead has no open customer rejection');
+      const lead = await leadOf(id);
+      const p = await rejects.pending(id); if (!p) throw bad('This lead has no open customer rejection');
       return { lead, p };
     };
     api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/rejection/revise', async (req) => {
       const u = req.user!, { lead, p } = await rejLead(u, req.params.id), b = req.body ?? {};
-      rejects.resolve(p.id, 'REVISE', u.id, { targetPrice: b.targetPrice, targetCurrency: b.targetCurrency, notes: b.notes });
-      const q = quotes.get(p.quoteId), maker = q?.createdBy ? o.users.byId(q.createdBy) : null;
+      await rejects.resolve(p.id, 'REVISE', u.id, { targetPrice: b.targetPrice, targetCurrency: b.targetCurrency, notes: b.notes });
+      const q = await quotes.get(p.quoteId), maker = q?.createdBy ? o.users.byId(q.createdBy) : null;
       const to = maker && maker.active && officeOf(maker.role) === 'CHINA' ? maker.id : null;
       const patch: Rec = { assignedOffice: 'CHINA', status: 'SOURCING' };
-      await o.twenty.update(OBJECTS.lead, String(lead.id), patch); Object.assign(lead, patch);
-      ev(String(lead.id), 'REVISE_REQUESTED', u, { reasonCode: p.reasonCode, reason: p.reasonText ?? null, targetPrice: b.targetPrice ?? null, targetCurrency: b.targetCurrency ?? null, notes: b.notes ?? null });
-      handoff(lead, u, 'CHINA', to);
+      await leadDb.update(String(lead.id), patch); Object.assign(lead, patch);
+      await ev(String(lead.id), 'REVISE_REQUESTED', u, { reasonCode: p.reasonCode, reason: p.reasonText ?? null, targetPrice: b.targetPrice ?? null, targetCurrency: b.targetCurrency ?? null, notes: b.notes ?? null });
+      await handoff(lead, u, 'CHINA', to);
       const recips = (to ? [to] : queueWatchers('CHINA')).filter((x) => x !== u.id);
-      assign.notify(recips, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'REVISE_REQUESTED', office: 'CHINA', byName: u.name });
-      return { data: decorate(readFilter('lead', lead, await ctxOf(u.role))!, assign.get(String(lead.id)), userNames()) };
+      await assign.notify(recips, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'REVISE_REQUESTED', office: 'CHINA', byName: u.name });
+      return { data: await decorate(readFilter('lead', lead, await ctxOf(u.role))!, await assign.get(String(lead.id)), userNames()) };
     });
     api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/rejection/close', async (req) => {
       const u = req.user!, { lead, p } = await rejLead(u, req.params.id);
-      rejects.resolve(p.id, 'CLOSED', u.id, { notes: (req.body ?? {}).notes });
+      await rejects.resolve(p.id, 'CLOSED', u.id, { notes: (req.body ?? {}).notes });
       const patch: Rec = { status: 'LOST', winLossReason: [p.reasonCode, p.reasonText].filter(Boolean).join(': ').slice(0, 500) };
-      await o.twenty.update(OBJECTS.lead, String(lead.id), patch); Object.assign(lead, patch);
-      ev(String(lead.id), 'LEAD_CLOSED', u, { reasonCode: p.reasonCode, reason: p.reasonText ?? null }); stopClock(String(lead.id));
-      const q = quotes.get(p.quoteId); if (q) tell(chinaPeople(q), lead, 'LEAD_CLOSED', 'CHINA', u);
-      return { data: decorate(readFilter('lead', lead, await ctxOf(u.role))!, assign.get(String(lead.id)), userNames()) };
+      await leadDb.update(String(lead.id), patch); Object.assign(lead, patch);
+      await ev(String(lead.id), 'LEAD_CLOSED', u, { reasonCode: p.reasonCode, reason: p.reasonText ?? null }); await stopClock(String(lead.id));
+      const q = await quotes.get(p.quoteId); if (q) await tell(await chinaPeople(q), lead, 'LEAD_CLOSED', 'CHINA', u);
+      return { data: await decorate(readFilter('lead', lead, await ctxOf(u.role))!, await assign.get(String(lead.id)), userNames()) };
     });
     // Public, unguessable link (32 random bytes) so the customer can open the PDF from WhatsApp/email.
     app.get<{ Params: { token: string } }>('/api/public/cq/:token', async (req, reply) => {
-      const q = quotes.byToken(req.params.token.replace(/\.pdf$/, ''));
+      const q = await quotes.byToken(req.params.token.replace(/\.pdf$/, ''));
       if (!q?.cq) return reply.code(404).send({ error: 'Not found' });
-      const lead = (await o.twenty.get(OBJECTS.lead, q.leadId)) as any;
-      const i = quotes.list(q.leadId).findIndex((x) => x.id === q.id), ref = lead?.leadRef ?? 'SE', label = `${ref}-Q${i + 1}`;
+      const lead = (await leadDb.get(q.leadId)) as any;
+      const i = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id), ref = lead?.leadRef ?? 'SE', label = `${ref}-Q${i + 1}`;
       const photos = uploads.list(qKey(q.id)).filter((f) => /^image\/(png|jpe?g)$/.test(f.mime)).map((f) => uploads.file(qKey(q.id), f.id)?.path).filter((p): p is string => !!p);
       const pdf = await customerQuotePdf({ ref, label, product: q.product, customer: lead?.clientName ?? null, cq: q.cq, moq: q.moq, leadTime: q.leadTime,
         date: new Date(q.sentAt ?? q.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }), photos });
@@ -651,20 +658,20 @@ export async function buildApp(o: AppOptions) {
     });
 
     // ---- Orders (v1) ----
-    const viewOrder = (u: User, ord: Order, lead: Rec | null) => {
-      const s = sides(u.role), q = quotes.get(ord.quoteId);
+    const viewOrder = async (u: User, ord: Order, lead: Rec | null) => {
+      const s = sides(u.role), q = await quotes.get(ord.quoteId), shp = await ships.byOrder(ord.id);
       const base = { id: ord.id, leadId: ord.leadId, quoteId: ord.quoteId, leadRef: ord.leadRef, product: ord.product, qty: ord.qty, expectedShip: ord.expectedShip,
         production: ord.production, tracking: ord.tracking, container: ord.container, etd: ord.etd, eta: ord.eta, indiaStatus: ord.indiaStatus,
-        createdAt: ord.createdAt, updatedAt: ord.updatedAt, leadStatus: lead?.status ?? null, shipmentId: ships.byOrder(ord.id)?.id ?? null, shipmentRef: ships.byOrder(ord.id)?.ref ?? null };
+        createdAt: ord.createdAt, updatedAt: ord.updatedAt, leadStatus: lead?.status ?? null, shipmentId: shp?.id ?? null, shipmentRef: shp?.ref ?? null };
       const india = { agreedPrice: ord.agreedPrice, advance: ord.advance, paymentStatus: ord.paymentStatus, total: ord.qty * ord.agreedPrice,
         customer: lead?.clientName ?? null, assignedToName: (lead as any)?.assignedToName ?? null };
-      const china = { supplier: q?.supplierId ? quotes.supplier(q.supplierId) : null, unitPrice: q?.unitPrice ?? null, currency: q?.currency ?? null,
+      const china = { supplier: q?.supplierId ? await quotes.supplier(q.supplierId) : null, unitPrice: q?.unitPrice ?? null, currency: q?.currency ?? null,
         shipCost: q?.shipCost ?? null, shipCurrency: q?.shipCurrency ?? null };
       if (s.superAdmin) return { ...base, ...india, ...china };
       return s.india ? { ...base, ...india } : { ...base, ...china };
     };
     const orderOf = async (u: User, id: string) => {
-      const ord = orders.get(id); if (!ord) throw Object.assign(new Error('Not found'), { status: 404 });
+      const ord = await orders.get(id); if (!ord) throw Object.assign(new Error('Not found'), { status: 404 });
       const lead = (await readableLeads(u.role)).get(ord.leadId);
       if (!lead && !sides(u.role).china) throw Object.assign(new Error('Not found'), { status: 404 });
       return { ord, lead: lead ?? null };
@@ -672,20 +679,20 @@ export async function buildApp(o: AppOptions) {
     api.post<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/order', async (req, reply) => {
       const u = req.user!; indiaOnly(u.role); const q = await quoteOf(req);
       if (q.status !== 'ACCEPTED') throw bad('Only an accepted quote can become an order');
-      if (orders.byQuote(q.id)) throw bad('This quote already has an order', 409);
+      if (await orders.byQuote(q.id)) throw bad('This quote already has an order', 409);
       const lead = await leadOf(q.leadId), b = req.body ?? {};
-      const ord = orders.create({ leadId: q.leadId, quoteId: q.id, leadRef: (lead.leadRef as string) ?? null, product: q.product },
+      const ord = await orders.create({ leadId: q.leadId, quoteId: q.id, leadRef: (lead.leadRef as string) ?? null, product: q.product },
         { qty: q.cq?.qty, agreedPrice: q.cq?.unitPrice, ...b }, u.id);
-      shipFor(ord);
-      tell(chinaPeople(q), lead, 'ORDER_NEW', 'CHINA', u);
-      ev(q.leadId, 'ORDER_CREATED', u, { qty: ord.qty });
-      return reply.code(201).send({ data: viewOrder(u, ord, decorate(lead, assign.get(q.leadId), userNames())) });
+      await shipFor(ord);
+      await tell(await chinaPeople(q), lead, 'ORDER_NEW', 'CHINA', u);
+      await ev(q.leadId, 'ORDER_CREATED', u, { qty: ord.qty });
+      return reply.code(201).send({ data: await viewOrder(u, ord, await decorate(lead, await assign.get(q.leadId), userNames())) });
     });
     api.get('/api/orders', async (req) => {
       const u = req.user!, leads = await readableLeads(u.role), china = sides(u.role).china;
-      return { data: orders.all().filter((x) => china || leads.has(x.leadId)).map((x) => viewOrder(u, x, leads.get(x.leadId) ?? null)) };
+      return { data: await Promise.all((await orders.all()).filter((x) => china || leads.has(x.leadId)).map((x) => viewOrder(u, x, leads.get(x.leadId) ?? null))) };
     });
-    api.get<{ Params: { id: string } }>('/api/orders/:id', async (req) => { const { ord, lead } = await orderOf(req.user!, req.params.id); return { data: viewOrder(req.user!, ord, lead) }; });
+    api.get<{ Params: { id: string } }>('/api/orders/:id', async (req) => { const { ord, lead } = await orderOf(req.user!, req.params.id); return { data: await viewOrder(req.user!, ord, lead) }; });
     /**
      * The one gated order/shipment workflow (used by Orders, Shipping and lead status changes):
      *  China: NEW > DEPOSIT_PAID > IN_PRODUCTION > READY > SHIPPED (needs tracking or container no + ETD; cannot be undone).
@@ -696,7 +703,7 @@ export async function buildApp(o: AppOptions) {
     const SHIP_TO_IND: Record<string, string> = { IN_TRANSIT: 'IN_TRANSIT', ARRIVED: 'IN_TRANSIT', CUSTOMS: 'CUSTOMS', CLEARED: 'CUSTOMS', OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY', DELIVERED: 'DELIVERED' };
     const setLeadStatus = async (leadId: string, lead: Rec | null, ls: string) => {
       if (lead?.status === ls) return;
-      try { await o.twenty.update(OBJECTS.lead, leadId, { status: ls }); if (lead) lead.status = ls; }
+      try { await leadDb.update(leadId, { status: ls }); if (lead) lead.status = ls; }
       catch (e) { app.log.error({ err: e, leadId, ls }, 'lead status sync failed'); }
     };
     const applyOrder = async (u: User, ord: Order, lead: Rec | null, b: Rec, shipExtra: Rec = {}) => {
@@ -713,40 +720,40 @@ export async function buildApp(o: AppOptions) {
       const willShip = shipped || String(b.production ?? '').toUpperCase() === 'SHIPPED';
       if (has('indiaStatus') && String(b.indiaStatus ?? 'NONE').toUpperCase() !== 'NONE' && !willShip) throw bad('Transit and delivery unlock after China marks the order Shipped', 409);
       if (shipped && has('indiaStatus') && String(b.indiaStatus ?? '').toUpperCase() === 'NONE' && ord.indiaStatus !== 'NONE') throw bad('Shipment status cannot be reset', 409);
-      const n = orders.update(ord.id, b);
-      const sh = shipFor(n), sp: Rec = { ...shipExtra };
+      const n = await orders.update(ord.id, b);
+      const sh = await shipFor(n), sp: Rec = { ...shipExtra };
       for (const k of ['tracking', 'container', 'etd', 'eta'] as const) if (k in b) sp[k] = n[k];
       const newlyShipped = !shipped && n.production === 'SHIPPED';
       if (newlyShipped && shipRank(sh.status) < shipRank('IN_TRANSIT')) sp.status = 'IN_TRANSIT';
       if (has('indiaStatus') && n.indiaStatus !== ord.indiaStatus && IND_TO_SHIP[n.indiaStatus] && SHIP_TO_IND[String(sp.status ?? sh.status)] !== n.indiaStatus) sp.status = IND_TO_SHIP[n.indiaStatus];
-      const nsh = Object.keys(sp).length ? ships.update(sh.id, sp) : sh;
+      const nsh = Object.keys(sp).length ? await ships.update(sh.id, sp) : sh;
       // Timeline: shipped is its own milestone; other field changes are logged (payment/price ones India-only).
       const diff = (ks: string[]) => Object.fromEntries(ks.filter((k) => k in b && String((n as any)[k] ?? '') !== String((ord as any)[k] ?? '')).map((k) => [k, (n as any)[k]]));
-      if (newlyShipped) { ev(n.leadId, 'SHIPPED', u, { tracking: n.tracking, container: n.container, etd: n.etd, eta: n.eta }); stopClock(n.leadId, 'CHINA'); }
-      else { const pub = diff([...CHINA_KEYS, 'expectedShip']); if (Object.keys(pub).length) ev(n.leadId, 'ORDER_UPDATE', u, { fields: pub }); }
+      if (newlyShipped) { await ev(n.leadId, 'SHIPPED', u, { tracking: n.tracking, container: n.container, etd: n.etd, eta: n.eta }); await stopClock(n.leadId, 'CHINA'); }
+      else { const pub = diff([...CHINA_KEYS, 'expectedShip']); if (Object.keys(pub).length) await ev(n.leadId, 'ORDER_UPDATE', u, { fields: pub }); }
       const indChanged = n.indiaStatus !== ord.indiaStatus && !!n.indiaStatus && n.indiaStatus !== 'NONE';
       const shipSt = indChanged ? n.indiaStatus : nsh.status, shipMoved = !newlyShipped && (nsh.status !== sh.status || indChanged);
-      if (shipMoved) ev(n.leadId, 'SHIPMENT_UPDATE', u, { status: shipSt });
-      const priv = diff(['qty', 'agreedPrice', 'advance', 'paymentStatus']); if (Object.keys(priv).length) ev(n.leadId, 'ORDER_UPDATE', u, { fields: priv }, 'INDIA');
-      if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') stopClock(n.leadId);
+      if (shipMoved) await ev(n.leadId, 'SHIPMENT_UPDATE', u, { status: shipSt });
+      const priv = diff(['qty', 'agreedPrice', 'advance', 'paymentStatus']); if (Object.keys(priv).length) await ev(n.leadId, 'ORDER_UPDATE', u, { fields: priv }, 'INDIA');
+      if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') await stopClock(n.leadId);
       if (newlyShipped) await setLeadStatus(n.leadId, lead, 'SHIPPING');
       if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') await setLeadStatus(n.leadId, lead, 'DELIVERED');
-      const q = quotes.get(n.quoteId), l = lead ?? (await leadOf(n.leadId));
+      const q = await quotes.get(n.quoteId), l = lead ?? (await leadOf(n.leadId));
       const changed = (keys: string[]) => Object.keys(b).some((k) => keys.includes(k) && String(b[k] ?? '') !== String((ord as any)[k] ?? '')) || Object.keys(shipExtra).some((k) => keys.includes(k));
       // Real-time notification for every status/payment change to India owner, China side and super admins (never the actor).
       const supers = o.users.list().filter((x) => x.active && x.role === 'SUPER_ADMIN').map((x) => x.id);
-      const china = q ? chinaPeople(q) : [], india = indiaPeople(n.leadId);
-      const notifyAll = (ids: string[], kind: NotifKind, detail: string) => {
+      const china = q ? await chinaPeople(q) : [], india = await indiaPeople(n.leadId);
+      const notifyAll = async (ids: string[], kind: NotifKind, detail: string) => {
         const rs = [...new Set(ids.filter((x) => x && x !== u.id && !!o.users.byId(x)?.active))];
-        if (rs.length) assign.notify(rs, { leadId: n.leadId, leadRef: (l.leadRef as string) ?? null, product: (l.productInterest as string) ?? null, kind, office: officeOf(u.role) ?? 'INDIA', byName: u.name, detail });
+        if (rs.length) await assign.notify(rs, { leadId: n.leadId, leadRef: (l.leadRef as string) ?? null, product: (l.productInterest as string) ?? null, kind, office: officeOf(u.role) ?? 'INDIA', byName: u.name, detail });
       };
-      if (newlyShipped) notifyAll([...india, ...china, ...supers], 'ORDER_SHIPPED', 'SHIPPED');
-      else if (n.production !== ord.production) notifyAll([...india, ...china, ...supers], 'ORDER_UPDATE', `production:${n.production}`);
-      if (shipMoved) notifyAll([...india, ...china, ...supers], 'SHIPMENT_UPDATE', `ship:${shipSt}`);
-      if (n.paymentStatus !== ord.paymentStatus) notifyAll([...india, ...supers], 'ORDER_UPDATE', `payment:${n.paymentStatus}`);
+      if (newlyShipped) await notifyAll([...india, ...china, ...supers], 'ORDER_SHIPPED', 'SHIPPED');
+      else if (n.production !== ord.production) await notifyAll([...india, ...china, ...supers], 'ORDER_UPDATE', `production:${n.production}`);
+      if (shipMoved) await notifyAll([...india, ...china, ...supers], 'SHIPMENT_UPDATE', `ship:${shipSt}`);
+      if (n.paymentStatus !== ord.paymentStatus) await notifyAll([...india, ...supers], 'ORDER_UPDATE', `payment:${n.paymentStatus}`);
       else if (!newlyShipped && n.production === ord.production && !shipMoved) {
-        if (changed([...CHINA_KEYS, ...SHIP_CHINA_KEYS]) && officeOf(u.role) !== 'INDIA') tell(india, l, 'ORDER_UPDATE', 'INDIA', u);
-        if (changed(['qty', 'agreedPrice', 'advance'])) notifyAll([...india, ...supers], 'ORDER_UPDATE', 'details');
+        if (changed([...CHINA_KEYS, ...SHIP_CHINA_KEYS]) && officeOf(u.role) !== 'INDIA') await tell(india, l, 'ORDER_UPDATE', 'INDIA', u);
+        if (changed(['qty', 'agreedPrice', 'advance'])) await notifyAll([...india, ...supers], 'ORDER_UPDATE', 'details');
       }
       return { n, sh: nsh };
     };
@@ -755,30 +762,30 @@ export async function buildApp(o: AppOptions) {
       const bad1 = Object.keys(b).find((k) => !(INDIA_KEYS.includes(k) && s.india) && !(CHINA_KEYS.includes(k) && s.china));
       if (bad1) throw new Forbidden(INDIA_KEYS.includes(bad1) ? 'Only the India office updates this' : CHINA_KEYS.includes(bad1) ? 'Only the China office updates production and tracking' : `Unknown field ${bad1}`);
       const { n } = await applyOrder(u, ord, lead, b);
-      return { data: viewOrder(u, n, lead) };
+      return { data: await viewOrder(u, n, lead) };
     });
     // ---- Shipments (one per order). China: no customer; India: no supplier. ----
-    const viewShip = (u: User, sh: Shipment, lead: Rec | null) => {
-      const s = sides(u.role), ord = orders.get(sh.orderId), q = ord ? quotes.get(ord.quoteId) : null;
+    const viewShip = async (u: User, sh: Shipment, lead: Rec | null) => {
+      const s = sides(u.role), ord = await orders.get(sh.orderId), q = ord ? await quotes.get(ord.quoteId) : null;
       const base = { ...sh, leadRef: (lead?.leadRef as string) ?? ord?.leadRef ?? null, product: ord?.product ?? null, qty: ord?.qty ?? null, leadStatus: lead?.status ?? null,
         production: ord?.production ?? null, expectedShip: ord?.expectedShip ?? null };
       const india = { customer: (lead?.clientName as string) ?? null, deliveryCity: (lead?.deliveryCity as string) ?? null };
-      const china = { supplier: q?.supplierId ? quotes.supplier(q.supplierId)?.name ?? null : null };
+      const china = { supplier: q?.supplierId ? (await quotes.supplier(q.supplierId))?.name ?? null : null };
       if (s.superAdmin) return { ...base, ...india, ...china };
       if (!s.india) delete (base as any).customsNote;
       return s.india ? { ...base, ...india } : { ...base, ...china };
     };
     const shipOf = async (u: User, id: string) => {
-      const sh = ships.get(id); if (!sh) throw Object.assign(new Error('Not found'), { status: 404 });
+      const sh = await ships.get(id); if (!sh) throw Object.assign(new Error('Not found'), { status: 404 });
       const lead = (await readableLeads(u.role)).get(sh.leadId);
       if (!lead && !sides(u.role).china) throw Object.assign(new Error('Not found'), { status: 404 });
       return { sh, lead: lead ?? null };
     };
     api.get('/api/shipments', async (req) => {
       const u = req.user!, leads = await readableLeads(u.role), china = sides(u.role).china;
-      return { data: ships.all().filter((x) => china || leads.has(x.leadId)).map((x) => viewShip(u, x, leads.get(x.leadId) ?? null)) };
+      return { data: await Promise.all((await ships.all()).filter((x) => china || leads.has(x.leadId)).map((x) => viewShip(u, x, leads.get(x.leadId) ?? null))) };
     });
-    api.get<{ Params: { id: string } }>('/api/shipments/:id', async (req) => { const { sh, lead } = await shipOf(req.user!, req.params.id); return { data: viewShip(req.user!, sh, lead) }; });
+    api.get<{ Params: { id: string } }>('/api/shipments/:id', async (req) => { const { sh, lead } = await shipOf(req.user!, req.params.id); return { data: await viewShip(req.user!, sh, lead) }; });
     api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipments/:id', async (req) => {
       const u = req.user!, s = sides(u.role), b = { ...(req.body ?? {}) }, { sh, lead } = await shipOf(u, req.params.id);
       for (const k of Object.keys(b)) {
@@ -791,7 +798,7 @@ export async function buildApp(o: AppOptions) {
         else throw bad(`Unknown field ${k}`);
       }
       // Status + tracking route through the gated order workflow; the rest is shipment-only detail.
-      const ord = orders.get(sh.orderId); if (!ord) throw bad('Order not found', 404);
+      const ord = await orders.get(sh.orderId); if (!ord) throw bad('Order not found', 404);
       const op: Rec = {}, extra: Rec = {};
       for (const k of Object.keys(b)) if (['tracking', 'container', 'etd', 'eta'].includes(k)) op[k] = b[k]; else if (k !== 'status') extra[k] = b[k];
       if ('status' in b) {
@@ -805,34 +812,62 @@ export async function buildApp(o: AppOptions) {
         } else extra.status = st;
       }
       const { sh: n } = await applyOrder(u, ord, lead, op, extra);
-      return { data: viewShip(u, n, lead) };
+      return { data: await viewShip(u, n, lead) };
     });
     // Super admin only: permanently remove a lead with its quotes, files, assignment and notifications (e.g. test data).
     api.delete<{ Params: { id: string } }>('/api/records/leads/:id', async (req, reply) => {
       if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can delete leads');
       const id = await attLead(req);
-      for (const q of quotes.list(id)) uploads.removeAll(qKey(q.id));
-      quotes.removeLead(id); rejects.forgetLead(id); ships.removeLead(id); orders.removeLead(id); uploads.removeAll(id); assign.forgetLead(id); wf.forgetLead(id);
-      if (!o.twenty.remove) return reply.code(501).send({ error: 'Not supported' });
-      await o.twenty.remove(OBJECTS.lead, id);
+      for (const q of await quotes.list(id)) { uploads.removeAll(qKey(q.id)); await mediaSync(qKey(q.id), []); }
+      await quotes.removeLead(id); await rejects.forgetLead(id); await ships.removeLead(id); await orders.removeLead(id); uploads.removeAll(id); await o.db.run('DELETE FROM lead_media WHERE owner_key = ?', id);
+      await assign.forgetLead(id); await wf.forgetLead(id);
+      await leadDb.remove(id);
       return reply.code(204).send();
     });
-    api.get('/api/suppliers', async (req) => { chinaOnly(req.user!.role); return { data: quotes.suppliers() }; });
-    api.post<{ Body: Record<string, unknown> }>('/api/suppliers', async (req, reply) => { chinaOnly(req.user!.role); return reply.code(201).send({ data: quotes.addSupplier(req.body ?? {}, req.user!.id) }); });
+    // ---- Supplier directory (China + super admin). India never sees supplier identity. ----
+    /** Per-supplier activity: quotes given, how many were accepted, orders placed, last quote date. */
+    const supplierStats = async () => {
+      const rs = await o.db.all(`SELECT q.supplier_id AS id, COUNT(*)::int AS quotes, COUNT(*) FILTER (WHERE q.status = 'ACCEPTED')::int AS accepted,
+        COUNT(DISTINCT q.lead_id)::int AS leads, COUNT(o.id)::int AS orders, MAX(q.created_at) AS last_quote_at
+        FROM quotes q LEFT JOIN orders o ON o.quote_id = q.id WHERE q.supplier_id IS NOT NULL GROUP BY q.supplier_id`);
+      return new Map(rs.map((r) => [r.id as string, { quotes: r.quotes, accepted: r.accepted, leads: r.leads, orders: r.orders, lastQuoteAt: r.last_quote_at ?? null }]));
+    };
+    const noStats = { quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null };
+    api.get<{ Querystring: { q?: string } }>('/api/suppliers', async (req) => {
+      chinaOnly(req.user!.role);
+      const term = String(req.query?.q ?? '').trim().toLowerCase(), names = userNames(), st = await supplierStats();
+      const list = (await quotes.suppliers()).filter((x) => !term || [x.name, x.contact, x.phone, x.wechat, x.city, x.notes].some((v) => v && v.toLowerCase().includes(term)));
+      return { data: list.map((x) => ({ ...x, createdByName: (x.createdBy && names.get(x.createdBy)) || null, ...(st.get(x.id) ?? noStats) })) };
+    });
+    api.get<{ Params: { id: string } }>('/api/suppliers/:id', async (req, reply) => {
+      chinaOnly(req.user!.role);
+      const sup = await quotes.supplier(req.params.id); if (!sup) return reply.code(404).send({ error: 'Not found' });
+      const names = userNames(), st = (await supplierStats()).get(sup.id) ?? noStats, s = sides(req.user!.role);
+      const qs = await quotes.bySupplier(sup.id);
+      const rows = await Promise.all(qs.map(async (q) => {
+        const lead = await leadDb.get(q.leadId), ord = await orders.byQuote(q.id);
+        return { id: q.id, leadId: q.leadId, leadRef: (lead?.leadRef as string) ?? null, leadStatus: (lead?.status as string) ?? null, product: q.product,
+          unitPrice: q.unitPrice, currency: q.currency, moq: q.moq, leadTime: q.leadTime, status: q.status, createdAt: q.createdAt, createdByName: names.get(q.createdBy) ?? null,
+          order: ord ? { id: ord.id, qty: ord.qty, production: ord.production, indiaStatus: ord.indiaStatus, createdAt: ord.createdAt, ...(s.india ? { agreedPrice: ord.agreedPrice } : {}) } : null };
+      }));
+      return { data: { ...sup, createdByName: (sup.createdBy && names.get(sup.createdBy)) || null, ...st, quotes: rows } };
+    });
+    api.post<{ Body: Record<string, unknown> }>('/api/suppliers', async (req, reply) => { chinaOnly(req.user!.role); return reply.code(201).send({ data: await quotes.addSupplier(req.body ?? {}, req.user!.id) }); });
     api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/suppliers/:id', async (req, reply) => {
       chinaOnly(req.user!.role);
-      const sup = quotes.updateSupplier(req.params.id, req.body ?? {});
+      const sup = await quotes.updateSupplier(req.params.id, req.body ?? {});
       return sup ? { data: sup } : reply.code(404).send({ error: 'Not found' });
     });
     api.delete<{ Params: { id: string } }>('/api/suppliers/:id', async (req, reply) => {
       const role = req.user!.role; if (role !== 'SUPER_ADMIN' && role !== 'CHINA_ADMIN') throw new Forbidden('Only a China admin can delete suppliers');
-      quotes.deleteSupplier(req.params.id); return reply.code(204).send();
+      await quotes.deleteSupplier(req.params.id); return reply.code(204).send();
     });
 
     // ---- Generic filtered records API (used by mobile and web) ----
     const objOf = (plural: string): ObjectName => {
+      // Only leads live in this API now (Source Easy's own database); the old Twenty objects are gone.
       const obj = PLURAL_TO_OBJECT[plural];
-      if (!obj) throw Object.assign(new Error('Unknown object'), { status: 404 });
+      if (obj !== 'lead') throw Object.assign(new Error('Unknown object'), { status: 404 });
       return obj;
     };
     api.get<{ Params: { plural: string }; Querystring: Record<string, string> }>('/api/records/:plural', async (req) => {
@@ -846,11 +881,11 @@ export async function buildApp(o: AppOptions) {
         if (!FILTERABLE[obj]?.includes(k)) throw Object.assign(new Error(`Cannot filter ${obj} by ${k}`), { status: 400 });
         filter[k] = String(v);
       }
-      const [rows, ctx] = await Promise.all([o.twenty.list(OBJECTS[obj], filter), ctxOf(role)]);
+      const [rows, ctx] = await Promise.all([leadDb.list(filter), ctxOf(role)]);
       let data = rows.map((r) => readFilter(obj, r, ctx)).filter((r): r is Rec => !!r);
       if (obj === 'lead') {
-        const all = assign.all(), names = userNames();
-        data = data.map((r) => decorate(r, all.get(String(r.id)), names));
+        const all = await assign.all(), names = userNames();
+        data = await Promise.all(data.map((r) => decorate(r, all.get(String(r.id)), names)));
         if (mine) data = data.filter((r) => r.assignedTo === mine);
       }
       data = data.sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
@@ -859,9 +894,9 @@ export async function buildApp(o: AppOptions) {
     api.get<{ Params: { plural: string; id: string } }>('/api/records/:plural/:id', async (req, reply) => {
       const obj = objOf(req.params.plural), role = req.user!.role;
       if (!canRead(role, obj)) throw new Forbidden(`${role} may not read ${obj}`);
-      const r = await o.twenty.get(OBJECTS[obj], req.params.id);
+      const r = await leadDb.get(req.params.id);
       let f = r && readFilter(obj, r, await ctxOf(role));
-      if (f && obj === 'lead') f = decorate(f, assign.get(String(f.id)), userNames());
+      if (f) f = await decorate(f, await assign.get(String(f.id)), userNames());
       return f ? { data: f } : reply.code(404).send({ error: 'Not found' });
     });
     api.post<{ Params: { plural: string }; Body: Rec }>('/api/records/:plural', async (req, reply) => {
@@ -870,31 +905,31 @@ export async function buildApp(o: AppOptions) {
       const data = { ...writeCheck(req.user!.role, obj, 'create', body) };
       // The reference is always assigned here (incl. offline mobile leads when they sync), never by the client.
       if (obj === 'lead') { data.assignedOffice ??= CHINA_LEAD_STATUSES.includes(String(data.status)) ? 'CHINA' : 'INDIA'; data.office ??= 'INDIA'; }
-      const leadRef = obj === 'lead' ? await nextRef() : await inheritRef(obj, data);
-      if (leadRef) data.leadRef = leadRef;
-      const r = await o.twenty.create(OBJECTS[obj], data);
-      if (obj === 'lead') {
+      const leadRef = await nextRef();
+      data.leadRef = leadRef;
+      const r = await leadDb.create(data);
+      {
         const actor = req.user!, office: Office = data.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA';
-        assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'CHINA' ? null : actor.id });
-        ev(String(r.id), 'CREATED', actor, { channel: data.sourceChannel ?? null });
-        if (data.summary) ev(String(r.id), 'SUMMARY', actor);
+        await assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'CHINA' ? null : actor.id });
+        await ev(String(r.id), 'CREATED', actor, { channel: data.sourceChannel ?? null });
+        if (data.summary) await ev(String(r.id), 'SUMMARY', actor);
         // India staff creating an India lead own it unless they pick someone else.
-        handoff({ ...data, id: r.id }, actor, office, to !== undefined ? to : office === 'INDIA' && officeOf(actor.role) === 'INDIA' ? actor.id : undefined);
+        await handoff({ ...data, id: r.id }, actor, office, to !== undefined ? to : office === 'INDIA' && officeOf(actor.role) === 'INDIA' ? actor.id : undefined);
       }
-      return reply.code(201).send({ data: { id: r.id, ...(leadRef ? { leadRef } : {}) } });
+      return reply.code(201).send({ data: { id: r.id, leadRef } });
     });
     api.patch<{ Params: { plural: string; id: string }; Body: Rec }>('/api/records/:plural/:id', async (req, reply) => {
       const obj = objOf(req.params.plural), role = req.user!.role;
-      const existing = await o.twenty.get(OBJECTS[obj], req.params.id);
+      const existing = await leadDb.get(req.params.id);
       if (!existing || !readFilter(obj, existing, await ctxOf(role))) return reply.code(404).send({ error: 'Not found' });
-      if (obj === 'lead' && wf.meta(String(existing.id)).closedAt && role !== 'SUPER_ADMIN') throw new Forbidden('This lead is closed permanently');
+      if (obj === 'lead' && (await wf.meta(String(existing.id))).closedAt && role !== 'SUPER_ADMIN') throw new Forbidden('This lead is closed permanently');
       const body = { ...(req.body ?? {}) }, to = obj === 'lead' ? takeAssignee(body) : undefined;
       const data = Object.keys(body).length || to === undefined ? { ...writeCheck(role, obj, 'update', body, existing) } : {};
       // Handing a lead to China = assignedOffice CHINA. Moving it to a China stage (board drag, status change) implies that,
       // otherwise China would never see it (China only reads assignedOffice=CHINA leads).
       let deliverOrders: Order[] = [];
       if (obj === 'lead' && 'status' in data && data.status !== existing.status) { // board drag / status dropdown follow the shipping gates
-        const os = orders.all().filter((x) => x.leadId === String(existing.id)), shippedOs = os.filter((x) => x.production === 'SHIPPED');
+        const os = await orders.byLead(String(existing.id)), shippedOs = os.filter((x) => x.production === 'SHIPPED');
         if (data.status === 'SHIPPING' && !shippedOs.length) throw bad('A lead moves to Shipping when China marks its order Shipped (with tracking/container no + ETD)', 409);
         if (data.status === 'DELIVERED') {
           if (!shippedOs.length) throw bad('Delivered unlocks after China marks the order Shipped', 409);
@@ -904,28 +939,24 @@ export async function buildApp(o: AppOptions) {
         if (shippedOs.length && !['SHIPPING', 'DELIVERED', 'WON', 'LOST'].includes(String(data.status))) throw bad('This lead has a shipped order and cannot go back to an earlier stage', 409);
       }
       if (obj === 'lead' && !('assignedOffice' in data) && existing.assignedOffice !== 'CHINA' && CHINA_LEAD_STATUSES.includes(String(data.status))) data.assignedOffice = 'CHINA';
-      if (('leadId' in data || 'sourcingRequestId' in data || 'quotationId' in data) && obj !== 'lead') {
-        const leadRef = await inheritRef(obj, { ...existing, ...data });
-        if (leadRef) data.leadRef = leadRef;
-      }
       let target: Office | null = null;
-      const a = obj === 'lead' ? assign.get(String(existing.id)) : null;
+      const a = obj === 'lead' ? await assign.get(String(existing.id)) : null;
       if (obj === 'lead') {
         const toChina = data.assignedOffice === 'CHINA' && existing.assignedOffice !== 'CHINA';
         const quotedByChina = data.status === 'QUOTED' && existing.status !== 'QUOTED' && (a?.ownerOffice ?? 'CHINA') === 'CHINA' && officeOf(role) === 'CHINA';
         target = toChina ? 'CHINA' : quotedByChina ? 'INDIA' : to !== undefined ? (a?.ownerOffice ?? ({ ...existing, ...data }.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA')) : null;
         if (target && to !== undefined) assertAssign(req.user!, existing, target, to);
       }
-      const r = Object.keys(data).length ? await o.twenty.update(OBJECTS[obj], req.params.id, data) : { id: req.params.id };
+      const r = Object.keys(data).length ? await leadDb.update(req.params.id, data) : { id: req.params.id };
       if (obj === 'lead') {
         const id = String(existing.id);
         if ('status' in data && data.status !== existing.status) {
-          ev(id, 'STATUS', req.user!, { from: existing.status ?? null, to: data.status });
-          if (['WON', 'LOST', 'DELIVERED'].includes(String(data.status))) stopClock(id);
+          await ev(id, 'STATUS', req.user!, { from: existing.status ?? null, to: data.status });
+          if (['WON', 'LOST', 'DELIVERED'].includes(String(data.status))) await stopClock(id);
         }
-        if ('summary' in data && data.summary !== existing.summary) ev(id, 'SUMMARY', req.user!);
+        if ('summary' in data && data.summary !== existing.summary) await ev(id, 'SUMMARY', req.user!);
       }
-      if (target) handoff({ ...existing, ...data }, req.user!, target, to);
+      if (target) await handoff({ ...existing, ...data }, req.user!, target, to);
       for (const x of deliverOrders) await applyOrder(req.user!, x, { ...existing, ...data }, { indiaStatus: 'DELIVERED' });
       return { data: { id: r.id ?? req.params.id } };
     });
@@ -942,25 +973,25 @@ export async function buildApp(o: AppOptions) {
     // Explicit send/return/reassign: { office: 'CHINA'|'INDIA', assignedTo?: userId|null, raisedBy?: userId (India admin/super admin, e.g. public enquiries) }
     api.post<{ Params: { id: string }; Body: { office?: string; assignedTo?: string | null; raisedBy?: string | null } }>('/api/leads/:id/assign', async (req, reply) => {
       const actor = req.user!, b = req.body ?? {};
-      const lead = await o.twenty.get('leads', req.params.id);
+      const lead = await leadDb.get(req.params.id);
       if (!lead || !readFilter('lead', lead, await ctxOf(actor.role))) return reply.code(404).send({ error: 'Not found' });
-      const office = b.office === 'CHINA' || b.office === 'INDIA' ? b.office : (assign.get(String(lead.id))?.ownerOffice ?? (lead.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'));
+      const office = b.office === 'CHINA' || b.office === 'INDIA' ? b.office : ((await assign.get(String(lead.id)))?.ownerOffice ?? (lead.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'));
       const to = 'assignedTo' in b ? (b.assignedTo ? String(b.assignedTo) : null) : undefined;
       assertAssign(actor, lead, office, to ?? null);
       if ('raisedBy' in b) {
         if (!(actor.role === 'SUPER_ADMIN' || actor.role === 'INDIA_ADMIN')) throw new Forbidden('Only India admins can set who raised a lead');
         const u = b.raisedBy ? o.users.byId(String(b.raisedBy)) : null;
         if (b.raisedBy && !indiaOwner(u)) return reply.code(400).send({ error: 'raisedBy must be an active India staff member' });
-        assign.set(String(lead.id), { raisedBy: u?.id ?? null });
+        await assign.set(String(lead.id), { raisedBy: u?.id ?? null });
       }
       if (office === 'CHINA' && lead.assignedOffice !== 'CHINA') {
         if (!sides(actor.role).india) throw new Forbidden('Only India can send a lead to China');
         const patch: Rec = { assignedOffice: 'CHINA', ...(CHINA_LEAD_STATUSES.includes(String(lead.status)) ? {} : { status: 'ASSIGNED' }) };
-        await o.twenty.update('leads', String(lead.id), patch); Object.assign(lead, patch);
+        await leadDb.update(String(lead.id), patch); Object.assign(lead, patch);
       }
-      if (b.office || to !== undefined) handoff(lead, actor, office, to);
+      if (b.office || to !== undefined) await handoff(lead, actor, office, to);
       const f = readFilter('lead', lead, await ctxOf(actor.role))!;
-      return { data: decorate(f, assign.get(String(lead.id)), userNames()) };
+      return { data: await decorate(f, await assign.get(String(lead.id)), userNames()) };
     });
     // Active members of an office, for the assignee picker (id, name, role only).
     api.get<{ Querystring: { office?: string } }>('/api/staff', async (req) => {
@@ -970,31 +1001,31 @@ export async function buildApp(o: AppOptions) {
     });
     // ---- Timeline, priority, SLA ----
     api.get<{ Params: { id: string } }>('/api/leads/:id/timeline', async (req) => {
-      const id = await attLead(req), lead = (await o.twenty.get(OBJECTS.lead, id))!, a = assign.get(id);
-      let events = wf.events(id);
+      const id = await attLead(req), lead = (await leadDb.get(id))!, a = await assign.get(id);
+      let events = await wf.events(id);
       if (!events.some((e) => e.kind === 'CREATED')) // older leads: synthesise the creation step
         events = [{ id: `created-${id}`, leadId: id, at: new Date(String(lead.createdAt ?? Date.now())).toISOString(), kind: 'CREATED', actorId: a?.raisedBy ?? null,
           actorName: (a?.raisedBy && o.users.byId(a.raisedBy)?.name) || null, actorOffice: a?.raisedBy ? 'INDIA' : null, data: { channel: lead.sourceChannel ?? null }, vis: 'ALL' }, ...events];
-      return { data: { events: events.map((e) => viewEvent(req.user!.role, e)).filter(Boolean), progress: stageOf(lead, a?.ownerOffice ?? null),
-        priority: wf.priority(id), sla: slaView(id, userNames()), settings: wf.sla() } };
+      return { data: { events: events.map((e) => viewEvent(req.user!.role, e)).filter(Boolean), progress: await stageOf(lead, a?.ownerOffice ?? null),
+        priority: await wf.priority(id), sla: await slaView(id, userNames()), settings: await wf.sla() } };
     });
     // ---- Lost leads: reopen, copy to a new lead, close permanently, follow-up reminder (India office + super admin) ----
     const lostLead = async (req: FastifyRequest<{ Params: { id: string } }>) => {
       const u = req.user!; if (!sides(u.role).india) throw new Forbidden('Only the India office or the super admin can do this');
-      const lead = (await o.twenty.get(OBJECTS.lead, req.params.id)) as Rec | null; if (!lead) throw bad('Not found', 404);
-      return { u, lead, id: String(lead.id), meta: wf.meta(String(lead.id)) };
+      const lead = await leadDb.get(req.params.id); if (!lead) throw bad('Not found', 404);
+      return { u, lead, id: String(lead.id), meta: await wf.meta(String(lead.id)) };
     };
     const fuDate = (v: unknown) => { if (v == null || v === '') return null; const d = String(v).slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw bad('Follow-up date must be YYYY-MM-DD'); return d; };
-    const leadOut = async (u: User, id: string) => { const r = await o.twenty.get(OBJECTS.lead, id); const f = r && readFilter('lead', r, await ctxOf(u.role)); return f ? decorate(f, assign.get(id), userNames()) : null; };
+    const leadOut = async (u: User, id: string) => { const r = await leadDb.get(id); const f = r && readFilter('lead', r, await ctxOf(u.role)); return f ? decorate(f, await assign.get(id), userNames()) : null; };
     api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/reopen', async (req) => {
       const { u, lead, id, meta } = await lostLead(req), b = req.body ?? {};
       if (meta.closedAt && u.role !== 'SUPER_ADMIN') throw new Forbidden('This lead was closed permanently; only the super admin can reopen it');
       if (!meta.closedAt && lead.status !== 'LOST') throw bad('Only lost or closed leads can be reopened', 409);
       const to: Office = String(b.office ?? 'INDIA').toUpperCase() === 'CHINA' ? 'CHINA' : 'INDIA';
-      if (meta.closedAt) wf.reopenLead(id);
-      await o.twenty.update(OBJECTS.lead, id, { status: to === 'CHINA' ? 'ASSIGNED' : 'NEW', assignedOffice: to });
-      ev(id, 'REOPENED', u, { office: to });
-      handoff({ ...lead, status: to === 'CHINA' ? 'ASSIGNED' : 'NEW' }, u, to, b.assignedTo === undefined ? undefined : (b.assignedTo as string | null));
+      if (meta.closedAt) await wf.reopenLead(id);
+      await leadDb.update(id, { status: to === 'CHINA' ? 'ASSIGNED' : 'NEW', assignedOffice: to });
+      await ev(id, 'REOPENED', u, { office: to });
+      await handoff({ ...lead, status: to === 'CHINA' ? 'ASSIGNED' : 'NEW' }, u, to, b.assignedTo === undefined ? undefined : (b.assignedTo as string | null));
       return { data: await leadOut(u, id) };
     });
     api.post<{ Params: { id: string } }>('/api/leads/:id/copy', async (req, reply) => {
@@ -1003,15 +1034,15 @@ export async function buildApp(o: AppOptions) {
       const data: Rec = { status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA' };
       for (const k of keep) if (lead[k] != null && lead[k] !== '') data[k] = lead[k];
       data.leadRef = await nextRef();
-      const r = await o.twenty.create(OBJECTS.lead, data); const nid = String(r.id);
+      const r = await leadDb.create(data); const nid = String(r.id);
       // Media: copy every file of the old lead.
       const files = uploads.list(id).map((a) => uploads.read(id, a.id)).filter(Boolean).map((x) => ({ name: x!.meta.name, mime: x!.meta.mime, data: x!.data }));
-      if (files.length) { uploads.save(nid, files); try { await o.twenty.update(OBJECTS.lead, nid, { attachmentCount: files.length }); } catch { /* count is cosmetic */ } }
-      assign.set(nid, { raisedBy: u.role === 'SUPER_ADMIN' ? assign.get(id)?.raisedBy ?? u.id : u.id });
-      wf.linkFrom(nid, id, (lead.leadRef as string) ?? null);
-      ev(nid, 'CREATED_FROM', u, { ref: lead.leadRef ?? null }); ev(id, 'COPIED_TO', u, { ref: data.leadRef });
-      if (wf.priority(id)) wf.setPriority(nid, true);
-      handoff({ ...data, id: nid }, u, 'INDIA', u.role === 'SUPER_ADMIN' ? undefined : u.id);
+      if (files.length) { uploads.save(nid, files); await mediaSync(nid, uploads.list(nid)); }
+      await assign.set(nid, { raisedBy: u.role === 'SUPER_ADMIN' ? (await assign.get(id))?.raisedBy ?? u.id : u.id });
+      await wf.linkFrom(nid, id, (lead.leadRef as string) ?? null);
+      await ev(nid, 'CREATED_FROM', u, { ref: lead.leadRef ?? null }); await ev(id, 'COPIED_TO', u, { ref: data.leadRef });
+      if (await wf.priority(id)) await wf.setPriority(nid, true);
+      await handoff({ ...data, id: nid }, u, 'INDIA', u.role === 'SUPER_ADMIN' ? undefined : u.id);
       return reply.code(201).send({ data: await leadOut(u, nid) });
     });
     api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/close-permanent', async (req) => {
@@ -1019,43 +1050,43 @@ export async function buildApp(o: AppOptions) {
       if (meta.closedAt) throw bad('Already closed', 409);
       if (!['LOST', 'NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED'].includes(String(lead.status))) throw bad('Leads with an order cannot be closed', 409);
       const fu = fuDate(b.followUp);
-      if (lead.status !== 'LOST') await o.twenty.update(OBJECTS.lead, id, { status: 'LOST', ...(b.reason ? { winLossReason: String(b.reason).slice(0, 500) } : {}) });
-      wf.closeLead(id, u.id); stopClock(id);
-      ev(id, 'CLOSED_PERMANENT', u, { reason: b.reason ? String(b.reason).slice(0, 300) : null, followUp: fu });
-      if (fu) wf.setFollowUp(id, fu, u.id);
+      if (lead.status !== 'LOST') await leadDb.update(id, { status: 'LOST', ...(b.reason ? { winLossReason: String(b.reason).slice(0, 500) } : {}) });
+      await wf.closeLead(id, u.id); await stopClock(id);
+      await ev(id, 'CLOSED_PERMANENT', u, { reason: b.reason ? String(b.reason).slice(0, 300) : null, followUp: fu });
+      if (fu) await wf.setFollowUp(id, fu, u.id);
       return { data: await leadOut(u, id) };
     });
     api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/follow-up', async (req) => {
       const { u, id } = await lostLead(req), fu = fuDate((req.body ?? {}).date);
-      wf.setFollowUp(id, fu, u.id); ev(id, 'FOLLOW_UP_SET', u, { date: fu });
+      await wf.setFollowUp(id, fu, u.id); await ev(id, 'FOLLOW_UP_SET', u, { date: fu });
       return { data: await leadOut(u, id) };
     });
     api.post<{ Params: { id: string }; Body: { priority?: boolean } }>('/api/leads/:id/priority', async (req) => {
       const u = req.user!;
       if (!sides(u.role).india) throw new Forbidden('Only the India office or the super admin can set priority');
       const id = await attLead(req), on = !!req.body?.priority;
-      if (wf.priority(id) !== on) {
-        const c = wf.setPriority(id, on);
-        ev(id, 'PRIORITY', u, { on, ...(c ? { dueAt: c.dueAt } : {}) });
-        const a = assign.get(id), who = c?.assignee ?? (a?.assignedTo || null);
-        const lead = (await o.twenty.get(OBJECTS.lead, id))!;
+      if ((await wf.priority(id)) !== on) {
+        const c = await wf.setPriority(id, on);
+        await ev(id, 'PRIORITY', u, { on, ...(c ? { dueAt: c.dueAt } : {}) });
+        const a = await assign.get(id), who = c?.assignee ?? (a?.assignedTo || null);
+        const lead = (await leadDb.get(id))!;
         const recips = (who ? [who] : c ? queueWatchers(c.office) : []).filter((x) => x !== u.id);
-        if (recips.length) assign.notify(recips, { leadId: id, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'PRIORITY', office: c?.office ?? a?.ownerOffice ?? 'INDIA', byName: u.name });
+        if (recips.length) await assign.notify(recips, { leadId: id, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'PRIORITY', office: c?.office ?? a?.ownerOffice ?? 'INDIA', byName: u.name });
       }
-      return { data: { priority: wf.priority(id), sla: slaView(id, userNames()) } };
+      return { data: { priority: await wf.priority(id), sla: await slaView(id, userNames()) } };
     });
-    api.get('/api/settings/sla', async () => ({ data: wf.sla() }));
+    api.get('/api/settings/sla', async () => ({ data: await wf.sla() }));
     api.put<{ Body: { normalMinutes?: number; priorityMinutes?: number } }>('/api/settings/sla', async (req) => {
       if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can change SLA hours');
-      return { data: wf.setSla(req.body ?? {}) };
+      return { data: await wf.setSla(req.body ?? {}) };
     });
     api.get<{ Querystring: { days?: string } }>('/api/sla/report', async (req) => {
       const u = req.user!;
       if (!sides(u.role).admin) throw new Forbidden('Admins only');
       const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30)), now = (o.now ?? Date.now)();
       const since = new Date(now - days * 864e5).toISOString(), names = userNames();
-      const done = wf.runs(since).map((r) => ({ ...r, open: false }));
-      const open = wf.clocks().map((c) => ({ ...c, endedAt: null, open: true, breached: c.breached || new Date(now).toISOString() > c.dueAt }));
+      const done = (await wf.runs(since)).map((r) => ({ ...r, open: false }));
+      const open = (await wf.clocks()).map((c) => ({ ...c, endedAt: null, open: true, breached: c.breached || new Date(now).toISOString() > c.dueAt }));
       const all = [...done, ...open];
       const office = (['INDIA', 'CHINA'] as Office[]).map((of) => {
         const rs = all.filter((r) => r.office === of), closed = rs.filter((r) => !r.open);
@@ -1069,26 +1100,33 @@ export async function buildApp(o: AppOptions) {
         const x = m.get(k) ?? { id: r.assignee, name: (r.assignee && names.get(r.assignee)) || null, office: r.office, total: 0, breached: 0 };
         x.total++; if (r.breached) x.breached++; m.set(k, x);
       }
-      return { data: { days, office, members: [...m.values()].sort((a, b) => b.breached - a.breached || b.total - a.total), settings: wf.sla() } };
+      return { data: { days, office, members: [...m.values()].sort((a, b) => b.breached - a.breached || b.total - a.total), settings: await wf.sla() } };
     });
     api.get('/api/notifications', async (req) => assign.list(req.user!.id));
     // Real-time stream (Server-Sent Events). Sends `notification` events with the same privacy-safe payload as the list.
-    api.get('/api/notifications/stream', (req, reply) => {
-      const uid = req.user!.id;
+    api.get('/api/notifications/stream', async (req, reply) => {
+      const uid = req.user!.id, unread0 = await assign.unreadOf(uid);
+      const tokenV = req.headers.authorization ? (jwt.decode(req.headers.authorization.slice(7)) as { v?: number } | null)?.v : undefined;
       reply.hijack();
       const res = reply.raw;
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       const send = (ev: string, data: unknown) => res.write(`event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`);
       res.write('retry: 3000\n\n');
-      send('hello', { unread: assign.unreadOf(uid) });
+      send('hello', { unread: unread0 });
       const off = assign.subscribe(uid, (n, unread) => send('notification', { notification: n, unread }));
       const offData = onLiveData((d) => send('change', d));
       const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-      const close = () => { clearInterval(ping); off(); offData(); };
+      // Revocation (password/role change, disabled or removed user) arrives on Redis `se:revoke`: end this stream.
+      const revoke = () => {
+        const u = o.users.byId(uid);
+        if (!u || !u.active || o.users.tokenVersion(uid) !== tokenV) { try { send('revoked', {}); } catch { /* closed */ } res.end(); close(); }
+      };
+      let set = revokeSubs.get(uid); if (!set) revokeSubs.set(uid, (set = new Set())); set.add(revoke);
+      const close = () => { clearInterval(ping); off(); offData(); set!.delete(revoke); if (!set!.size) revokeSubs.delete(uid); };
       req.raw.on('close', close); res.on('error', close);
     });
-    api.post<{ Params: { id: string } }>('/api/notifications/:id/read', async (req) => ({ ok: assign.markRead(req.user!.id, req.params.id) }));
-    api.post('/api/notifications/read-all', async (req) => ({ ok: assign.markRead(req.user!.id) }));
+    api.post<{ Params: { id: string } }>('/api/notifications/:id/read', async (req) => ({ ok: await assign.markRead(req.user!.id, req.params.id) }));
+    api.post('/api/notifications/read-all', async (req) => ({ ok: await assign.markRead(req.user!.id) }));
 
     // ---- Super admin ----
     api.get('/api/backups', async (req) => {
@@ -1113,7 +1151,7 @@ export async function buildApp(o: AppOptions) {
     });
     api.delete<{ Params: { id: string } }>('/api/users/:id/avatar', async (req) => {
       if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Super admin only');
-      avatars.remove(req.params.id); return { data: { avatarUrl: null } };
+      await avatars.remove(req.params.id); return { data: { avatarUrl: null } };
     });
     api.post<{ Body: { email: string; name: string; role: Role; password: string; chatwootAgentId?: number } }>('/api/users', async (req, reply) => {
       const b = req.body ?? ({} as never);
@@ -1122,24 +1160,12 @@ export async function buildApp(o: AppOptions) {
       let u: User;
       try { u = await o.users.create(b.email ?? '', b.name ?? '', b.role, b.password ?? ''); }
       catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
-      // Keep the Twenty Team Member record (linked by email) in sync; best effort.
-      try {
-        const tm = await o.twenty.list('teamMembers', { email: u.email });
-        const data = { name: u.name, email: u.email, role: u.role, ...(b.chatwootAgentId ? { chatwootAgentId: b.chatwootAgentId } : {}) };
-        if (tm[0]) await o.twenty.update('teamMembers', String(tm[0].id), data); else await o.twenty.create('teamMembers', data);
-      } catch (e) { req.log.warn(e, 'team member sync failed'); }
       return reply.code(201).send({ data: u });
     });
     // Losing the last active super admin would lock everyone out of user management.
     const lastSuper = (t: User, next: { role?: Role; active?: boolean } | 'delete') =>
       t.role === 'SUPER_ADMIN' && t.active && (next === 'delete' || (next.role && next.role !== 'SUPER_ADMIN') || next.active === false) &&
       o.users.activeSuperAdmins() <= 1;
-    const syncTeamMember = async (req: { log: { warn: (...a: unknown[]) => void } }, oldEmail: string, u: User) => {
-      try {
-        const tm = await o.twenty.list('teamMembers', { email: oldEmail });
-        if (tm[0]) await o.twenty.update('teamMembers', String(tm[0].id), { name: u.name, email: u.email, role: u.role });
-      } catch (e) { req.log.warn(e, 'team member sync failed'); }
-    };
     api.patch<{ Params: { id: string }; Body: { name?: string; email?: string; role?: Role; active?: boolean } }>('/api/users/:id', async (req, reply) => {
       const t = o.users.byId(req.params.id);
       if (!t) return reply.code(404).send({ error: 'Not found' });
@@ -1150,8 +1176,7 @@ export async function buildApp(o: AppOptions) {
       if (t.id === req.user!.id && ((b.role && b.role !== t.role) || b.active === false)) throw new Forbidden('You cannot change your own role or disable yourself');
       if (lastSuper(t, b)) return reply.code(409).send({ error: 'This is the last active super admin', code: 'last_super_admin' });
       let u: User | null;
-      try { u = o.users.update(t.id, { name: b.name, email: b.email, role: b.role, active: b.active }); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
-      if (u && (u.name !== t.name || u.email !== t.email || u.role !== t.role)) await syncTeamMember(req, t.email, u);
+      try { u = await o.users.update(t.id, { name: b.name, email: b.email, role: b.role, active: b.active }); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
       return { data: u };
     });
     // Hard delete (super admin only). Leads/quotes keep their references; only the login goes.
@@ -1161,8 +1186,8 @@ export async function buildApp(o: AppOptions) {
       if (!t) return reply.code(404).send({ error: 'Not found' });
       if (t.id === req.user!.id) throw new Forbidden('You cannot remove yourself');
       if (lastSuper(t, 'delete')) return reply.code(409).send({ error: 'This is the last active super admin', code: 'last_super_admin' });
-      o.users.remove(t.id); avatars.remove(t.id);
-      assign.forgetUser(t.id);
+      await o.users.remove(t.id); await avatars.remove(t.id);
+      await assign.forgetUser(t.id);
       return reply.code(204).send();
     });
     api.post<{ Params: { id: string }; Body: { password: string } }>('/api/users/:id/password', async (req, reply) => {

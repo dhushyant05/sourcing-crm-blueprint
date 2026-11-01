@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../src/app.js';
 import { UserStore } from '../src/users.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 const EXE = Buffer.from('MZ\x90\x00binary');
@@ -17,8 +17,8 @@ function form(files: { name: string; data: Buffer }[]) {
 }
 const PW = 'correct-horse-1';
 async function setup() {
-  const twenty = new MockTwenty(), users = new UserStore();
-  const app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'seq-')) });
+  const { db, bus, users, twenty } = await testEnv();
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'seq-')) });
   for (const [e, r] of [['sa', 'SUPER_ADMIN'], ['is', 'INDIA_STAFF'], ['ca', 'CHINA_ADMIN'], ['cs', 'CHINA_STAFF'], ['cs2', 'CHINA_STAFF']] as const) await users.create(`${e}@x.in`, e, r, PW);
   const tok: Record<string, string> = {};
   for (const e of ['sa', 'is', 'ca', 'cs', 'cs2']) tok[e] = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: `${e}@x.in`, password: PW } })).json().token;
@@ -38,7 +38,7 @@ describe('supplier quotes on a lead', () => {
     expect((await call('cs', 'POST', `/api/leads/${lead.id}/quotes`, { product: 'x', unitPrice: 'abc', currency: 'USD' })).statusCode).toBe(400);
     expect((await call('cs', 'POST', `/api/leads/${lead.id}/quotes`, { product: 'x', unitPrice: 1, currency: 'EUR' })).statusCode).toBe(400);
     const r = await call('cs', 'POST', `/api/leads/${lead.id}/quotes`, { newSupplier: SUP, product: 'SB-500 bottle', unitPrice: '12.5', currency: 'RMB', moq: '1000 pcs', leadTime: '15 days', validity: '30 days', notes: 'FOB Ningbo' });
-    expect(r.statusCode).toBe(201);
+    expect(r.statusCode, r.body).toBe(201);
     const q = r.json().data;
     expect(q).toMatchObject({ product: 'SB-500 bottle', unitPrice: 12.5, currency: 'CNY', moq: '1000 pcs', supplier: { name: SUP.name, wechat: 'wx_secret' } });
     expect(q.clientPrice).toBeUndefined(); // China never sees the customer price
@@ -89,6 +89,6 @@ describe('supplier quotes on a lead', () => {
     await call('cs', 'POST', `/api/leads/${lead.id}/quotes`, { product: 'B', unitPrice: 1, currency: 'USD' });
     expect((await call('is', 'DELETE', `/api/records/leads/${lead.id}`)).statusCode).toBe(403);
     expect((await call('sa', 'DELETE', `/api/records/leads/${lead.id}`)).statusCode).toBe(204);
-    expect(twenty.db.leads.find((x: any) => x.id === lead.id)).toBeUndefined();
+    expect(await twenty.get('leads', lead.id)).toBeNull();
   });
 });

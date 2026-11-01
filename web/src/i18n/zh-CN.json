@@ -212,7 +212,25 @@
     "category": "品类",
     "contact": "联系人",
     "rating": "评分 / 备注",
-    "wechat": "微信 {{id}}"
+    "wechat": "微信 {{id}}",
+    "add": "添加供应商",
+    "edit": "编辑供应商",
+    "nameRequired": "请填写名称",
+    "activity": "往来记录",
+    "lastQuote": "最近报价",
+    "stats": "{{quotes}} 个报价 · {{accepted}} 个已接受 · {{orders}} 个订单",
+    "addedBy": "添加人",
+    "history": "报价与订单记录",
+    "noQuotes": "该供应商暂无报价",
+    "order": "订单 · {{qty}} 件",
+    "f": {
+      "name": "名称",
+      "contact": "联系人",
+      "phone": "电话",
+      "wechat": "微信",
+      "city": "城市",
+      "notes": "备注"
+    }
   },
   "team": {
     "title": "团队",

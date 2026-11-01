@@ -27,11 +27,11 @@ const quotations: Quotation[] = leads.filter((l) => ['QUOTED', 'APPROVED', 'SHIP
 }));
 
 const suppliers: Supplier[] = [
-  { id: 'SP1', name: 'Yiwu Huaxin Trading', city: 'Yiwu', category: 'Household', rating: 4.6, contactName: 'Zhang Min', wechat: 'huaxin_zm' },
-  { id: 'SP2', name: 'Ningbo Brightway', city: 'Ningbo', category: 'Kitchenware', rating: 4.3, contactName: 'Liu Yang', wechat: 'brightway_ly' },
-  { id: 'SP3', name: 'Guangzhou Hometex', city: 'Guangzhou', category: 'Textiles', rating: 4.8, contactName: 'Huang Lei', wechat: 'hometex_hl' },
-  { id: 'SP4', name: 'Shenzhen Joylight', city: 'Shenzhen', category: 'Electronics', rating: 4.1, contactName: 'Zhao Qing', wechat: 'joylight_zq' },
-  { id: 'SP5', name: 'Foshan Ceramics Co.', city: 'Foshan', category: 'Ceramics', rating: 4.5, contactName: 'Sun Hao', wechat: 'fsceramic' },
+  { id: 'SP1', name: 'Yiwu Huaxin Trading', city: 'Yiwu', contact: 'Zhang Min', wechat: 'huaxin_zm', quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null },
+  { id: 'SP2', name: 'Ningbo Brightway', city: 'Ningbo', contact: 'Liu Yang', wechat: 'brightway_ly', quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null },
+  { id: 'SP3', name: 'Guangzhou Hometex', city: 'Guangzhou', contact: 'Huang Lei', wechat: 'hometex_hl', quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null },
+  { id: 'SP4', name: 'Shenzhen Joylight', city: 'Shenzhen', contact: 'Zhao Qing', wechat: 'joylight_zq', quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null },
+  { id: 'SP5', name: 'Foshan Ceramics Co.', city: 'Foshan', contact: 'Sun Hao', wechat: 'fsceramic', quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null },
 ];
 
 

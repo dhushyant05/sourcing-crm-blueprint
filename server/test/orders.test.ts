@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../src/app.js';
 import { UserStore } from '../src/users.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PW = 'correct-horse-1';
 async function setup() {
-  const twenty = new MockTwenty(), users = new UserStore();
-  const app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'seo-')) });
+  const { db, bus, users, twenty } = await testEnv();
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'seo-')) });
   const ids: Record<string, string> = {};
   for (const [e, r] of [['sa', 'SUPER_ADMIN'], ['is', 'INDIA_STAFF'], ['is2', 'INDIA_STAFF'], ['cs', 'CHINA_STAFF']] as const) ids[e] = (await users.create(`${e}@x.in`, e, r, PW)).id;
   const tok: Record<string, string> = {};

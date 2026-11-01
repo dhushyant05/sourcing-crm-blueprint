@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../src/app.js';
 import { UserStore } from '../src/users.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PW = 'correct-horse-1';
 async function setup() {
-  const twenty = new MockTwenty(), users = new UserStore();
+  const { db, bus, users, twenty } = await testEnv();
   let t = Date.parse('2026-11-02T00:00:00Z');
   const clock = { now: () => t, add: (min: number) => { t += min * 60e3; } };
-  const app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'sew-')), now: clock.now, slaTickMs: 0 });
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'sew-')), now: clock.now, slaTickMs: 0 });
   const ids: Record<string, string> = {};
   for (const [e, r] of [['sa', 'SUPER_ADMIN'], ['is', 'INDIA_STAFF'], ['ia', 'INDIA_ADMIN'], ['cs', 'CHINA_STAFF'], ['ca', 'CHINA_ADMIN']] as const) ids[e] = (await users.create(`${e}@x.in`, e, r, PW)).id;
   const tok: Record<string, string> = {};

@@ -4,27 +4,28 @@ import { PIPELINE } from '../lib/types';
 import { money, totalsByCurrency } from '../lib/currency';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Chip, dot, PageHeader, Skeleton, Sparkline, pretty } from '../components/ui';
-import type { Lead, Quotation, Shipment } from '../lib/types';
+import type { Lead, LeadQuote, Shipment } from '../lib/types';
 import { SlaWidget } from '../components/Workflow';
 
 export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const { api, perms } = useApp();
   const { t } = useTranslation();
-  const { data } = useLoad(() => Promise.all([api.leads(), api.quotations(), api.shipments()]), [api]);
-  const [leads, quotes, ships] = (data ?? [null, null, null]) as [Lead[] | null, Quotation[] | null, Shipment[] | null];
+  const { data } = useLoad(() => Promise.all([api.leads(), api.allQuotes(), api.shipments()]), [api]);
+  const [leads, quotes, ships] = (data ?? [null, null, null]) as [Lead[] | null, LeadQuote[] | null, Shipment[] | null];
 
   const open = leads?.filter((l) => !['WON', 'LOST'].includes(l.status)).length ?? 0;
   const won = leads?.filter((l) => l.status === 'WON').length ?? 0;
   const closed = leads?.filter((l) => ['WON', 'LOST'].includes(l.status)).length || 1;
   // Per currency — amounts in different currencies are never added together.
-  const pipeline = totalsByCurrency(quotes ?? [], (q) => [q.clientCurrency, q.clientUnitPrice != null ? q.clientUnitPrice * q.quantity : undefined]);
+  // Quoted pipeline = customer quotes (INR, incl. GST) that are sent or accepted.
+  const pipeline = totalsByCurrency((quotes ?? []).filter((q) => q.cqTotals && (q.status === 'SENT' || q.status === 'ACCEPTED')), (q) => ['INR', q.cqTotals?.total]);
   const transit = ships?.filter((s) => s.status !== 'DELIVERED').length ?? 0;
 
   const kpis = [
     { label: t('dashboard.openLeads'), value: String(open), delta: 12.5, series: [4, 6, 5, 8, 7, 9, 11, open], color: '#2a9fd6' },
     perms.clientPricing
       ? { label: t('dashboard.quotedPipeline'), hint: t('dashboard.perCurrency'), value: pipeline.map(([c, v]) => money(v, c, true)).join(' · ') || '—', delta: 8.2, series: [3, 4, 4, 6, 5, 7, 8, 9], color: '#14b8a6' }
-      : { label: t('dashboard.quotesSent'), value: String(quotes?.length ?? 0), delta: 8.2, series: [1, 2, 2, 3, 3, 4, 5, 6], color: '#14b8a6' },
+      : { label: t('dashboard.quotesSent'), value: String(quotes?.filter((q) => q.status === 'SENT' || q.status === 'ACCEPTED').length ?? 0), delta: 8.2, series: [1, 2, 2, 3, 3, 4, 5, 6], color: '#14b8a6' },
     { label: t('dashboard.winRate'), value: `${Math.round((won / closed) * 100)}%`, delta: -3.1, series: [60, 58, 62, 55, 57, 52, 54, 50], color: '#f59e0b' },
     { label: t('dashboard.inTransit'), value: String(transit), delta: 4.0, series: [1, 2, 1, 3, 2, 3, 2, transit], color: '#06b6d4' },
   ];

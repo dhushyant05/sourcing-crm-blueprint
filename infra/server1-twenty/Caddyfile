@@ -1,4 +1,4 @@
-# Only the Source Easy server is public. Twenty stays on the internal docker network.
+# Only the Source Easy server is public; Postgres and Redis stay on the internal docker network.
 {$DOMAIN} {
 	# Real-time notifications (SSE): no compression, flush every write, keep the stream open for hours.
 	@sse path /api/notifications/stream

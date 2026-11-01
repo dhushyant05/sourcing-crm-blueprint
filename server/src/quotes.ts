@@ -1,16 +1,14 @@
 /**
- * China-side supplier quotes on a lead. Stored in the server's SQLite DB (same file as users/assignments).
- * Twenty's `quotation` object only has unitCost/totalCost/currency/clientUnitPrice/clientCurrency/validityDate and
- * hangs off a sourcingRequest; it has no product/model, MOQ, lead time or notes, so quotes on a lead live here.
+ * China-side supplier quotes on a lead (PostgreSQL `quotes`; India's customer quote in `customer_quotes`).
  * Suppliers (identity + contact) are China-only; India gets a redacted view (see QuoteStore.view).
  * Prices are stored exactly as entered, in their own currency: no conversion.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from './db.js';
 import { randomUUID } from 'node:crypto';
 
 export const CURRENCIES = ['USD', 'CNY', 'INR'] as const;
 export type Currency = (typeof CURRENCIES)[number];
-export interface Supplier { id: string; name: string; contact: string | null; phone: string | null; wechat: string | null; city: string | null; createdBy: string | null; createdAt: string }
+export interface Supplier { id: string; name: string; contact: string | null; phone: string | null; wechat: string | null; city: string | null; notes: string | null; createdBy: string | null; createdAt: string }
 export interface Quote {
   id: string; leadId: string; supplierId: string | null; product: string; unitPrice: number; currency: Currency;
   moq: string | null; leadTime: string | null; validity: string | null; notes: string | null;
@@ -48,31 +46,23 @@ const s = (v: unknown, max = 500) => { const t = typeof v === 'string' ? v.trim(
 export class BadQuote extends Error { status = 400; }
 
 export class QuoteStore {
-  constructor(private db: DatabaseSync) {
-    db.exec(`CREATE TABLE IF NOT EXISTS suppliers (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, contact TEXT, phone TEXT, wechat TEXT, city TEXT, created_by TEXT, created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS lead_quotes (
-      id TEXT PRIMARY KEY, lead_id TEXT NOT NULL, supplier_id TEXT, product TEXT NOT NULL, unit_price REAL NOT NULL, currency TEXT NOT NULL,
-      moq TEXT, lead_time TEXT, validity TEXT, notes TEXT, client_price REAL, client_currency TEXT, client_notes TEXT,
-      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS lq_lead ON lead_quotes(lead_id, created_at);`);
-    const have = new Set((db.prepare('PRAGMA table_info(lead_quotes)').all() as any[]).map((c) => c.name));
-    for (const [c, t] of [['ship_cost', 'REAL'], ['ship_currency', 'TEXT'], ['ship_term', 'TEXT'], ['ship_mode', 'TEXT'], ['ship_port', 'TEXT'], ['ship_transit', 'TEXT'],
-      ['cq', 'TEXT'], ['status', "TEXT NOT NULL DEFAULT 'DRAFT'"], ['sent_at', 'TEXT'], ['decided_at', 'TEXT'], ['reject_reason', 'TEXT'], ['pdf_token', 'TEXT']])
-      if (!have.has(c)) db.exec(`ALTER TABLE lead_quotes ADD COLUMN ${c} ${t}`);
-    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS lq_token ON lead_quotes(pdf_token)');
-  }
-  private sup = (r: any): Supplier => ({ id: r.id, name: r.name, contact: r.contact, phone: r.phone, wechat: r.wechat, city: r.city, createdBy: r.created_by, createdAt: r.created_at });
+  constructor(private db: Db) {}
+  private sup = (r: any): Supplier => ({ id: r.id, name: r.name, contact: r.contact, phone: r.phone, wechat: r.wechat, city: r.city, notes: r.notes ?? null, createdBy: r.created_by, createdAt: r.created_at });
+  private cqOf = (r: any): CustomerQuote | null => (r.cq_qty == null ? null : { qty: r.cq_qty, unitPrice: r.cq_unit_price, gstPct: r.cq_gst_pct, shipCost: r.cq_ship_cost, shipTerm: r.cq_ship_term,
+    shipMode: r.cq_ship_mode, port: r.cq_port, transit: r.cq_transit, otherCharges: r.cq_other_charges, otherLabel: r.cq_other_label, validity: r.cq_validity, terms: r.cq_terms });
   private q = (r: any): Quote => ({ id: r.id, leadId: r.lead_id, supplierId: r.supplier_id, product: r.product, unitPrice: r.unit_price, currency: r.currency,
     moq: r.moq, leadTime: r.lead_time, validity: r.validity, notes: r.notes, clientPrice: r.client_price, clientCurrency: r.client_currency,
     clientNotes: r.client_notes, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
     shipCost: r.ship_cost, shipCurrency: r.ship_currency, shipTerm: r.ship_term, shipMode: r.ship_mode, shipPort: r.ship_port, shipTransit: r.ship_transit,
-    cq: r.cq ? JSON.parse(r.cq) : null, status: r.status ?? 'DRAFT', sentAt: r.sent_at, decidedAt: r.decided_at, rejectReason: r.reject_reason, pdfToken: r.pdf_token });
-  all(): Quote[] { return (this.db.prepare('SELECT * FROM lead_quotes ORDER BY created_at DESC, rowid DESC').all() as any[]).map(this.q); }
-  byToken(t: string): Quote | null { if (!/^[A-Za-z0-9_-]{30,}$/.test(t)) return null; const r = this.db.prepare('SELECT * FROM lead_quotes WHERE pdf_token = ?').get(t); return r ? this.q(r) : null; }
-  setToken(id: string, t: string) { this.db.prepare('UPDATE lead_quotes SET pdf_token = ? WHERE id = ?').run(t, id); }
-  setCustomer(id: string, b: Record<string, unknown>): Quote {
-    const cur = this.get(id)!, p = cur.cq;
+    cq: this.cqOf(r), status: r.status ?? 'DRAFT', sentAt: r.sent_at, decidedAt: r.decided_at, rejectReason: r.reject_reason, pdfToken: r.pdf_token });
+  private static SEL = `SELECT q.*, c.qty cq_qty, c.unit_price cq_unit_price, c.gst_pct cq_gst_pct, c.ship_cost cq_ship_cost, c.ship_term cq_ship_term, c.ship_mode cq_ship_mode,
+    c.port cq_port, c.transit cq_transit, c.other_charges cq_other_charges, c.other_label cq_other_label, c.validity cq_validity, c.terms cq_terms
+    FROM quotes q LEFT JOIN customer_quotes c ON c.quote_id = q.id`;
+  async all(): Promise<Quote[]> { return (await this.db.all(`${QuoteStore.SEL} ORDER BY q.created_at DESC, q.seq DESC`)).map(this.q); }
+  async byToken(t: string): Promise<Quote | null> { if (!/^[A-Za-z0-9_-]{30,}$/.test(t)) return null; const r = await this.db.get(`${QuoteStore.SEL} WHERE q.pdf_token = ?`, t); return r ? this.q(r) : null; }
+  async setToken(id: string, t: string) { await this.db.run('UPDATE quotes SET pdf_token = ? WHERE id = ?', t, id); }
+  async setCustomer(id: string, b: Record<string, unknown>): Promise<Quote> {
+    const cur = (await this.get(id))!, p = cur.cq;
     const g = (k: keyof CustomerQuote) => (k in b ? b[k] : p?.[k]);
     const qty = num(g('qty'), 'Quantity'); if (!qty) throw new BadQuote('Quantity is required');
     const unitPrice = num(g('unitPrice') ?? cur.clientPrice, 'Selling price'); if (unitPrice == null) throw new BadQuote('Selling price per unit is required');
@@ -80,38 +70,48 @@ export class QuoteStore {
     const cq: CustomerQuote = { qty, unitPrice, gstPct, shipCost: num(g('shipCost'), 'Shipping cost', 0)!, shipTerm: oneOf(g('shipTerm'), INCOTERMS, 'Shipping term'),
       shipMode: oneOf(g('shipMode'), SHIP_MODES, 'Shipping mode'), port: s(g('port'), 120), transit: s(g('transit'), 60),
       otherCharges: num(g('otherCharges'), 'Other charges', 0)!, otherLabel: s(g('otherLabel'), 80), validity: s(g('validity'), 60), terms: s(g('terms'), 3000) };
-    this.db.prepare("UPDATE lead_quotes SET cq=?, client_price=?, client_currency='INR', updated_at=? WHERE id=?").run(JSON.stringify(cq), unitPrice, new Date().toISOString(), id);
-    return this.get(id)!;
-  }
-  setStatus(id: string, status: QuoteStatus, reason?: string | null): Quote {
     const at = new Date().toISOString();
-    if (status === 'SENT') this.db.prepare("UPDATE lead_quotes SET status='SENT', sent_at=?, updated_at=? WHERE id=?").run(at, at, id);
-    else if (status === 'DRAFT') this.db.prepare("UPDATE lead_quotes SET status='DRAFT', decided_at=NULL, reject_reason=NULL, updated_at=? WHERE id=?").run(at, id);
-    else this.db.prepare('UPDATE lead_quotes SET status=?, decided_at=?, reject_reason=?, updated_at=? WHERE id=?').run(status, at, status === 'REJECTED' ? s(reason, 500) : null, at, id);
-    return this.get(id)!;
+    await this.db.tx(async (db) => {
+      await db.run(`INSERT INTO customer_quotes (quote_id, qty, unit_price, gst_pct, ship_cost, ship_term, ship_mode, port, transit, other_charges, other_label, validity, terms, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (quote_id) DO UPDATE SET qty=excluded.qty, unit_price=excluded.unit_price, gst_pct=excluded.gst_pct, ship_cost=excluded.ship_cost,
+        ship_term=excluded.ship_term, ship_mode=excluded.ship_mode, port=excluded.port, transit=excluded.transit, other_charges=excluded.other_charges, other_label=excluded.other_label,
+        validity=excluded.validity, terms=excluded.terms, updated_at=excluded.updated_at`,
+        id, cq.qty, cq.unitPrice, cq.gstPct, cq.shipCost, cq.shipTerm, cq.shipMode, cq.port, cq.transit, cq.otherCharges, cq.otherLabel, cq.validity, cq.terms, at);
+      await db.run("UPDATE quotes SET client_price=?, client_currency='INR', updated_at=? WHERE id=?", unitPrice, at, id);
+    });
+    return (await this.get(id))!;
+  }
+  async setStatus(id: string, status: QuoteStatus, reason?: string | null): Promise<Quote> {
+    const at = new Date().toISOString();
+    if (status === 'SENT') await this.db.run("UPDATE quotes SET status='SENT', sent_at=?, updated_at=? WHERE id=?", at, at, id);
+    else if (status === 'DRAFT') await this.db.run("UPDATE quotes SET status='DRAFT', decided_at=NULL, reject_reason=NULL, updated_at=? WHERE id=?", at, id);
+    else await this.db.run('UPDATE quotes SET status=?, decided_at=?, reject_reason=?, updated_at=? WHERE id=?', status, at, status === 'REJECTED' ? s(reason, 500) : null, at, id);
+    return (await this.get(id))!;
   }
 
-  suppliers(): Supplier[] { return (this.db.prepare('SELECT * FROM suppliers ORDER BY name COLLATE NOCASE').all() as any[]).map(this.sup); }
-  supplier(id: string): Supplier | null { const r = this.db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id); return r ? this.sup(r) : null; }
-  addSupplier(b: Record<string, unknown>, by: string): Supplier {
+  async suppliers(): Promise<Supplier[]> { return (await this.db.all('SELECT * FROM suppliers ORDER BY lower(name), id')).map(this.sup); }
+  async supplier(id: string): Promise<Supplier | null> { const r = await this.db.get('SELECT * FROM suppliers WHERE id = ?', id); return r ? this.sup(r) : null; }
+  async addSupplier(b: Record<string, unknown>, by: string): Promise<Supplier> {
     const name = s(b.name, 120); if (!name) throw new BadQuote('Supplier name is required');
     const id = randomUUID();
-    this.db.prepare('INSERT INTO suppliers VALUES (?,?,?,?,?,?,?,?)').run(id, name, s(b.contact, 120), s(b.phone, 60), s(b.wechat, 60), s(b.city, 80), by, new Date().toISOString());
-    return this.supplier(id)!;
+    await this.db.run('INSERT INTO suppliers (id, name, contact, phone, wechat, city, notes, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      id, name, s(b.contact, 120), s(b.phone, 60), s(b.wechat, 60), s(b.city, 80), s(b.notes, 2000), by, new Date().toISOString());
+    return (await this.supplier(id))!;
   }
-  updateSupplier(id: string, b: Record<string, unknown>): Supplier | null {
-    const cur = this.supplier(id); if (!cur) return null;
-    const n = { ...cur, ...Object.fromEntries(['name', 'contact', 'phone', 'wechat', 'city'].filter((k) => k in b).map((k) => [k, s(b[k], 120)])) };
+  async updateSupplier(id: string, b: Record<string, unknown>): Promise<Supplier | null> {
+    const cur = await this.supplier(id); if (!cur) return null;
+    const n = { ...cur, ...Object.fromEntries(['name', 'contact', 'phone', 'wechat', 'city', 'notes'].filter((k) => k in b).map((k) => [k, s(b[k], k === 'notes' ? 2000 : 120)])) };
     if (!n.name) throw new BadQuote('Supplier name is required');
-    this.db.prepare('UPDATE suppliers SET name=?, contact=?, phone=?, wechat=?, city=? WHERE id=?').run(n.name, n.contact, n.phone, n.wechat, n.city, id);
+    await this.db.run('UPDATE suppliers SET name=?, contact=?, phone=?, wechat=?, city=?, notes=? WHERE id=?', n.name, n.contact, n.phone, n.wechat, n.city, n.notes, id);
     return this.supplier(id);
   }
 
-  list(leadId: string): Quote[] { return (this.db.prepare('SELECT * FROM lead_quotes WHERE lead_id = ? ORDER BY created_at, rowid').all(leadId) as any[]).map(this.q); }
-  get(id: string): Quote | null { const r = this.db.prepare('SELECT * FROM lead_quotes WHERE id = ?').get(id); return r ? this.q(r) : null; }
-  count(leadId: string): number { return (this.db.prepare('SELECT COUNT(*) c FROM lead_quotes WHERE lead_id = ?').get(leadId) as any).c; }
+  async list(leadId: string): Promise<Quote[]> { return (await this.db.all(`${QuoteStore.SEL} WHERE q.lead_id = ? ORDER BY q.created_at, q.seq`, leadId)).map(this.q); }
+  async bySupplier(supplierId: string): Promise<Quote[]> { return (await this.db.all(`${QuoteStore.SEL} WHERE q.supplier_id = ? ORDER BY q.created_at DESC, q.seq DESC`, supplierId)).map(this.q); }
+  async get(id: string): Promise<Quote | null> { const r = await this.db.get(`${QuoteStore.SEL} WHERE q.id = ?`, id); return r ? this.q(r) : null; }
+  async count(leadId: string): Promise<number> { return (await this.db.get('SELECT COUNT(*)::int c FROM quotes WHERE lead_id = ?', leadId))!.c; }
 
-  private china(b: Record<string, unknown>, cur?: Quote) {
+  private async china(b: Record<string, unknown>, cur?: Quote) {
     const has = (k: string) => k in b;
     const product = has('product') ? s(b.product, 200) : cur?.product ?? null;
     if (!product) throw new BadQuote('Product / model is required');
@@ -121,7 +121,7 @@ export class QuoteStore {
     const currency = String(has('currency') ? b.currency : cur?.currency ?? '').toUpperCase().replace('RMB', 'CNY') as Currency;
     if (!CURRENCIES.includes(currency)) throw new BadQuote('Currency must be USD, RMB or INR');
     const supplierId = has('supplierId') ? s(b.supplierId, 64) : cur?.supplierId ?? null;
-    if (supplierId && !this.supplier(supplierId)) throw new BadQuote('Unknown supplier');
+    if (supplierId && !(await this.supplier(supplierId))) throw new BadQuote('Unknown supplier');
     const pick = (k: 'moq' | 'leadTime' | 'validity' | 'notes', max: number) => (has(k) ? s(b[k], max) : cur?.[k] ?? null);
     const shipCost = has('shipCost') ? num(b.shipCost, 'Shipping cost') : cur?.shipCost ?? null;
     let shipCurrency = has('shipCurrency') ? (b.shipCurrency ? String(b.shipCurrency).toUpperCase().replace('RMB', 'CNY') : null) : cur?.shipCurrency ?? null;
@@ -133,23 +133,23 @@ export class QuoteStore {
       shipPort: has('shipPort') ? s(b.shipPort, 120) : cur?.shipPort ?? null, shipTransit: has('shipTransit') ? s(b.shipTransit, 60) : cur?.shipTransit ?? null };
     return { product, unitPrice, currency, supplierId, moq: pick('moq', 60), leadTime: pick('leadTime', 60), validity: pick('validity', 60), notes: pick('notes', 2000), ...ship };
   }
-  create(leadId: string, b: Record<string, unknown>, by: string): Quote {
-    const c = this.china(b); const id = randomUUID(), at = new Date().toISOString();
-    this.db.prepare(`INSERT INTO lead_quotes (id, lead_id, supplier_id, product, unit_price, currency, moq, lead_time, validity, notes, created_by, created_at, updated_at,
-      ship_cost, ship_currency, ship_term, ship_mode, ship_port, ship_transit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, leadId, c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, by, at, at, c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit);
-    return this.get(id)!;
+  async create(leadId: string, b: Record<string, unknown>, by: string): Promise<Quote> {
+    const c = await this.china(b); const id = randomUUID(), at = new Date().toISOString();
+    await this.db.run(`INSERT INTO quotes (id, lead_id, supplier_id, product, unit_price, currency, moq, lead_time, validity, notes, created_by, created_at, updated_at,
+      ship_cost, ship_currency, ship_term, ship_mode, ship_port, ship_transit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      id, leadId, c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, by, at, at, c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit);
+    return (await this.get(id))!;
   }
-  update(id: string, b: Record<string, unknown>): Quote {
-    const cur = this.get(id)!; const c = this.china(b, cur);
-    this.db.prepare(`UPDATE lead_quotes SET supplier_id=?, product=?, unit_price=?, currency=?, moq=?, lead_time=?, validity=?, notes=?, updated_at=?,
-      ship_cost=?, ship_currency=?, ship_term=?, ship_mode=?, ship_port=?, ship_transit=? WHERE id=?`)
-      .run(c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, new Date().toISOString(), c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit, id);
-    return this.get(id)!;
+  async update(id: string, b: Record<string, unknown>): Promise<Quote> {
+    const cur = (await this.get(id))!; const c = await this.china(b, cur);
+    await this.db.run(`UPDATE quotes SET supplier_id=?, product=?, unit_price=?, currency=?, moq=?, lead_time=?, validity=?, notes=?, updated_at=?,
+      ship_cost=?, ship_currency=?, ship_term=?, ship_mode=?, ship_port=?, ship_transit=? WHERE id=?`,
+      c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, new Date().toISOString(), c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit, id);
+    return (await this.get(id))!;
   }
   /** India's customer-facing selling price on a quote (INR by default). */
-  setClient(id: string, b: Record<string, unknown>): Quote {
-    const cur = this.get(id)!;
+  async setClient(id: string, b: Record<string, unknown>): Promise<Quote> {
+    const cur = (await this.get(id))!;
     const raw = 'clientPrice' in b ? b.clientPrice : cur.clientPrice;
     let price: number | null = null;
     if (raw !== null && raw !== '' && raw !== undefined) {
@@ -159,11 +159,10 @@ export class QuoteStore {
     const ccy = String(('clientCurrency' in b ? b.clientCurrency : cur.clientCurrency) ?? 'INR').toUpperCase().replace('RMB', 'CNY');
     if (!CURRENCIES.includes(ccy as Currency)) throw new BadQuote('Currency must be USD, RMB or INR');
     const notes = 'clientNotes' in b ? s(b.clientNotes, 2000) : cur.clientNotes;
-    this.db.prepare('UPDATE lead_quotes SET client_price=?, client_currency=?, client_notes=?, updated_at=? WHERE id=?')
-      .run(price, price == null ? null : ccy, notes, new Date().toISOString(), id);
-    return this.get(id)!;
+    await this.db.run('UPDATE quotes SET client_price=?, client_currency=?, client_notes=?, updated_at=? WHERE id=?', price, price == null ? null : ccy, notes, new Date().toISOString(), id);
+    return (await this.get(id))!;
   }
-  remove(id: string) { this.db.prepare('DELETE FROM lead_quotes WHERE id = ?').run(id); }
-  removeLead(leadId: string) { this.db.prepare('DELETE FROM lead_quotes WHERE lead_id = ?').run(leadId); }
-  deleteSupplier(id: string) { this.db.prepare('UPDATE lead_quotes SET supplier_id = NULL WHERE supplier_id = ?').run(id); this.db.prepare('DELETE FROM suppliers WHERE id = ?').run(id); }
+  async remove(id: string) { await this.db.run('DELETE FROM quotes WHERE id = ?', id); }
+  async removeLead(leadId: string) { await this.db.run('DELETE FROM quotes WHERE lead_id = ?', leadId); }
+  async deleteSupplier(id: string) { await this.db.run('DELETE FROM suppliers WHERE id = ?', id); } // quotes.supplier_id → NULL (FK)
 }

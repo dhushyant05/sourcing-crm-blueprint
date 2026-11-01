@@ -43,7 +43,18 @@ export interface Shipment {
   etd: string | null; eta: string | null; status: string; customsNote?: string | null; deliveredAt: string | null; production: string | null; expectedShip: string | null;
   customer?: string | null; deliveryCity?: string | null; supplier?: string | null; createdAt: string; updatedAt: string;
 }
-export interface Supplier { id: string; name: string; phone?: string; wechat?: string; notes?: string; city?: string; category?: string; rating?: number; contactName?: string; }
+/** China-side supplier directory row (PostgreSQL `suppliers`) with activity stats. Never sent to India. */
+export interface Supplier {
+  id: string; name: string; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null; notes?: string | null;
+  createdBy?: string | null; createdByName?: string | null; createdAt?: string;
+  quotes: number; accepted: number; leads: number; orders: number; lastQuoteAt: string | null;
+}
+export interface SupplierQuoteRow {
+  id: string; leadId: string; leadRef: string | null; leadStatus: string | null; product: string; unitPrice: number; currency: QuoteCurrency;
+  moq?: string | null; leadTime?: string | null; status: QuoteStatus; createdAt: string; createdByName: string | null;
+  order: { id: string; qty: number; production: string; indiaStatus: string; createdAt: string } | null;
+}
+export type SupplierDetail = Omit<Supplier, 'quotes'> & { quotes: SupplierQuoteRow[]; quoteCount: number };
 export type QuoteCurrency = 'USD' | 'CNY' | 'INR';
 /** China-side supplier record (never sent to India). */
 export interface QuoteSupplier { id: string; name: string; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null }

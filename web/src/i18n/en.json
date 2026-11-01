@@ -212,7 +212,25 @@
     "category": "Category",
     "contact": "Contact",
     "rating": "Rating / notes",
-    "wechat": "WeChat {{id}}"
+    "wechat": "WeChat {{id}}",
+    "add": "Add supplier",
+    "edit": "Edit supplier",
+    "nameRequired": "Name is required",
+    "activity": "Activity",
+    "lastQuote": "Last quote",
+    "stats": "{{quotes}} quotes · {{accepted}} accepted · {{orders}} orders",
+    "addedBy": "Added by",
+    "history": "Quote & order history",
+    "noQuotes": "No quotes from this supplier yet",
+    "order": "Order · {{qty}} pcs",
+    "f": {
+      "name": "Name",
+      "contact": "Contact person",
+      "phone": "Phone",
+      "wechat": "WeChat",
+      "city": "City",
+      "notes": "Notes"
+    }
   },
   "team": {
     "title": "Team",

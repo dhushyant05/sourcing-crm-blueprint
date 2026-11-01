@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import sharp from 'sharp';
 import { buildApp } from '../src/app.js';
-import { UserStore } from '../src/users.js';
-import { MockTwenty } from './fixtures.js';
+import { testEnv } from './fixtures.js';
 
 const PW = 'correct-horse-battery';
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -15,10 +14,10 @@ const form = (buf: Buffer, type = 'image/png', name = 'a.png') => {
 const H = (t: string) => ({ authorization: `Bearer ${t}` });
 
 beforeAll(async () => {
-  const users = new UserStore();
+  const env = await testEnv(), users = env.users;
   await users.create('admin@x.in', 'Admin', 'SUPER_ADMIN', PW);
   await users.create('staff@x.in', 'Staff', 'INDIA_STAFF', PW);
-  app = await buildApp({ twenty: new MockTwenty(), users, jwtSecret: 'x'.repeat(40) } as never);
+  app = await buildApp({ ...env, jwtSecret: 'x'.repeat(40) });
 });
 
 describe('profile', () => {
