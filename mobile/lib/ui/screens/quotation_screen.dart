@@ -84,7 +84,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
     final r = await repo.createQuotation(sourcingRequestId: widget.request.id, supplierId: supplierId,
         unitCost: cost, quantity: _qty, currency: cur, validUntil: valid);
     await repo.updateLead(widget.lead.id, {'status': 'QUOTED'});
-    if (mounted) showWriteResult(context, r, 'Quotation');
+    if (mounted) showWriteResult(context, r, context.l10n.quotation);
     _reload();
   }
 
@@ -113,7 +113,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
     final v = double.tryParse(c.text);
     if (ok != true || v == null || !mounted) return;
     final r = await context.read<Session>().repo.setClientPrice(q.id, v, cur);
-    if (mounted) showWriteResult(context, r, 'Client price');
+    if (mounted) showWriteResult(context, r, context.l10n.clientPrice);
     _reload();
   }
 

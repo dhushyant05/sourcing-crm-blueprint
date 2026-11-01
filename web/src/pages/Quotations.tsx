@@ -22,8 +22,8 @@ export function Quotations({ search }: { search: string }) {
       <PageHeader title={t('quotes.title')} subtitle={t('quotes.subtitle')} />
       <div className="card overflow-hidden">
         {!data ? <TableSkeleton /> : !rows?.length ? <Empty title={t('quotes.none')} hint={t('quotes.noneHint')} /> : (
-          <div className="max-h-[calc(100vh-220px)] overflow-auto">
-            <table className="w-full text-sm">
+          <div className="md:max-h-[calc(100vh-220px)] md:overflow-auto">
+            <table className="rtable w-full text-sm">
               <thead><tr>
                 <th className="th">{t('quotes.quote')}</th><th className="th">{t('common.product')}</th>{perms.suppliers && <th className="th">{t('common.supplier')}</th>}
                 <th className="th text-right">{t('common.qty')}</th>

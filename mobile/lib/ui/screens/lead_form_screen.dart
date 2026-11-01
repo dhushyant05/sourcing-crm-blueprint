@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
@@ -37,7 +39,7 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
         sourceChannel: _channel,
       );
       if (!mounted) return;
-      showWriteResult(context, r, 'Lead');
+      showWriteResult(context, r, context.l10n.lead);
       Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -77,7 +79,7 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
             initialValue: _channel,
             decoration: InputDecoration(labelText: context.l10n.sourceChannel),
             items: const ['WALK_IN', 'REFERRAL', 'PHONE', 'WHATSAPP', 'EXHIBITION', 'WEBSITE', 'OTHER']
-                .map((c) => DropdownMenuItem(value: c, child: Text(pretty(c)))).toList(),
+                .map((c) => DropdownMenuItem(value: c, child: Text(codeLabel(context, c)))).toList(),
             onChanged: (v) => setState(() => _channel = v!),
           ),
           const SizedBox(height: 24),

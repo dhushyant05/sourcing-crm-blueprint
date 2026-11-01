@@ -13,7 +13,7 @@ export function Suppliers({ search }: { search: string }) {
       <PageHeader title={t('suppliers.title')} subtitle={t('suppliers.subtitle')} />
       <div className="card overflow-hidden">
         {!data ? <TableSkeleton /> : !rows?.length ? <Empty title={t('suppliers.none')} /> : (
-          <table className="w-full text-sm">
+          <table className="rtable w-full text-sm">
             <thead><tr><th className="th">{t('common.supplier')}</th><th className="th">{t('suppliers.city')}</th><th className="th">{t('suppliers.category')}</th><th className="th">{t('suppliers.contact')}</th><th className="th">{t('suppliers.rating')}</th></tr></thead>
             <tbody>
               {rows.map((s) => (

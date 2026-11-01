@@ -20,8 +20,8 @@ export function Shipping({ search }: { search: string }) {
       <PageHeader title={t('shipping.title')} subtitle={t('shipping.subtitle')} />
       <div className="card overflow-hidden">
         {!data ? <TableSkeleton /> : !rows?.length ? <Empty title={t('shipping.none')} hint={t('shipping.noneHint')} /> : (
-          <div className="max-h-[calc(100vh-220px)] overflow-auto">
-            <table className="w-full text-sm">
+          <div className="md:max-h-[calc(100vh-220px)] md:overflow-auto">
+            <table className="rtable w-full text-sm">
               <thead><tr><th className="th">{t('shipping.order')}</th>{perms.customers && <th className="th">{t('common.client')}</th>}<th className="th">{t('shipping.route')}</th><th className="th">{t('shipping.progress')}</th><th className="th">{t('shipping.stage')}</th><th className="th">{t('shipping.eta')}</th></tr></thead>
               <tbody>
                 {rows.map((s) => {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
@@ -54,7 +56,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
             for (final o in const ['INDIA', 'CHINA'])
               Padding(
                 padding: const EdgeInsets.only(right: 6),
-                child: FilterChip(label: Text(pretty(o)), selected: _office == o,
+                child: FilterChip(label: Text(codeLabel(context, o)), selected: _office == o,
                     onSelected: (v) { _office = v ? o : null; _reload(); }),
               ),
             const VerticalDivider(),
@@ -62,8 +64,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
               initialValue: _status,
               onSelected: (v) { _status = v; _reload(); },
               itemBuilder: (_) => [PopupMenuItem(value: null, child: Text(context.l10n.allStatuses)),
-                ...pipelineStages.map((st) => PopupMenuItem(value: st, child: Text(pretty(st))))],
-              child: Chip(avatar: const Icon(Icons.filter_list, size: 18), label: Text(_status == null ? context.l10n.status : pretty(_status))),
+                ...pipelineStages.map((st) => PopupMenuItem(value: st, child: Text(codeLabel(context, st))))],
+              child: Chip(avatar: const Icon(Icons.filter_list, size: 18), label: Text(_status == null ? context.l10n.status : codeLabel(context, _status))),
             ),
           ]),
         ),

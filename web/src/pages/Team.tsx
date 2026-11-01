@@ -39,7 +39,7 @@ export function Team() {
       )}
       <div className="card overflow-hidden">
         {error ? <Empty title={t('team.loadFail')} hint={error} /> : !data ? <TableSkeleton /> : !data.length ? <Empty title={t('team.none')} /> : (
-          <table className="w-full text-sm">
+          <table className="rtable w-full text-sm">
             <thead><tr><th className="th">{t('team.user')}</th><th className="th">{t('common.role')}</th><th className="th">{t('common.status')}</th><th className="th" /></tr></thead>
             <tbody>
               {data.map((u) => (

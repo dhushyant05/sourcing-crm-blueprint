@@ -16,7 +16,7 @@ import '../data/repository.dart';
 /// Server settings entered on the login screen. Tokens are kept in the
 /// Android Keystore-backed secure storage, never in source.
 class AppConfig {
-  AppConfig({this.serverUrl = 'https://sourceec.in', this.chatwootUrl = 'https://chat.sourceec.in',
+  AppConfig({this.serverUrl = 'https://sourceeasy.in', this.chatwootUrl = 'https://chat.sourceeasy.in',
       this.chatwootAccountId = 1, this.chatwootInboxId = 1, this.chatwootToken = ''});
   String serverUrl, chatwootUrl, chatwootToken;
   int chatwootAccountId, chatwootInboxId;

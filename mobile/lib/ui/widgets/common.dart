@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
@@ -8,8 +10,6 @@ import '../../data/repository.dart';
 
 final dateFmt = DateFormat('dd MMM yyyy');
 
-String pretty(String? code) =>
-    code == null ? '—' : code.split('_').map((w) => w.isEmpty ? w : w[0] + w.substring(1).toLowerCase()).join(' ');
 
 Color statusColor(BuildContext c, String status) {
   final cs = Theme.of(c).colorScheme;
@@ -30,7 +30,7 @@ class StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(color: col.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)),
-      child: Text(pretty(status), style: TextStyle(color: col, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(codeLabel(context, status), style: TextStyle(color: col, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -67,7 +67,7 @@ class AsyncView<T> extends StatelessWidget {
 
 void showWriteResult(BuildContext context, WriteResult r, String what) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(r.queued ? '$what saved offline — will sync when online' : '$what saved')));
+      content: Text(r.queued ? context.l10n.savedOffline(what) : context.l10n.savedOk(what))));
 }
 
 class InfoRow extends StatelessWidget {

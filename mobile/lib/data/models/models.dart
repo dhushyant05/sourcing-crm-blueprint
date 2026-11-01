@@ -231,9 +231,11 @@ class ShippingOrder {
 
 /// One entry in the lead detail handoff timeline.
 class TimelineEvent {
-  TimelineEvent(this.at, this.title, this.subtitle, this.kind);
+  TimelineEvent(this.at, this.title, this.subtitle, this.kind, [this.code]);
   final DateTime at;
   final String title, subtitle, kind;
+  /// Status code (approval / shipment) so the UI can show it in the user's language.
+  final String? code;
 }
 
 class ChatMessage {

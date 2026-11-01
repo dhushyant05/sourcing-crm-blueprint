@@ -34,8 +34,8 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
       final r = await s.repo.recordApproval(
         quotationId: widget.quotation.id,
         approved: approved,
-        approver: widget.lead.clientName ?? 'Client',
-        notes: '${_notes.text.trim()} (logged by ${s.displayName})'.trim(),
+        approver: widget.lead.clientName ?? context.l10n.client,
+        notes: '${_notes.text.trim()} (${context.l10n.loggedBy(s.displayName ?? '')})'.trim(),
         leadId: widget.lead.id,
       );
       if (approved) {
@@ -44,7 +44,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
       }
       await s.refreshPending();
       if (!mounted) return;
-      showWriteResult(context, r, approved ? context.l10n.approval : 'Rejection');
+      showWriteResult(context, r, approved ? context.l10n.approval : context.l10n.rejection);
       Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));

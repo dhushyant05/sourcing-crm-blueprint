@@ -41,11 +41,11 @@ const suppliers: Supplier[] = [
 
 
 const users: User[] = [
-  { id: 'U1', email: 'dhushyanth@sourceec.in', name: 'Dhushyanth Kumar', role: 'SUPER_ADMIN', active: true, createdAt: day(60) },
-  { id: 'U2', email: 'priya@sourceec.in', name: 'Priya Nair', role: 'INDIA_ADMIN', active: true, createdAt: day(50) },
-  { id: 'U3', email: 'rahul@sourceec.in', name: 'Rahul Mehta', role: 'INDIA_STAFF', active: true, createdAt: day(40) },
-  { id: 'U4', email: 'liwei@sourceec.in', name: 'Li Wei', role: 'CHINA_ADMIN', active: true, createdAt: day(45) },
-  { id: 'U5', email: 'chenjing@sourceec.in', name: 'Chen Jing', role: 'CHINA_STAFF', active: true, createdAt: day(30) },
+  { id: 'U1', email: 'dhushyanth@sourceeasy.in', name: 'Dhushyanth Kumar', role: 'SUPER_ADMIN', active: true, createdAt: day(60) },
+  { id: 'U2', email: 'priya@sourceeasy.in', name: 'Priya Nair', role: 'INDIA_ADMIN', active: true, createdAt: day(50) },
+  { id: 'U3', email: 'rahul@sourceeasy.in', name: 'Rahul Mehta', role: 'INDIA_STAFF', active: true, createdAt: day(40) },
+  { id: 'U4', email: 'liwei@sourceeasy.in', name: 'Li Wei', role: 'CHINA_ADMIN', active: true, createdAt: day(45) },
+  { id: 'U5', email: 'chenjing@sourceeasy.in', name: 'Chen Jing', role: 'CHINA_STAFF', active: true, createdAt: day(30) },
 ];
 
 export const demo = { leads, quotations, shipments, suppliers, users };

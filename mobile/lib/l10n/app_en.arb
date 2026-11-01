@@ -204,5 +204,105 @@
         "type": "String"
       }
     }
-  }
+  },
+  "codeNew": "New",
+  "codeAssigned": "Assigned",
+  "codeSourcing": "Sourcing",
+  "codeQuoted": "Quoted",
+  "codeApproved": "Approved",
+  "codeRejected": "Rejected",
+  "codeShipping": "Shipping",
+  "codeDelivered": "Delivered",
+  "codeWon": "Won",
+  "codeLost": "Lost",
+  "codeOpen": "Open",
+  "codePending": "Pending",
+  "codeSent": "Sent",
+  "codeDraft": "Draft",
+  "codeExpired": "Expired",
+  "codeIndia": "India",
+  "codeChina": "China",
+  "codeBoth": "Both",
+  "codeNotRequested": "Not Requested",
+  "codeRequested": "Requested",
+  "codeReceived": "Received",
+  "codeNotStarted": "Not Started",
+  "codeFiled": "Filed",
+  "codeCleared": "Cleared",
+  "codeHeld": "Held",
+  "codeBooked": "Booked",
+  "codeInTransit": "In Transit",
+  "codeAtPort": "At Port",
+  "codeOutForDelivery": "Out For Delivery",
+  "codeAir": "Air",
+  "codeLcl": "Lcl",
+  "codeFcl": "Fcl",
+  "codeFcl20": "Fcl 20",
+  "codeFcl40": "Fcl 40",
+  "codeCourier": "Courier",
+  "codePhone": "Phone",
+  "codeWhatsapp": "Whatsapp",
+  "codeWebsite": "Website",
+  "codeReferral": "Referral",
+  "codeWalkIn": "Walk In",
+  "codeExhibition": "Exhibition",
+  "codeEmail": "Email",
+  "codeOther": "Other",
+  "codeQuotation": "Quotation",
+  "codeIndiaStaff": "India Staff",
+  "codeChinaStaff": "China Staff",
+  "codeIndiaAdmin": "India Admin",
+  "codeChinaAdmin": "China Admin",
+  "codeSuperAdmin": "Super Admin",
+  "client": "Client",
+  "dateField": "{label}: {date}",
+  "@dateField": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "savedOffline": "{what} saved offline — will sync when online",
+  "@savedOffline": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "savedOk": "{what} saved",
+  "@savedOk": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "assignment": "Assignment",
+  "rejection": "Rejection",
+  "languageTooltip": "Language",
+  "loggedBy": "logged by {name}",
+  "@loggedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "about": "About",
+  "tlLeadCreated": "Lead created",
+  "tlOffice": "{office} office",
+  "@tlOffice": {
+    "placeholders": {
+      "office": {
+        "type": "String"
+      }
+    }
+  },
+  "kpiActiveLeads": "Active leads",
+  "kpiPendingSync": "Pending sync"
 }

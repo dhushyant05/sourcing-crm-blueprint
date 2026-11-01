@@ -14,11 +14,11 @@ export function LanguageSwitch({ className }: { className?: string }) {
   };
   return (
     <div role="group" aria-label={t('lang.label')} data-testid="lang-switch"
-      className={clsx('flex items-center rounded-lg border border-ink-200 bg-white p-0.5 text-xs dark:border-ink-700 dark:bg-ink-900', className)}>
+      className={clsx('flex shrink-0 items-center whitespace-nowrap rounded-lg border border-ink-200 bg-white p-0.5 text-xs dark:border-ink-700 dark:bg-ink-900', className)}>
       <Languages size={14} className="mx-1.5 text-ink-400" />
       {LANGS.map((l) => (
         <button key={l} type="button" onClick={() => pick(l)} aria-pressed={i18n.language === l} title={t(`lang.${l}`)}
-          className={clsx('rounded-md px-2 py-1 font-medium transition', i18n.language === l ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-100')}>
+          className={clsx('min-h-[32px] rounded-md px-2 py-1 font-medium transition', i18n.language === l ? 'bg-brand-600 text-white' : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-100')}>
           {l === 'en' ? 'EN' : '中文'}
         </button>
       ))}

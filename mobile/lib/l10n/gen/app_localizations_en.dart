@@ -410,4 +410,200 @@ class AppLocalizationsEn extends AppLocalizations {
   String notSent(String error) {
     return 'Not sent: $error';
   }
+
+  @override
+  String get codeNew => 'New';
+
+  @override
+  String get codeAssigned => 'Assigned';
+
+  @override
+  String get codeSourcing => 'Sourcing';
+
+  @override
+  String get codeQuoted => 'Quoted';
+
+  @override
+  String get codeApproved => 'Approved';
+
+  @override
+  String get codeRejected => 'Rejected';
+
+  @override
+  String get codeShipping => 'Shipping';
+
+  @override
+  String get codeDelivered => 'Delivered';
+
+  @override
+  String get codeWon => 'Won';
+
+  @override
+  String get codeLost => 'Lost';
+
+  @override
+  String get codeOpen => 'Open';
+
+  @override
+  String get codePending => 'Pending';
+
+  @override
+  String get codeSent => 'Sent';
+
+  @override
+  String get codeDraft => 'Draft';
+
+  @override
+  String get codeExpired => 'Expired';
+
+  @override
+  String get codeIndia => 'India';
+
+  @override
+  String get codeChina => 'China';
+
+  @override
+  String get codeBoth => 'Both';
+
+  @override
+  String get codeNotRequested => 'Not Requested';
+
+  @override
+  String get codeRequested => 'Requested';
+
+  @override
+  String get codeReceived => 'Received';
+
+  @override
+  String get codeNotStarted => 'Not Started';
+
+  @override
+  String get codeFiled => 'Filed';
+
+  @override
+  String get codeCleared => 'Cleared';
+
+  @override
+  String get codeHeld => 'Held';
+
+  @override
+  String get codeBooked => 'Booked';
+
+  @override
+  String get codeInTransit => 'In Transit';
+
+  @override
+  String get codeAtPort => 'At Port';
+
+  @override
+  String get codeOutForDelivery => 'Out For Delivery';
+
+  @override
+  String get codeAir => 'Air';
+
+  @override
+  String get codeLcl => 'Lcl';
+
+  @override
+  String get codeFcl => 'Fcl';
+
+  @override
+  String get codeFcl20 => 'Fcl 20';
+
+  @override
+  String get codeFcl40 => 'Fcl 40';
+
+  @override
+  String get codeCourier => 'Courier';
+
+  @override
+  String get codePhone => 'Phone';
+
+  @override
+  String get codeWhatsapp => 'Whatsapp';
+
+  @override
+  String get codeWebsite => 'Website';
+
+  @override
+  String get codeReferral => 'Referral';
+
+  @override
+  String get codeWalkIn => 'Walk In';
+
+  @override
+  String get codeExhibition => 'Exhibition';
+
+  @override
+  String get codeEmail => 'Email';
+
+  @override
+  String get codeOther => 'Other';
+
+  @override
+  String get codeQuotation => 'Quotation';
+
+  @override
+  String get codeIndiaStaff => 'India Staff';
+
+  @override
+  String get codeChinaStaff => 'China Staff';
+
+  @override
+  String get codeIndiaAdmin => 'India Admin';
+
+  @override
+  String get codeChinaAdmin => 'China Admin';
+
+  @override
+  String get codeSuperAdmin => 'Super Admin';
+
+  @override
+  String get client => 'Client';
+
+  @override
+  String dateField(String label, String date) {
+    return '$label: $date';
+  }
+
+  @override
+  String savedOffline(String what) {
+    return '$what saved offline — will sync when online';
+  }
+
+  @override
+  String savedOk(String what) {
+    return '$what saved';
+  }
+
+  @override
+  String get assignment => 'Assignment';
+
+  @override
+  String get rejection => 'Rejection';
+
+  @override
+  String get languageTooltip => 'Language';
+
+  @override
+  String loggedBy(String name) {
+    return 'logged by $name';
+  }
+
+  @override
+  String get about => 'About';
+
+  @override
+  String get tlLeadCreated => 'Lead created';
+
+  @override
+  String tlOffice(String office) {
+    return '$office office';
+  }
+
+  @override
+  String get kpiActiveLeads => 'Active leads';
+
+  @override
+  String get kpiPendingSync => 'Pending sync';
 }

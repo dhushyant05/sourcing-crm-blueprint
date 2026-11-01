@@ -1,4 +1,4 @@
-# Server 2 — Chatwoot (internal India<->China chat) on chat.sourceec.in
+# Server 2 — Chatwoot (internal India<->China chat) on chat.sourceeasy.in
 name: source-easy-chatwoot
 x-base: &base
   image: chatwoot/chatwoot:${TAG:-latest}

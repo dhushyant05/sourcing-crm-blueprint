@@ -32,6 +32,8 @@ class QuotePdf {
     final theme = pw.ThemeData.withFont(
       base: pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Regular.ttf')),
       bold: pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Bold.ttf')),
+      // Chinese client/product names: Noto Sans SC subset to GB2312 (~6.8k common hanzi, 2.2 MB).
+      fontFallback: [pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansSC-GB2312.ttf'))],
     );
     final doc = pw.Document(title: 'Quotation ${q.quoteNo}', author: 'Source Easy', theme: theme);
     // Shown exactly in the currency India entered — never converted.
@@ -43,7 +45,7 @@ class QuotePdf {
         pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
             pw.Text('Source Easy', style: pw.TextStyle(fontSize: 26, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo)),
-            pw.Text('sourceec.in'),
+            pw.Text('sourceeasy.in'),
           ]),
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
             pw.Text('QUOTATION', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),

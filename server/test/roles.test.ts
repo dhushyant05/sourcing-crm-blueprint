@@ -7,13 +7,13 @@ import { MockTwenty } from './fixtures.js';
 const PW = 'correct-horse-battery';
 let app: Awaited<ReturnType<typeof buildApp>>, twenty: MockTwenty;
 const tokens = {} as Record<Role, string>;
-const email = (r: Role) => `${r.toLowerCase()}@sourceec.in`;
+const email = (r: Role) => `${r.toLowerCase()}@sourceeasy.in`;
 
 beforeAll(async () => {
   twenty = new MockTwenty();
   const users = new UserStore();
   for (const r of ROLES) await users.create(email(r), r, r, PW);
-  app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40), backupLinks: [{ label: 'Backups', url: 'https://backups.sourceec.in' }] });
+  app = await buildApp({ twenty, users, jwtSecret: 'x'.repeat(40), backupLinks: [{ label: 'Backups', url: 'https://backups.sourceeasy.in' }] });
   for (const r of ROLES) {
     const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: email(r), password: PW } });
     expect(res.statusCode).toBe(200);
@@ -145,7 +145,7 @@ describe('SUPER_ADMIN', () => {
     expect((await data('SUPER_ADMIN', 'teamMembers')).length).toBe(2);
   });
   it('gets backup links', async () => {
-    expect((await get('SUPER_ADMIN', '/api/backups')).json().data[0].url).toBe('https://backups.sourceec.in');
+    expect((await get('SUPER_ADMIN', '/api/backups')).json().data[0].url).toBe('https://backups.sourceeasy.in');
   });
   it('backups are super-admin only', async () => {
     for (const r of ROLES.filter((x) => x !== 'SUPER_ADMIN')) expect((await get(r, '/api/backups')).statusCode).toBe(403);
@@ -183,37 +183,37 @@ describe('team members & user management', () => {
     expect(json(users)).not.toContain('password');
   });
   it('India admin creates India staff (synced to Team Member) but not China staff or super admin', async () => {
-    const ok = await send('INDIA_ADMIN', 'POST', '/api/users', { email: 'new@sourceec.in', name: 'New', role: 'INDIA_STAFF', password: PW });
+    const ok = await send('INDIA_ADMIN', 'POST', '/api/users', { email: 'new@sourceeasy.in', name: 'New', role: 'INDIA_STAFF', password: PW });
     expect(ok.statusCode).toBe(201);
-    expect(twenty.db.teamMembers.find((t) => t.email === 'new@sourceec.in')).toMatchObject({ role: 'INDIA_STAFF' });
+    expect(twenty.db.teamMembers.find((t) => t.email === 'new@sourceeasy.in')).toMatchObject({ role: 'INDIA_STAFF' });
     expect((await send('INDIA_ADMIN', 'POST', '/api/users', { email: 'c@x.cn', name: 'C', role: 'CHINA_STAFF', password: PW })).statusCode).toBe(403);
     expect((await send('INDIA_ADMIN', 'POST', '/api/users', { email: 's@x.in', name: 'S', role: 'SUPER_ADMIN', password: PW })).statusCode).toBe(403);
     expect((await send('INDIA_STAFF', 'POST', '/api/users', { email: 'z@x.in', name: 'Z', role: 'INDIA_STAFF', password: PW })).statusCode).toBe(403);
   });
   it('password reset revokes old sessions; China admin cannot reset India users', async () => {
     const users = (await get('SUPER_ADMIN', '/api/users')).json().data as any[];
-    const target = users.find((u) => u.email === 'new@sourceec.in');
+    const target = users.find((u) => u.email === 'new@sourceeasy.in');
     expect((await send('CHINA_ADMIN', 'POST', `/api/users/${target.id}/password`, { password: 'another-long-pass' })).statusCode).toBe(403);
-    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@sourceec.in', password: PW } });
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@sourceeasy.in', password: PW } });
     const old = login.json().token;
     expect((await send('INDIA_ADMIN', 'POST', `/api/users/${target.id}/password`, { password: 'another-long-pass' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/me', headers: { authorization: `Bearer ${old}` } })).statusCode).toBe(401);
-    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@sourceec.in', password: 'another-long-pass' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@sourceeasy.in', password: 'another-long-pass' } })).statusCode).toBe(200);
   });
   it('a disabled user cannot sign in; role change takes effect immediately', async () => {
     const users = (await get('SUPER_ADMIN', '/api/users')).json().data as any[];
-    const target = users.find((u) => u.email === 'new@sourceec.in');
+    const target = users.find((u) => u.email === 'new@sourceeasy.in');
     expect((await send('INDIA_ADMIN', 'PATCH', `/api/users/${target.id}`, { role: 'CHINA_STAFF' })).statusCode).toBe(403);
     expect((await send('INDIA_ADMIN', 'PATCH', `/api/users/${target.id}`, { active: false })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@sourceec.in', password: 'another-long-pass' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@sourceeasy.in', password: 'another-long-pass' } })).statusCode).toBe(401);
   });
 });
 
 describe('bootstrap', () => {
   it('creates super admin once from env values', async () => {
     const u = new UserStore();
-    expect(await u.bootstrap('root@sourceec.in', 'super-secret-pass')).toBe(true);
-    expect(await u.bootstrap('root@sourceec.in', 'other-password-x')).toBe(false);
-    expect((await u.verify('root@sourceec.in', 'super-secret-pass'))?.role).toBe('SUPER_ADMIN');
+    expect(await u.bootstrap('root@sourceeasy.in', 'super-secret-pass')).toBe(true);
+    expect(await u.bootstrap('root@sourceeasy.in', 'other-password-x')).toBe(false);
+    expect((await u.verify('root@sourceeasy.in', 'super-secret-pass'))?.role).toBe('SUPER_ADMIN');
   });
 });

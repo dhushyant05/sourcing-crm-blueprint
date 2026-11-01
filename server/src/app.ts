@@ -61,6 +61,27 @@ export async function buildApp(o: AppOptions) {
     return { token: sign(u), user: me(u) };
   });
 
+  // Public website enquiry -> a NEW lead for the India office. No auth; honeypot + per-IP rate limit (5/hour).
+  const enq = new Map<string, number[]>();
+  app.post<{ Body: Record<string, unknown> }>('/api/public/enquiry', async (req, reply) => {
+    const b = req.body ?? {}, str = (k: string, max = 200) => (typeof b[k] === 'string' ? (b[k] as string).trim().slice(0, max) : '');
+    if (str('website')) return reply.code(202).send({ ok: true }); // bot filled the hidden field
+    const now = Date.now(), hits = (enq.get(req.ip) ?? []).filter((t) => now - t < 3600e3);
+    if (hits.length >= 5) return reply.code(429).send({ error: 'Too many enquiries, please try again later' });
+    const name = str('name', 120), phone = str('phone', 40), email = str('email', 160), product = str('product', 200);
+    if (!name || (!phone && !email) || !product) return reply.code(400).send({ error: 'Name, product and a phone or email are required' });
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Invalid email' });
+    hits.push(now); enq.set(req.ip, hits);
+    const company = str('company', 160), qty = Number(str('quantity', 12)) || undefined, msg = str('message', 2000);
+    await o.twenty.create('leads', {
+      name: `${company || name} — ${product}`.slice(0, 200), clientName: company || name, productInterest: (msg ? `${product} — ${name}: ${msg}` : product).slice(0, 2000),
+      ...(qty ? { quantity: qty } : {}),
+      ...(phone ? { contactPhone: { primaryPhoneNumber: phone } } : {}), ...(email ? { contactEmail: { primaryEmail: email } } : {}),
+      sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
+    });
+    return reply.code(201).send({ ok: true });
+  });
+
   app.register(async (api) => {
     api.addHook('preHandler', auth);
     api.get('/api/me', async (req) => me(req.user!));

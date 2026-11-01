@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
@@ -59,7 +61,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     );
     if (agent == null || agent.isEmpty || !mounted) return;
     final r = await context.read<Session>().repo.assignToChina(l.id, agent);
-    if (mounted) showWriteResult(context, r, 'Assignment');
+    if (mounted) showWriteResult(context, r, context.l10n.assignment);
     _reload();
   }
 
@@ -78,7 +80,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     );
     if (reason == null || !mounted) return;
     final r = await context.read<Session>().repo.updateLead(l.id, {'status': won ? 'WON' : 'LOST', 'winLossReason': reason});
-    if (mounted) showWriteResult(context, r, 'Lead');
+    if (mounted) showWriteResult(context, r, context.l10n.lead);
     _reload();
   }
 
@@ -110,13 +112,13 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     if (p.canSeeCustomerDetails) ...[
                       InfoRow(context.l10n.contact, l.contactPhone),
                       InfoRow(context.l10n.email, l.contactEmail),
-                      InfoRow(context.l10n.source, pretty(l.sourceChannel)),
+                      InfoRow(context.l10n.source, codeLabel(context, l.sourceChannel)),
                     ],
                     InfoRow(context.l10n.product, l.productInterest),
                     InfoRow(context.l10n.quantity, l.quantity?.toStringAsFixed(0)),
                     if (p.canSeeClientPricing && l.targetPrice != null)
                       InfoRow(context.l10n.targetPrice, formatMoneyCode(l.targetPrice!, l.targetCurrency ?? 'INR')),
-                    InfoRow(context.l10n.office, pretty(l.assignedOffice)),
+                    InfoRow(context.l10n.office, codeLabel(context, l.assignedOffice)),
                     InfoRow(context.l10n.chinaAgent, l.assignedChinaAgent),
                     if (l.winLossReason != null) InfoRow(context.l10n.winLossReason, l.winLossReason),
                   ]),
@@ -150,7 +152,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               ...d.requests.map((r) => Card(
                     child: ListTile(
                       title: Text(r.productDescription ?? r.name),
-                      subtitle: Text(context.l10n.samplesStatus(pretty(r.sampleStatus)) +
+                      subtitle: Text(context.l10n.samplesStatus(codeLabel(context, r.sampleStatus)) +
                           (r.deadline != null ? ' · ${context.l10n.deadlineOn(dateFmt.format(r.deadline!))}' : '')),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         IconButton(
@@ -177,8 +179,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                       'approval' => Icons.thumb_up_alt_outlined,
                       _ => Icons.local_shipping_outlined,
                     }),
-                    title: Text(e.title),
-                    subtitle: Text('${dateFmt.format(e.at.toLocal())}  ${e.subtitle}'),
+                    title: Text(_tlTitle(context, e)),
+                    subtitle: Text('${dateFmt.format(e.at.toLocal())}  ${e.kind == 'lead' ? context.l10n.tlOffice(codeLabel(context, e.code)) : e.subtitle}'),
                   )),
             ]),
           );
@@ -186,4 +188,16 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
       ),
     );
   }
+}
+
+String _tlTitle(BuildContext context, TimelineEvent e) {
+  final l = context.l10n;
+  return switch (e.kind) {
+    'lead' => l.tlLeadCreated,
+    'sourcing' => l.sourcingRequest,
+    'quote' => l.quotation,
+    'approval' => '${l.client} · ${codeLabel(context, e.code)}',
+    'shipping' => '${l.shipping} · ${codeLabel(context, e.code)}',
+    _ => e.title,
+  };
 }

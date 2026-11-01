@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create Source Easy custom objects + fields in Twenty via the metadata API.
 
-  export TWENTY_URL=https://sourceec.in
+  export TWENTY_URL=https://sourceeasy.in
   export TWENTY_API_KEY=...   # Settings -> APIs & Webhooks -> create key
   python3 setup_twenty.py [--dry-run] [--schema schema.json]
 

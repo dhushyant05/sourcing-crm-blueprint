@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
@@ -53,9 +55,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text(s.role.label, style: t.textTheme.bodyMedium),
               const SizedBox(height: 16),
               Row(children: [
-                _Kpi('Active leads', '$active', Icons.trending_up),
-                _Kpi('Won', '${counts['WON']}', Icons.emoji_events_outlined),
-                _Kpi('Pending sync', '${s.pendingOps}', Icons.sync),
+                _Kpi(context.l10n.kpiActiveLeads, '$active', Icons.trending_up),
+                _Kpi(context.l10n.codeWon, '${counts['WON']}', Icons.emoji_events_outlined),
+                _Kpi(context.l10n.kpiPendingSync, '${s.pendingOps}', Icons.sync),
               ]),
               const SizedBox(height: 24),
               Text(context.l10n.pipeline, style: t.textTheme.titleMedium),
@@ -66,7 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Row(children: [
-                    SizedBox(width: 90, child: Text(pretty(st))),
+                    SizedBox(width: 90, child: Text(codeLabel(context, st))),
                     Expanded(child: LinearProgressIndicator(value: frac, minHeight: 10,
                         borderRadius: BorderRadius.circular(5), color: statusColor(context, st))),
                     SizedBox(width: 36, child: Text('$n', textAlign: TextAlign.end)),

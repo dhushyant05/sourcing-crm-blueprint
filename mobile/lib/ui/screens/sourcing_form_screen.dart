@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
@@ -50,7 +52,7 @@ class _SourcingFormScreenState extends State<SourcingFormScreen> {
       await s.repo.updateLead(widget.lead.id, {'status': 'SOURCING'});
       await s.refreshPending();
       if (!mounted) return;
-      showWriteResult(context, r, 'Sourcing request');
+      showWriteResult(context, r, context.l10n.sourcingRequest);
       Navigator.pop(context, true);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -93,7 +95,7 @@ class _SourcingFormScreenState extends State<SourcingFormScreen> {
             initialValue: _sample,
             decoration: InputDecoration(labelText: context.l10n.sampleStatus),
             items: const ['NOT_REQUESTED', 'REQUESTED', 'RECEIVED', 'APPROVED', 'REJECTED']
-                .map((c) => DropdownMenuItem(value: c, child: Text(pretty(c)))).toList(),
+                .map((c) => DropdownMenuItem(value: c, child: Text(codeLabel(context, c)))).toList(),
             onChanged: (v) => setState(() => _sample = v!),
           ),
           gap,

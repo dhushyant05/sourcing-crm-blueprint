@@ -240,7 +240,7 @@ class SourceEasyRepository {
   // ---------- Timeline ----------
   Future<List<TimelineEvent>> timeline(Lead lead) async {
     final ev = <TimelineEvent>[];
-    if (lead.createdAt != null) ev.add(TimelineEvent(lead.createdAt!, 'Lead created', 'India office', 'lead'));
+    if (lead.createdAt != null) ev.add(TimelineEvent(lead.createdAt!, 'Lead created', 'India office', 'lead', 'INDIA'));
     final srs = await sourcingRequests(leadId: lead.id);
     for (final s in srs) {
       if (s.createdAt != null) {
@@ -249,13 +249,13 @@ class SourceEasyRepository {
       for (final q in await quotations(sourcingRequestId: s.id)) {
         ev.add(TimelineEvent(q.validityDate ?? s.createdAt ?? DateTime.now(), 'Quotation', q.name, 'quote'));
         for (final a in await approvals(quotationId: q.id)) {
-          if (a.decidedAt != null) ev.add(TimelineEvent(a.decidedAt!, 'Client ${a.status.toLowerCase()}', a.approver ?? '', 'approval'));
+          if (a.decidedAt != null) ev.add(TimelineEvent(a.decidedAt!, 'Client ${a.status.toLowerCase()}', a.approver ?? '', 'approval', a.status));
         }
       }
     }
     for (final sh in await shippingOrders(leadId: lead.id)) {
       ev.add(TimelineEvent(sh.etd ?? DateTime.now(), 'Shipping ${sh.shipmentStatus?.toLowerCase() ?? ''}',
-          sh.forwarder ?? sh.trackingNumber ?? '', 'shipping'));
+          sh.forwarder ?? sh.trackingNumber ?? '', 'shipping', sh.shipmentStatus));
     }
     ev.sort((a, b) => a.at.compareTo(b.at));
     return ev;

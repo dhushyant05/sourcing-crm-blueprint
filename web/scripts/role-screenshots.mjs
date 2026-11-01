@@ -2,7 +2,7 @@
 import { chromium } from 'playwright-core';
 const base = process.env.BASE ?? 'http://127.0.0.1:8099', out = new URL('../../docs/screenshots/', import.meta.url).pathname;
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome' });
-for (const [who, email] of [['china', 'china@sourceec.in'], ['india', 'india@sourceec.in'], ['india-admin', 'indiaadmin@sourceec.in']]) {
+for (const [who, email] of [['china', 'china@sourceeasy.in'], ['india', 'india@sourceeasy.in'], ['india-admin', 'indiaadmin@sourceeasy.in']]) {
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   await p.goto(base + '/'); await p.evaluate(() => localStorage.setItem('se.lang', 'en')); await p.reload();
   if (who === 'china') await p.screenshot({ path: `${out}login-server.png` });

@@ -853,6 +853,378 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not sent: {error}'**
   String notSent(String error);
+
+  /// No description provided for @codeNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get codeNew;
+
+  /// No description provided for @codeAssigned.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned'**
+  String get codeAssigned;
+
+  /// No description provided for @codeSourcing.
+  ///
+  /// In en, this message translates to:
+  /// **'Sourcing'**
+  String get codeSourcing;
+
+  /// No description provided for @codeQuoted.
+  ///
+  /// In en, this message translates to:
+  /// **'Quoted'**
+  String get codeQuoted;
+
+  /// No description provided for @codeApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved'**
+  String get codeApproved;
+
+  /// No description provided for @codeRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get codeRejected;
+
+  /// No description provided for @codeShipping.
+  ///
+  /// In en, this message translates to:
+  /// **'Shipping'**
+  String get codeShipping;
+
+  /// No description provided for @codeDelivered.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered'**
+  String get codeDelivered;
+
+  /// No description provided for @codeWon.
+  ///
+  /// In en, this message translates to:
+  /// **'Won'**
+  String get codeWon;
+
+  /// No description provided for @codeLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Lost'**
+  String get codeLost;
+
+  /// No description provided for @codeOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get codeOpen;
+
+  /// No description provided for @codePending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get codePending;
+
+  /// No description provided for @codeSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get codeSent;
+
+  /// No description provided for @codeDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get codeDraft;
+
+  /// No description provided for @codeExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get codeExpired;
+
+  /// No description provided for @codeIndia.
+  ///
+  /// In en, this message translates to:
+  /// **'India'**
+  String get codeIndia;
+
+  /// No description provided for @codeChina.
+  ///
+  /// In en, this message translates to:
+  /// **'China'**
+  String get codeChina;
+
+  /// No description provided for @codeBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'Both'**
+  String get codeBoth;
+
+  /// No description provided for @codeNotRequested.
+  ///
+  /// In en, this message translates to:
+  /// **'Not Requested'**
+  String get codeNotRequested;
+
+  /// No description provided for @codeRequested.
+  ///
+  /// In en, this message translates to:
+  /// **'Requested'**
+  String get codeRequested;
+
+  /// No description provided for @codeReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Received'**
+  String get codeReceived;
+
+  /// No description provided for @codeNotStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Not Started'**
+  String get codeNotStarted;
+
+  /// No description provided for @codeFiled.
+  ///
+  /// In en, this message translates to:
+  /// **'Filed'**
+  String get codeFiled;
+
+  /// No description provided for @codeCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Cleared'**
+  String get codeCleared;
+
+  /// No description provided for @codeHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Held'**
+  String get codeHeld;
+
+  /// No description provided for @codeBooked.
+  ///
+  /// In en, this message translates to:
+  /// **'Booked'**
+  String get codeBooked;
+
+  /// No description provided for @codeInTransit.
+  ///
+  /// In en, this message translates to:
+  /// **'In Transit'**
+  String get codeInTransit;
+
+  /// No description provided for @codeAtPort.
+  ///
+  /// In en, this message translates to:
+  /// **'At Port'**
+  String get codeAtPort;
+
+  /// No description provided for @codeOutForDelivery.
+  ///
+  /// In en, this message translates to:
+  /// **'Out For Delivery'**
+  String get codeOutForDelivery;
+
+  /// No description provided for @codeAir.
+  ///
+  /// In en, this message translates to:
+  /// **'Air'**
+  String get codeAir;
+
+  /// No description provided for @codeLcl.
+  ///
+  /// In en, this message translates to:
+  /// **'Lcl'**
+  String get codeLcl;
+
+  /// No description provided for @codeFcl.
+  ///
+  /// In en, this message translates to:
+  /// **'Fcl'**
+  String get codeFcl;
+
+  /// No description provided for @codeFcl20.
+  ///
+  /// In en, this message translates to:
+  /// **'Fcl 20'**
+  String get codeFcl20;
+
+  /// No description provided for @codeFcl40.
+  ///
+  /// In en, this message translates to:
+  /// **'Fcl 40'**
+  String get codeFcl40;
+
+  /// No description provided for @codeCourier.
+  ///
+  /// In en, this message translates to:
+  /// **'Courier'**
+  String get codeCourier;
+
+  /// No description provided for @codePhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get codePhone;
+
+  /// No description provided for @codeWhatsapp.
+  ///
+  /// In en, this message translates to:
+  /// **'Whatsapp'**
+  String get codeWhatsapp;
+
+  /// No description provided for @codeWebsite.
+  ///
+  /// In en, this message translates to:
+  /// **'Website'**
+  String get codeWebsite;
+
+  /// No description provided for @codeReferral.
+  ///
+  /// In en, this message translates to:
+  /// **'Referral'**
+  String get codeReferral;
+
+  /// No description provided for @codeWalkIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Walk In'**
+  String get codeWalkIn;
+
+  /// No description provided for @codeExhibition.
+  ///
+  /// In en, this message translates to:
+  /// **'Exhibition'**
+  String get codeExhibition;
+
+  /// No description provided for @codeEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get codeEmail;
+
+  /// No description provided for @codeOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get codeOther;
+
+  /// No description provided for @codeQuotation.
+  ///
+  /// In en, this message translates to:
+  /// **'Quotation'**
+  String get codeQuotation;
+
+  /// No description provided for @codeIndiaStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'India Staff'**
+  String get codeIndiaStaff;
+
+  /// No description provided for @codeChinaStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'China Staff'**
+  String get codeChinaStaff;
+
+  /// No description provided for @codeIndiaAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'India Admin'**
+  String get codeIndiaAdmin;
+
+  /// No description provided for @codeChinaAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'China Admin'**
+  String get codeChinaAdmin;
+
+  /// No description provided for @codeSuperAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Super Admin'**
+  String get codeSuperAdmin;
+
+  /// No description provided for @client.
+  ///
+  /// In en, this message translates to:
+  /// **'Client'**
+  String get client;
+
+  /// No description provided for @dateField.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}: {date}'**
+  String dateField(String label, String date);
+
+  /// No description provided for @savedOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'{what} saved offline — will sync when online'**
+  String savedOffline(String what);
+
+  /// No description provided for @savedOk.
+  ///
+  /// In en, this message translates to:
+  /// **'{what} saved'**
+  String savedOk(String what);
+
+  /// No description provided for @assignment.
+  ///
+  /// In en, this message translates to:
+  /// **'Assignment'**
+  String get assignment;
+
+  /// No description provided for @rejection.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejection'**
+  String get rejection;
+
+  /// No description provided for @languageTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get languageTooltip;
+
+  /// No description provided for @loggedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'logged by {name}'**
+  String loggedBy(String name);
+
+  /// No description provided for @about.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get about;
+
+  /// No description provided for @tlLeadCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Lead created'**
+  String get tlLeadCreated;
+
+  /// No description provided for @tlOffice.
+  ///
+  /// In en, this message translates to:
+  /// **'{office} office'**
+  String tlOffice(String office);
+
+  /// No description provided for @kpiActiveLeads.
+  ///
+  /// In en, this message translates to:
+  /// **'Active leads'**
+  String get kpiActiveLeads;
+
+  /// No description provided for @kpiPendingSync.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending sync'**
+  String get kpiPendingSync;
 }
 
 class _AppLocalizationsDelegate

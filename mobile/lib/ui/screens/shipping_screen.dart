@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
+
 import '../../l10n/l10n.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -46,7 +48,7 @@ class _ShippingScreenState extends State<ShippingScreen> {
                             child: ListTile(
                               leading: const Icon(Icons.directions_boat_outlined),
                               title: Text(o.trackingNumber ?? o.name),
-                              subtitle: Text('${o.forwarder ?? context.l10n.forwarderTbd} · ETA ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
+                              subtitle: Text('${o.forwarder ?? context.l10n.forwarderTbd} · ${context.l10n.eta} ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
                               trailing: StatusChip(o.shipmentStatus ?? 'BOOKED'),
                               onTap: () async {
                                 await Navigator.push(c, MaterialPageRoute(builder: (_) => ShipmentDetailScreen(order: o)));
@@ -94,7 +96,7 @@ class ShipmentDetailScreen extends StatelessWidget {
               initialZoom: hasPos ? 5 : 3,
             ),
             children: [
-              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'in.sourceec.source_easy'),
+              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'in.sourceeasy.source_easy'),
               if (hasPos)
                 MarkerLayer(markers: [
                   Marker(point: LatLng(o.latitude!, o.longitude!), child: const Icon(Icons.location_on, color: Colors.red, size: 36)),
@@ -111,17 +113,17 @@ class ShipmentDetailScreen extends StatelessWidget {
               currentStep: step < 0 ? 0 : step,
               controlsBuilder: (_, _) => const SizedBox.shrink(),
               steps: shipmentSteps
-                  .map((s) => Step(title: Text(pretty(s)), content: const SizedBox.shrink(),
+                  .map((s) => Step(title: Text(codeLabel(context, s)), content: const SizedBox.shrink(),
                       isActive: shipmentSteps.indexOf(s) <= step,
                       state: shipmentSteps.indexOf(s) < step ? StepState.complete : StepState.indexed))
                   .toList(),
             ),
             InfoRow(context.l10n.forwarder, o.forwarder),
             InfoRow(context.l10n.trackingNo, o.trackingNumber),
-            InfoRow(context.l10n.container, pretty(o.containerType)),
+            InfoRow(context.l10n.container, codeLabel(context, o.containerType)),
             InfoRow(context.l10n.etd, o.etd != null ? dateFmt.format(o.etd!) : null),
             InfoRow(context.l10n.eta, o.eta != null ? dateFmt.format(o.eta!) : null),
-            InfoRow(context.l10n.customs, pretty(o.customsStatus)),
+            InfoRow(context.l10n.customs, codeLabel(context, o.customsStatus)),
             InfoRow(context.l10n.location, o.currentLocation),
           ]),
         ),
@@ -169,13 +171,13 @@ class _ShipmentEditScreenState extends State<ShipmentEditScreen> {
     }
     await s.refreshPending();
     if (!mounted) return;
-    showWriteResult(context, r, 'Shipment');
+    showWriteResult(context, r, context.l10n.shipment);
     Navigator.pop(context, true);
   }
 
   Widget _date(String label, DateTime? v, ValueChanged<DateTime> set) => ListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text('$label: ${v != null ? dateFmt.format(v) : '—'}'),
+        title: Text(context.l10n.dateField(label, v != null ? dateFmt.format(v) : '—')),
         trailing: const Icon(Icons.event),
         onTap: () async {
           final d = await showDatePicker(context: context, initialDate: v ?? DateTime.now(),
@@ -189,7 +191,7 @@ class _ShipmentEditScreenState extends State<ShipmentEditScreen> {
         child: DropdownButtonFormField<String>(
           initialValue: value,
           decoration: InputDecoration(labelText: label),
-          items: opts.map((o) => DropdownMenuItem(value: o, child: Text(pretty(o)))).toList(),
+          items: opts.map((o) => DropdownMenuItem(value: o, child: Text(codeLabel(context, o)))).toList(),
           onChanged: (v) => setState(() => set(v!)),
         ),
       );
@@ -207,8 +209,8 @@ class _ShipmentEditScreenState extends State<ShipmentEditScreen> {
         _select('Status', _status, shipmentSteps, (v) => _status = v),
         _select('Customs', _customs, const ['NOT_STARTED', 'FILED', 'HELD', 'CLEARED'], (v) => _customs = v),
         _select('Container', _container, const ['LCL', 'FCL_20', 'FCL_40', 'FCL_40HC', 'AIR', 'COURIER'], (v) => _container = v),
-        _date('ETD', _etd, (d) => _etd = d),
-        _date('ETA', _eta, (d) => _eta = d),
+        _date(context.l10n.etd, _etd, (d) => _etd = d),
+        _date(context.l10n.eta, _eta, (d) => _eta = d),
         TextField(controller: _loc, decoration: InputDecoration(labelText: context.l10n.currentLocation)),
         gap,
         Row(children: [

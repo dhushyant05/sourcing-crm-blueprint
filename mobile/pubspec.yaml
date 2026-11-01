@@ -37,6 +37,7 @@ flutter:
   assets:
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/NotoSans-Bold.ttf
+    - assets/fonts/NotoSansSC-GB2312.ttf
   fonts:
     - family: Inter
       fonts:

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/codes.dart';
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
 
@@ -16,7 +17,7 @@ class SettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(context.l10n.settings), actions: const [LanguageSwitch()]),
       body: ListView(children: [
-        ListTile(leading: const Icon(Icons.person), title: Text(s.displayName ?? ''), subtitle: Text('${s.email} · ${s.role.label}')),
+        ListTile(leading: const Icon(Icons.person), title: Text(s.displayName ?? ''), subtitle: Text('${s.email} · ${codeLabel(context, s.role.code)}')),
         ListTile(leading: Icon(Icons.translate), title: Text(context.l10n.language), trailing: LanguageSwitch()),
         ListTile(leading: Icon(Icons.payments_outlined), title: Text(context.l10n.currencies),
             subtitle: Text(context.l10n.usdRMBAndINREveryAmount)),

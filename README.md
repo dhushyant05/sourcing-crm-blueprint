@@ -59,10 +59,10 @@ Create the workspace and first Twenty user, run the object setup (section 3), th
 
 ```bash
 docker compose up -d --build api caddy    # DNS for DOMAIN must point at the VPS for the TLS certificate
-curl https://sourceec.in/api/health       # {"ok":true}
+curl https://sourceeasy.in/api/health       # {"ok":true}
 ```
 
-The super admin from `.env` is created on first boot (only if missing). Sign in at `https://sourceec.in`, change the password
+The super admin from `.env` is created on first boot (only if missing). Sign in at `https://sourceeasy.in`, change the password
 (`POST /api/me/password`), then add staff under **Team**. Updating: `git pull && docker compose up -d --build api`.
 
 Postgres listens on `127.0.0.1` only. It is reached for dumps through `docker compose exec`. App users live in SQLite in the
@@ -79,7 +79,7 @@ SUPER_ADMIN_EMAIL=me@example.com SUPER_ADMIN_PASSWORD=change-me-now npm run dev 
 # 3. Web (proxies /api to :8080)
 cd web && npm ci && npm run dev    # http://localhost:5173
 # No Twenty? Run the server against mocked Twenty data:
-cd server && npx tsx scripts/demo-server.ts   # :8099, users china@/india@/indiaadmin@/super@sourceec.in, password demo-password-1
+cd server && npx tsx scripts/demo-server.ts   # :8099, users china@/india@/indiaadmin@/super@sourceeasy.in, password demo-password-1
 # Tests
 cd server && npm test
 ```
@@ -203,7 +203,7 @@ keyPassword=...
 P
 ```
 
-**First run.** On the sign-in screen, the server URL defaults to `https://sourceec.in`; enter the email and password your admin created. Then enter the Chatwoot details under *Settings → Chatwoot*. The tokens are kept in Android encrypted storage.
+**First run.** On the sign-in screen, the server URL defaults to `https://sourceeasy.in`; enter the email and password your admin created. Then enter the Chatwoot details under *Settings → Chatwoot*. The tokens are kept in Android encrypted storage.
 
 ### Screens
 

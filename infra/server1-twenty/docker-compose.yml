@@ -1,4 +1,4 @@
-# Server 1 — Source Easy on sourceec.in
+# Server 1 — Source Easy on sourceeasy.in
 # Public entry: caddy (80/443) -> api (Source Easy server: REST API + web app).
 # Twenty, Postgres and Redis have NO public ports. Twenty is reachable from the host only on
 # 127.0.0.1:3000 (admin via SSH tunnel: ssh -L 3000:localhost:3000 vps).

@@ -9,6 +9,7 @@ import { Suppliers } from './pages/Suppliers';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Team } from './pages/Team';
+import { Landing } from './pages/Landing';
 import type { Lead } from './lib/types';
 
 const routes: Route[] = ['dashboard', 'leads', 'quotations', 'shipping', 'suppliers', 'users', 'settings'];
@@ -36,4 +37,7 @@ function Shell() {
   );
 }
 
-export default function App() { return <AppProvider><Shell /></AppProvider>; }
+// Public site at "/", the staff app at /app (also /login). Old hash links (/#/leads) still open the app.
+const isApp = () => /^\/(app|login)(\/|$)/.test(location.pathname) || location.hash.startsWith('#/');
+
+export default function App() { return <AppProvider>{isApp() ? <Shell /> : <Landing />}</AppProvider>; }

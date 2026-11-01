@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/l10n.dart';
 import '../../services/session.dart';
 
 /// EN | 中文 switch. Saved on the device and (when signed in) on the account.
@@ -13,7 +14,7 @@ class LanguageSwitch extends StatelessWidget {
     final current = s.language ?? (Localizations.localeOf(context).languageCode == 'zh' ? 'zh-CN' : 'en');
     return PopupMenuButton<String>(
       key: const Key('lang-switch'),
-      tooltip: 'Language / 语言',
+      tooltip: context.l10n.languageTooltip,
       initialValue: current,
       onSelected: s.setLanguage,
       itemBuilder: (_) => const [

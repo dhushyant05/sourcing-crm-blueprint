@@ -405,4 +405,200 @@ class AppLocalizationsZh extends AppLocalizations {
   String notSent(String error) {
     return '未发送：$error';
   }
+
+  @override
+  String get codeNew => '新建';
+
+  @override
+  String get codeAssigned => '已分配';
+
+  @override
+  String get codeSourcing => '采购中';
+
+  @override
+  String get codeQuoted => '已报价';
+
+  @override
+  String get codeApproved => '已批准';
+
+  @override
+  String get codeRejected => '已拒绝';
+
+  @override
+  String get codeShipping => '运输中';
+
+  @override
+  String get codeDelivered => '已送达';
+
+  @override
+  String get codeWon => '成交';
+
+  @override
+  String get codeLost => '流失';
+
+  @override
+  String get codeOpen => '进行中';
+
+  @override
+  String get codePending => '待处理';
+
+  @override
+  String get codeSent => '已发送';
+
+  @override
+  String get codeDraft => '草稿';
+
+  @override
+  String get codeExpired => '已过期';
+
+  @override
+  String get codeIndia => '印度';
+
+  @override
+  String get codeChina => '中国';
+
+  @override
+  String get codeBoth => '双方';
+
+  @override
+  String get codeNotRequested => '未申请';
+
+  @override
+  String get codeRequested => '已申请';
+
+  @override
+  String get codeReceived => '已收到';
+
+  @override
+  String get codeNotStarted => '未开始';
+
+  @override
+  String get codeFiled => '已申报';
+
+  @override
+  String get codeCleared => '已清关';
+
+  @override
+  String get codeHeld => '已扣留';
+
+  @override
+  String get codeBooked => '已订舱';
+
+  @override
+  String get codeInTransit => '运输途中';
+
+  @override
+  String get codeAtPort => '已到港';
+
+  @override
+  String get codeOutForDelivery => '派送中';
+
+  @override
+  String get codeAir => '空运';
+
+  @override
+  String get codeLcl => '拼箱';
+
+  @override
+  String get codeFcl => '整箱';
+
+  @override
+  String get codeFcl20 => '20尺整箱';
+
+  @override
+  String get codeFcl40 => '40尺整箱';
+
+  @override
+  String get codeCourier => '快递';
+
+  @override
+  String get codePhone => '电话';
+
+  @override
+  String get codeWhatsapp => 'WhatsApp';
+
+  @override
+  String get codeWebsite => '网站';
+
+  @override
+  String get codeReferral => '推荐';
+
+  @override
+  String get codeWalkIn => '到店';
+
+  @override
+  String get codeExhibition => '展会';
+
+  @override
+  String get codeEmail => '邮件';
+
+  @override
+  String get codeOther => '其他';
+
+  @override
+  String get codeQuotation => '报价';
+
+  @override
+  String get codeIndiaStaff => '印度员工';
+
+  @override
+  String get codeChinaStaff => '中国员工';
+
+  @override
+  String get codeIndiaAdmin => '印度管理员';
+
+  @override
+  String get codeChinaAdmin => '中国管理员';
+
+  @override
+  String get codeSuperAdmin => '超级管理员';
+
+  @override
+  String get client => '客户';
+
+  @override
+  String dateField(String label, String date) {
+    return '$label：$date';
+  }
+
+  @override
+  String savedOffline(String what) {
+    return '$what 已离线保存 — 联网后同步';
+  }
+
+  @override
+  String savedOk(String what) {
+    return '$what 已保存';
+  }
+
+  @override
+  String get assignment => '分配';
+
+  @override
+  String get rejection => '拒绝';
+
+  @override
+  String get languageTooltip => '语言';
+
+  @override
+  String loggedBy(String name) {
+    return '由 $name 记录';
+  }
+
+  @override
+  String get about => '关于';
+
+  @override
+  String get tlLeadCreated => '创建线索';
+
+  @override
+  String tlOffice(String office) {
+    return '$office办公室';
+  }
+
+  @override
+  String get kpiActiveLeads => '活跃线索';
+
+  @override
+  String get kpiPendingSync => '待同步';
 }

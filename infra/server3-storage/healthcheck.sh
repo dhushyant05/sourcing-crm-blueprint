@@ -6,14 +6,14 @@ set -uo pipefail
 CONF="${HEALTH_CONF:-/etc/source-easy/health.env}"
 # shellcheck source=/dev/null
 [ -f "$CONF" ] && source "$CONF"
-TWENTY_URL="${TWENTY_URL:-https://sourceec.in/healthz}"
-CHATWOOT_URL="${CHATWOOT_URL:-https://chat.sourceec.in/api}"
+TWENTY_URL="${TWENTY_URL:-https://sourceeasy.in/healthz}"
+CHATWOOT_URL="${CHATWOOT_URL:-https://chat.sourceeasy.in/api}"
 BACKUP_ROOT="${BACKUP_ROOT:-/srv/backups}"
 BROWSER_URL="${BROWSER_URL:-http://127.0.0.1:8088/healthz}"
 MAX_BACKUP_AGE_H="${MAX_BACKUP_AGE_H:-26}"
 DISK_MAX_PCT="${DISK_MAX_PCT:-90}"
 ALERT_TO="${ALERT_TO:?ALERT_TO required}"
-ALERT_FROM="${ALERT_FROM:-healthcheck@sourceec.in}"
+ALERT_FROM="${ALERT_FROM:-healthcheck@sourceeasy.in}"
 
 fail=()
 check_url() { curl -fsS -m 15 -o /dev/null "$2" || fail+=("$1 unreachable: $2"); }

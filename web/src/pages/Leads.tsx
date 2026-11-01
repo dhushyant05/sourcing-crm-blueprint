@@ -39,12 +39,12 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
         </>} />
 
       {view === 'board' ? (
-        <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-4">
+        <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-4 md:snap-none">
           {PIPELINE.map((s) => {
             const col = leads?.filter((l) => l.status === s) ?? [];
             return (
               <div key={s} onDragOver={(e) => e.preventDefault()} onDrop={() => drag && move(drag, s)}
-                className="flex w-72 shrink-0 flex-col rounded-2xl bg-ink-100/60 p-2 dark:bg-ink-900/50">
+                className="flex w-[82vw] shrink-0 snap-center flex-col rounded-2xl sm:w-72 bg-ink-100/60 p-2 dark:bg-ink-900/50">
                 <div className="flex items-center gap-2 px-2 py-2 text-sm font-medium text-ink-700 dark:text-ink-200">
                   <span className={`h-2 w-2 rounded-full ${dot[s]}`} />{pretty(s)}<span className="ml-auto rounded-full bg-white px-2 text-xs text-ink-500 dark:bg-ink-800">{data ? col.length : '·'}</span>
                 </div>
@@ -70,8 +70,8 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
       ) : (
         <div className="card overflow-hidden">
           {!data ? <TableSkeleton /> : !leads?.length ? <Empty title={t('leads.noMatch')} hint={t('leads.tryOther')} /> : (
-            <div className="max-h-[calc(100vh-220px)] overflow-auto">
-              <table className="w-full text-sm">
+            <div className="md:max-h-[calc(100vh-220px)] md:overflow-auto">
+              <table className="rtable w-full text-sm">
                 <thead><tr><th className="th">{perms.customers ? t('common.client') : t('common.lead')}</th><th className="th">{t('common.product')}</th><th className="th text-right">{t('common.qty')}</th>{perms.clientPricing && <th className="th text-right">{t('leads.target')}</th>}<th className="th">{t('common.status')}</th><th className="th">{t('common.chinaAgent')}</th><th className="th">{t('common.created')}</th></tr></thead>
                 <tbody>
                   {leads.map((l) => (

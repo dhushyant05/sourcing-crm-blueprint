@@ -9,7 +9,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH 
 try {
   for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, colorScheme: theme });
-    await page.goto('http://localhost:4319/');
+    await page.goto('http://localhost:4319/app');
     await page.evaluate((t) => { localStorage.setItem('theme', t); localStorage.setItem('se.lang', 'en'); }, theme);
     if (theme === 'light') { await page.reload(); await page.screenshot({ path: `${out}login.png` }); }
     await page.reload();

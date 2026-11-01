@@ -19,3 +19,20 @@
   .skeleton { @apply relative overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800; }
   .skeleton::after { content: ''; @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent dark:via-white/5; animation: shimmer 1.4s infinite; }
 }
+
+/* Phones: tables collapse into stacked cards. Cell labels come from the header (see lib/rtable.ts). */
+@media (max-width: 767px) {
+  table.rtable thead { display: none; }
+  table.rtable, table.rtable tbody { display: block; }
+  table.rtable tr { display: block; margin: .75rem; padding: .5rem .25rem; border-radius: 1rem; border: 1px solid rgb(226 232 240 / .8); }
+  .dark table.rtable tr { border-color: rgb(51 65 85 / .7); }
+  table.rtable td { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 0; padding: .4rem .75rem; text-align: right; min-height: 2.25rem; }
+  table.rtable td { width: auto !important; }
+  table.rtable td > div.h-1\.5 { flex: 0 1 60%; }
+  table.rtable td:first-child { font-weight: 600; font-size: .95rem; text-align: left; }
+  table.rtable td:first-child::before { display: none; }
+  table.rtable td::before { content: attr(data-label); flex-shrink: 0; text-align: left; font-size: .7rem; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: rgb(100 116 139); }
+  .btn { min-height: 44px; }
+  .input, select { min-height: 44px; font-size: 16px; }
+}
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }

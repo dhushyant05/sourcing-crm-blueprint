@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,5 +56,14 @@ void main() {
           quantity: 2, unitPrice: 10, currency: c));
       expect(String.fromCharCodes(bytes).contains('NotoSans'), isTrue);
     }
+  });
+
+  test('PDF prints Chinese client and product names', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final bytes = await QuotePdf.build(QuoteData(quoteNo: 'ZH-1', clientName: '义乌华鑫贸易有限公司', product: '硅胶烘焙垫 40×60cm',
+        quantity: 5000, unitPrice: 11.5, currency: 'CNY'));
+    expect(String.fromCharCodes(bytes).contains('NotoSansSC'), isTrue);
+    final out = const String.fromEnvironment('PDF_OUT');
+    if (out.isNotEmpty) await File(out).writeAsBytes(bytes);
   });
 }
