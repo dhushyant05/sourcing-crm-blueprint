@@ -8,7 +8,13 @@ export interface Lead {
   unit?: string; deliveryCity?: string; referenceUrl?: string; enquiryMessage?: string; leadRef?: string; contactName?: string; attachmentCount?: number;
   /** Product requirement summary (India writes, China reads). */
   summary?: string;
+  /** Staff user who raised the lead (null for public enquiries) and the current owner (null = office queue). */
+  raisedBy?: string | null; raisedByName?: string | null; assignedTo?: string | null; assignedToName?: string | null; ownerOffice?: Office;
 }
+export type Office = 'INDIA' | 'CHINA';
+export interface StaffLite { id: string; name: string; role: import('./roles').Role }
+/** In-app notification. Only SE reference + product summary, never customer details. */
+export interface AppNotification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;

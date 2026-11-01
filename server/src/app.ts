@@ -11,6 +11,7 @@ import { capabilities, isRole, manageableRoles, sides, type Role } from './roles
 import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, OBJECTS, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
 import type { TwentyLike } from './twenty.js';
 import type { UserStore, User } from './users.js';
+import { AssignStore, type Assignment, type Office } from './assign.js';
 
 export interface AppOptions {
   twenty: TwentyLike;
@@ -49,6 +50,48 @@ export async function buildApp(o: AppOptions) {
     return undefined;
   };
   const fails = new Map<string, { n: number; until: number }>();
+
+  // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
+  const assign = new AssignStore(o.users.database);
+  const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
+  const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
+  const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
+  /** Adds raisedBy/assignedTo (+ names) to a filtered lead. Only staff names/ids, never customer data. */
+  const decorate = (rec: Rec, a: Assignment | null | undefined, names: Map<string, string>) => ({
+    ...rec, raisedBy: a?.raisedBy ?? null, raisedByName: (a?.raisedBy && names.get(a.raisedBy)) || null,
+    assignedTo: a?.assignedTo ?? null, assignedToName: (a?.assignedTo && names.get(a.assignedTo)) || null,
+    ownerOffice: a?.ownerOffice ?? (rec.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'),
+  });
+  const userNames = () => new Map(o.users.list().map((u) => [u.id, u.name]));
+  /**
+   * Hands a lead to an office. `to` = specific member, null = office queue, undefined = default
+   * (China: queue; India: the India member who raised it, else queue). Notifies the new owner, or the office admins for a queue.
+   */
+  const handoff = (lead: Rec, actor: User | null, office: Office, to: string | null | undefined) => {
+    const leadId = String(lead.id), prev = assign.get(leadId);
+    if (to) {
+      const u = o.users.byId(to);
+      if (!u || !u.active || officeOf(u.role) !== office) throw bad(`Assignee must be an active ${office} staff member`);
+    }
+    if (to === undefined) {
+      const r = prev?.raisedBy ? o.users.byId(prev.raisedBy) : null;
+      to = office === 'INDIA' && r?.active && officeOf(r.role) === 'INDIA' ? r.id : null;
+    }
+    const returned = office === 'INDIA' && prev?.ownerOffice === 'CHINA';
+    const changed = prev?.ownerOffice !== office || (prev?.assignedTo ?? null) !== to;
+    assign.set(leadId, { ownerOffice: office, assignedTo: to });
+    if (changed) {
+      const recips = (to ? [to] : staffOf(office).filter((u) => u.role.endsWith('ADMIN')).map((u) => u.id)).filter((id) => id !== actor?.id);
+      assign.notify(recips, { leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null,
+        kind: !to ? 'QUEUE' : returned ? 'RETURNED' : 'ASSIGNED', office, byName: actor?.name ?? null });
+    }
+  };
+  /** Body field `assignedTo` ('' / null = office queue). Stripped before the Twenty write. */
+  const takeAssignee = (body: Rec): string | null | undefined => {
+    if (!('assignedTo' in body)) return undefined;
+    const v = body.assignedTo; delete body.assignedTo;
+    return v ? String(v) : null;
+  };
 
   app.setErrorHandler((err: any, _req, reply) => {
     const status = err instanceof Forbidden ? 403 : err.status ?? err.statusCode ?? 500;
@@ -158,6 +201,7 @@ export async function buildApp(o: AppOptions) {
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
     if (files.length && lead?.id) uploads.commit(String(lead.id), files); else uploads.discard(files);
+    if (lead?.id) handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); // India queue; India admins are notified
     return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
   });
 
@@ -237,37 +281,54 @@ export async function buildApp(o: AppOptions) {
       const obj = objOf(req.params.plural), role = req.user!.role;
       if (!canRead(role, obj)) throw new Forbidden(`${role} may not read ${obj}`);
       const filter: Record<string, string> = {};
-      for (const [k, v] of Object.entries(req.query ?? {})) {
+      const q = { ...(req.query ?? {}) };
+      let mine: string | undefined;
+      if (obj === 'lead' && q.assignedTo) { mine = q.assignedTo === 'me' ? req.user!.id : String(q.assignedTo); delete q.assignedTo; }
+      for (const [k, v] of Object.entries(q)) {
         if (!FILTERABLE[obj]?.includes(k)) throw Object.assign(new Error(`Cannot filter ${obj} by ${k}`), { status: 400 });
         filter[k] = String(v);
       }
       const [rows, ctx] = await Promise.all([o.twenty.list(OBJECTS[obj], filter), ctxOf(role)]);
-      const data = rows.map((r) => readFilter(obj, r, ctx)).filter((r): r is Rec => !!r)
-        .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+      let data = rows.map((r) => readFilter(obj, r, ctx)).filter((r): r is Rec => !!r);
+      if (obj === 'lead') {
+        const all = assign.all(), names = userNames();
+        data = data.map((r) => decorate(r, all.get(String(r.id)), names));
+        if (mine) data = data.filter((r) => r.assignedTo === mine);
+      }
+      data = data.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
       return { data };
     });
     api.get<{ Params: { plural: string; id: string } }>('/api/records/:plural/:id', async (req, reply) => {
       const obj = objOf(req.params.plural), role = req.user!.role;
       if (!canRead(role, obj)) throw new Forbidden(`${role} may not read ${obj}`);
       const r = await o.twenty.get(OBJECTS[obj], req.params.id);
-      const f = r && readFilter(obj, r, await ctxOf(role));
+      let f = r && readFilter(obj, r, await ctxOf(role));
+      if (f && obj === 'lead') f = decorate(f, assign.get(String(f.id)), userNames());
       return f ? { data: f } : reply.code(404).send({ error: 'Not found' });
     });
     api.post<{ Params: { plural: string }; Body: Rec }>('/api/records/:plural', async (req, reply) => {
       const obj = objOf(req.params.plural);
-      const data = { ...writeCheck(req.user!.role, obj, 'create', req.body ?? {}) };
+      const body = { ...(req.body ?? {}) }, to = obj === 'lead' ? takeAssignee(body) : undefined;
+      const data = { ...writeCheck(req.user!.role, obj, 'create', body) };
       // The reference is always assigned here (incl. offline mobile leads when they sync), never by the client.
       if (obj === 'lead') { data.assignedOffice ??= CHINA_LEAD_STATUSES.includes(String(data.status)) ? 'CHINA' : 'INDIA'; data.office ??= 'INDIA'; }
       const leadRef = obj === 'lead' ? await nextRef() : await inheritRef(obj, data);
       if (leadRef) data.leadRef = leadRef;
       const r = await o.twenty.create(OBJECTS[obj], data);
+      if (obj === 'lead') {
+        const actor = req.user!, office: Office = data.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA';
+        assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'INDIA' ? actor.id : null });
+        // India staff creating an India lead own it unless they pick someone else.
+        handoff({ ...data, id: r.id }, actor, office, to !== undefined ? to : office === 'INDIA' && officeOf(actor.role) === 'INDIA' ? actor.id : undefined);
+      }
       return reply.code(201).send({ data: { id: r.id, ...(leadRef ? { leadRef } : {}) } });
     });
     api.patch<{ Params: { plural: string; id: string }; Body: Rec }>('/api/records/:plural/:id', async (req, reply) => {
       const obj = objOf(req.params.plural), role = req.user!.role;
       const existing = await o.twenty.get(OBJECTS[obj], req.params.id);
       if (!existing || !readFilter(obj, existing, await ctxOf(role))) return reply.code(404).send({ error: 'Not found' });
-      const data = { ...writeCheck(role, obj, 'update', req.body ?? {}, existing) };
+      const body = { ...(req.body ?? {}) }, to = obj === 'lead' ? takeAssignee(body) : undefined;
+      const data = Object.keys(body).length || to === undefined ? { ...writeCheck(role, obj, 'update', body, existing) } : {};
       // Handing a lead to China = assignedOffice CHINA. Moving it to a China stage (board drag, status change) implies that,
       // otherwise China would never see it (China only reads assignedOffice=CHINA leads).
       if (obj === 'lead' && !('assignedOffice' in data) && existing.assignedOffice !== 'CHINA' && CHINA_LEAD_STATUSES.includes(String(data.status))) data.assignedOffice = 'CHINA';
@@ -275,9 +336,59 @@ export async function buildApp(o: AppOptions) {
         const leadRef = await inheritRef(obj, { ...existing, ...data });
         if (leadRef) data.leadRef = leadRef;
       }
-      const r = await o.twenty.update(OBJECTS[obj], req.params.id, data);
+      let target: Office | null = null;
+      const a = obj === 'lead' ? assign.get(String(existing.id)) : null;
+      if (obj === 'lead') {
+        const toChina = data.assignedOffice === 'CHINA' && existing.assignedOffice !== 'CHINA';
+        const quotedByChina = data.status === 'QUOTED' && existing.status !== 'QUOTED' && (a?.ownerOffice ?? 'CHINA') === 'CHINA' && officeOf(role) === 'CHINA';
+        target = toChina ? 'CHINA' : quotedByChina ? 'INDIA' : to !== undefined ? (a?.ownerOffice ?? ({ ...existing, ...data }.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA')) : null;
+        if (target && to !== undefined) assertAssign(req.user!, existing, target, to);
+      }
+      const r = Object.keys(data).length ? await o.twenty.update(OBJECTS[obj], req.params.id, data) : { id: req.params.id };
+      if (target) handoff({ ...existing, ...data }, req.user!, target, to);
       return { data: { id: r.id ?? req.params.id } };
     });
+
+    /** Who may hand a lead to `office`/`to`: any staff may send to the other office (member or queue); within an office only admins reassign others, staff may take it themselves. */
+    const assertAssign = (actor: User, lead: Rec, office: Office, to: string | null) => {
+      const s = sides(actor.role), mine = officeOf(actor.role);
+      if (s.superAdmin) return;
+      if (!s.india && lead.assignedOffice !== 'CHINA') throw new Forbidden('Lead is not assigned to China');
+      if (office !== mine) return;
+      if (s.admin || to === actor.id) return;
+      throw new Forbidden('Only office admins can reassign within the office');
+    };
+    // Explicit send/return/reassign: { office: 'CHINA'|'INDIA', assignedTo?: userId|null, raisedBy?: userId (India admin/super admin, e.g. public enquiries) }
+    api.post<{ Params: { id: string }; Body: { office?: string; assignedTo?: string | null; raisedBy?: string | null } }>('/api/leads/:id/assign', async (req, reply) => {
+      const actor = req.user!, b = req.body ?? {};
+      const lead = await o.twenty.get('leads', req.params.id);
+      if (!lead || !readFilter('lead', lead, await ctxOf(actor.role))) return reply.code(404).send({ error: 'Not found' });
+      const office = b.office === 'CHINA' || b.office === 'INDIA' ? b.office : (assign.get(String(lead.id))?.ownerOffice ?? (lead.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'));
+      const to = 'assignedTo' in b ? (b.assignedTo ? String(b.assignedTo) : null) : undefined;
+      assertAssign(actor, lead, office, to ?? null);
+      if ('raisedBy' in b) {
+        if (!(actor.role === 'SUPER_ADMIN' || actor.role === 'INDIA_ADMIN')) throw new Forbidden('Only India admins can set who raised a lead');
+        const u = b.raisedBy ? o.users.byId(String(b.raisedBy)) : null;
+        if (b.raisedBy && (!u || officeOf(u.role) !== 'INDIA')) return reply.code(400).send({ error: 'raisedBy must be an India staff member' });
+        assign.set(String(lead.id), { raisedBy: u?.id ?? null });
+      }
+      if (office === 'CHINA' && lead.assignedOffice !== 'CHINA') {
+        if (!sides(actor.role).india) throw new Forbidden('Only India can send a lead to China');
+        const patch: Rec = { assignedOffice: 'CHINA', ...(CHINA_LEAD_STATUSES.includes(String(lead.status)) ? {} : { status: 'ASSIGNED' }) };
+        await o.twenty.update('leads', String(lead.id), patch); Object.assign(lead, patch);
+      }
+      if (b.office || to !== undefined) handoff(lead, actor, office, to);
+      const f = readFilter('lead', lead, await ctxOf(actor.role))!;
+      return { data: decorate(f, assign.get(String(lead.id)), userNames()) };
+    });
+    // Active members of an office, for the assignee picker (id, name, role only).
+    api.get<{ Querystring: { office?: string } }>('/api/staff', async (req) => {
+      const office = req.query?.office === 'CHINA' ? 'CHINA' : 'INDIA';
+      return { data: staffOf(office).map((u) => ({ id: u.id, name: u.name, role: u.role })) };
+    });
+    api.get('/api/notifications', async (req) => assign.list(req.user!.id));
+    api.post<{ Params: { id: string } }>('/api/notifications/:id/read', async (req) => ({ ok: assign.markRead(req.user!.id, req.params.id) }));
+    api.post('/api/notifications/read-all', async (req) => ({ ok: assign.markRead(req.user!.id) }));
 
     // ---- Super admin ----
     api.get('/api/backups', async (req) => {
@@ -341,6 +452,7 @@ export async function buildApp(o: AppOptions) {
       if (t.id === req.user!.id) throw new Forbidden('You cannot remove yourself');
       if (lastSuper(t, 'delete')) return reply.code(409).send({ error: 'This is the last active super admin', code: 'last_super_admin' });
       o.users.remove(t.id);
+      assign.forgetUser(t.id);
       return reply.code(204).send();
     });
     api.post<{ Params: { id: string }; Body: { password: string } }>('/api/users/:id/password', async (req, reply) => {

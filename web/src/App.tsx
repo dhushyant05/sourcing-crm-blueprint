@@ -17,7 +17,7 @@ const routes: Route[] = ['dashboard', 'leads', 'quotations', 'shipping', 'suppli
 const fromHash = (): Route => (routes.find((r) => location.hash === `#/${r}`) ?? 'dashboard');
 
 function Shell() {
-  const { session, perms } = useApp();
+  const { session, perms, api } = useApp();
   const [route, setRoute] = useState<Route>(fromHash);
   const [search, setSearch] = useState('');
   const [lead, setLead] = useState<Lead | null>(null);
@@ -25,7 +25,7 @@ function Shell() {
   if (!session) return <Login />;
   const go = (r: Route) => { location.hash = `/${r}`; };
   return (
-    <Layout route={route} go={go} search={search} setSearch={(s) => { setSearch(s); if (s && route === 'dashboard') go('leads'); }}>
+    <Layout openLeadId={(id) => { void api.lead(id).then((l) => l && setLead(l)); }} route={route} go={go} search={search} setSearch={(s) => { setSearch(s); if (s && route === 'dashboard') go('leads'); }}>
       {route === 'dashboard' && <Dashboard openLead={setLead} />}
       {route === 'leads' && <Leads search={search} openLead={setLead} />}
       {route === 'quotations' && <Quotations search={search} />}

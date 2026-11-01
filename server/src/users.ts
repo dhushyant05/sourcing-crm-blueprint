@@ -15,6 +15,8 @@ const DUMMY = bcrypt.hashSync('not-a-real-password', 12);
 
 export class UserStore {
   private db: DatabaseSync;
+  /** Same SQLite file is shared by lead assignments and notifications. */
+  get database() { return this.db; }
   constructor(path = ':memory:') {
     this.db = new DatabaseSync(path);
     this.db.exec(`CREATE TABLE IF NOT EXISTS users (

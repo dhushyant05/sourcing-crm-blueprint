@@ -1,9 +1,9 @@
 import { clsx } from 'clsx';
-import { Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
+import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
-import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus } from '../lib/types';
+import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import i18n, { fmtDate } from '../i18n';
 import { MoneyInput, Money } from '../components/MoneyInput';
@@ -17,7 +17,8 @@ export const matches = (l: Lead, q: string) => !q || [l.leadRef, l.name, l.clien
 export function Leads({ search, openLead }: { search: string; openLead: (l: Lead) => void }) {
   const { api, perms } = useApp();
   const { t } = useTranslation();
-  const { data, setData, reload } = useLoad(() => api.leads(), [api]);
+  const [mine, setMine] = useState(() => localStorage.leadMine === '1');
+  const { data, setData, reload } = useLoad(() => api.leads(mine), [api, mine]);
   const [creating, setCreating] = useState(false);
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
   const [drag, setDrag] = useState<string | null>(null);
@@ -33,6 +34,11 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
     <>
       <PageHeader title={t('nav.leads')} subtitle={data ? t('leads.count', { n: data.length }) : t('common.loading')}
         actions={<>
+          <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 text-sm dark:border-ink-700 dark:bg-ink-900" data-testid="mine-filter">
+            {([[false, t('assign.all')], [true, t('assign.mine')]] as const).map(([v, label]) => (
+              <button key={String(v)} onClick={() => { setMine(v); localStorage.leadMine = v ? '1' : '0'; }} className={clsx('rounded-lg px-2.5 py-1.5 transition', mine === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}>{label}</button>
+            ))}
+          </div>
           <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 dark:border-ink-700 dark:bg-ink-900">
             {([['board', KanbanSquare], ['table', Rows3]] as const).map(([v, I]) => (
               <button key={v} onClick={() => pick(v)} className={clsx('rounded-lg px-2.5 py-1.5 text-sm transition', view === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}><I size={16} /></button>
@@ -41,6 +47,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
           {perms.customers && <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={16} />{t('leads.new')}</button>}
         </>} />
 
+      {mine && data && !data.length && <p className="mb-4 rounded-xl border border-dashed border-ink-200 px-4 py-3 text-sm text-ink-500 dark:border-ink-800">{t('assign.noneMine')}</p>}
       {view === 'board' ? (
         <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-4 md:snap-none">
           {PIPELINE.map((s) => {
@@ -60,7 +67,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
                         <span>{t('common.pcs', { n: l.quantity?.toLocaleString() })}</span>
-                        <Avatar name={l.assignedChinaAgent ?? 'NA'} className="h-6 w-6 text-[10px]" />
+                        <span className="flex items-center gap-1.5" title={l.assignedToName ?? t('assign.queue', { office: l.ownerOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia') })}>{l.ownerOffice && <span className="text-[10px] uppercase text-ink-400">{l.ownerOffice === 'CHINA' ? '中' : 'IN'}</span>}<Avatar name={l.assignedToName ?? l.assignedChinaAgent ?? '—'} className="h-6 w-6 text-[10px]" /></span>
                       </div>
                     </article>
                   ))}
@@ -84,7 +91,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
                       {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
                       <td className="td"><Chip value={l.status} /></td>
-                      <td className="td text-ink-600 dark:text-ink-300">{l.assignedChinaAgent ?? '—'}</td>
+                      <td className="td text-ink-600 dark:text-ink-300">{l.assignedToName ?? l.assignedChinaAgent ?? '—'}</td>
                       <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
                     </tr>
                   ))}
@@ -169,32 +176,56 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const { api, perms } = useApp();
   const { t } = useTranslation();
   const [lead, setLead] = useState<Lead | null>(initial);
-  const [assigning, setAssigning] = useState(false), [agent, setAgent] = useState(''), [busy, setBusy] = useState(false);
+  const { session } = useApp();
+  const [mode, setMode] = useState<Office | null>(null), [busy, setBusy] = useState(false);
+  const [staff, setStaff] = useState<StaffLite[] | null>(null), [pickTo, setPickTo] = useState('');
   const [editSum, setEditSum] = useState<string | null>(null), [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { setLead(initial); setAssigning(false); setEditSum(null); setMsg(null); setAgent(initial?.assignedChinaAgent ?? ''); }, [initial]);
-  const assign = async () => {
+  useEffect(() => { setLead(initial); setMode(null); setEditSum(null); setMsg(null); }, [initial]);
+  const officeName = (o?: Office | null) => (o === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia'));
+  const openPicker = (o: Office) => {
+    setMode(o); setStaff(null); setPickTo(o === 'INDIA' && lead?.ownerOffice === 'CHINA' ? 'default' : '');
+    api.staff(o).then(setStaff).catch(() => { setStaff([]); setMsg(t('assign.loadStaffFail')); });
+  };
+  const assign = async (office: Office, to?: string | null) => {
     if (!lead) return; setBusy(true); setMsg(null);
-    try { await api.assignToChina(lead.id, agent.trim() || undefined); setLead({ ...lead, assignedOffice: 'CHINA', status: 'ASSIGNED', assignedChinaAgent: agent.trim() || lead.assignedChinaAgent }); setAssigning(false); setMsg(t('leads.assignedOk')); }
-    catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+    try {
+      const l = await api.assignLead(lead.id, office, to);
+      setLead({ ...lead, ...l }); setMode(null);
+      setMsg(t('assign.sent', { who: l.assignedToName ?? t('assign.queue', { office: officeName(office) }) }));
+    } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const saveSummary = async () => {
     if (!lead || editSum == null) return; setBusy(true);
     try { await api.updateLead(lead.id, { summary: editSum.trim() }); setLead({ ...lead, summary: editSum.trim() }); setEditSum(null); }
     catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
-  const inChina = lead?.assignedOffice === 'CHINA';
+  const owner: Office = lead?.ownerOffice ?? (lead?.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA');
+  const role = session?.role ?? 'INDIA_STAFF', isAdmin = role.endsWith('ADMIN');
+  const canSend = perms.customers && owner !== 'CHINA';
+  const canReturn = perms.suppliers && owner === 'CHINA' && lead?.assignedOffice === 'CHINA';
+  const myOffice: Office | null = role.startsWith('CHINA') ? 'CHINA' : role.startsWith('INDIA') ? 'INDIA' : null;
+  const canReassign = role === 'SUPER_ADMIN' || (isAdmin && myOffice === owner);
+  const canTake = !isAdmin && myOffice === owner && !!session?.id && lead?.assignedTo !== session.id;
   return (
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} /><span>{lead.productInterest}</span></div>}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{perms.customers && !assigning && <button className="btn-primary" data-testid="assign-china" onClick={() => setAssigning(true)}><Send size={15} />{inChina ? t('leads.reassignChina') : t('leads.assignChina')}</button>}</>}>
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.suppliers && <button className="btn-primary">{t('leads.newSourcing')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
+        {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
+        {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
+        {!mode && canSend && <button className="btn-primary" data-testid="assign-china" onClick={() => openPicker('CHINA')}><Send size={15} />{t('assign.sendChina')}</button>}</>}>
       {lead && (
         <>
-          {assigning && (
-            <div className="mb-5 rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-500/30 dark:bg-brand-500/10">
-              <label className="label" htmlFor="china-agent">{t('leads.chinaAgentOpt')}</label>
-              <input id="china-agent" className="input" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={t('leads.chinaAgentPh')} />
-              <p className="mt-1 text-xs text-ink-500">{t('leads.assignHint')}</p>
-              <div className="mt-2 flex gap-2"><button className="btn-primary" disabled={busy} onClick={() => void assign()} data-testid="assign-confirm">{t('leads.assignConfirm')}</button><button className="btn-outline" onClick={() => setAssigning(false)}>{t('common.cancel')}</button></div>
+          {mode && (
+            <div data-testid="assign-picker" className="mb-5 rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-500/30 dark:bg-brand-500/10">
+              <div className="mb-2 text-sm font-medium text-ink-900 dark:text-white">{mode !== owner ? (mode === 'CHINA' ? t('assign.sendChina') : t('assign.returnIndia')) : t('assign.reassign')}</div>
+              <label className="label" htmlFor="assign-to">{t('assign.member')} · {officeName(mode)}</label>
+              <select id="assign-to" data-testid="assign-select" className="input" value={pickTo} disabled={!staff} onChange={(e) => setPickTo(e.target.value)}>
+                {pickTo === 'default' || (mode === 'INDIA' && owner === 'CHINA') ? <option value="default">{lead.raisedByName ? t('assign.raiserDefault', { name: lead.raisedByName }) : t('assign.queueOpt', { office: officeName(mode) })}</option> : null}
+                <option value="">{t('assign.queueOpt', { office: officeName(mode) })}</option>
+                {staff?.map((s) => <option key={s.id} value={s.id}>{s.name} · {t(`role.${s.role}`)}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-ink-500">{mode === 'CHINA' ? t('assign.sendHint') : owner === 'CHINA' ? t('assign.returnHint') : ''}</p>
+              <div className="mt-2 flex gap-2"><button className="btn-primary" disabled={busy || !staff} onClick={() => void assign(mode, pickTo === 'default' ? undefined : pickTo || null)} data-testid="assign-confirm">{t('assign.confirm')}</button><button className="btn-outline" onClick={() => setMode(null)}>{t('common.cancel')}</button></div>
             </div>
           )}
           {msg && <p role="status" className="mb-4 rounded-lg bg-ink-50 px-3 py-2 text-sm text-ink-700 dark:bg-ink-800 dark:text-ink-200">{msg}</p>}
@@ -206,7 +237,9 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
             {perms.clientPricing && <Field label={t('leads.targetPrice')}><Money v={lead.targetPrice} c={lead.targetCurrency} /></Field>}
             <Field label={t('leads.channel')}>{lead.sourceChannel}</Field>
             <Field label={t('leads.office')}>{lead.assignedOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia')}</Field>
-            <Field label={t('common.chinaAgent')}>{lead.assignedChinaAgent}</Field>
+            <Field label={t('assign.raisedBy')}><span data-testid="raised-by">{lead.raisedByName ?? '—'}</span></Field>
+            <Field label={t('assign.owner')}><span data-testid="assigned-to">{lead.assignedToName ?? t('assign.queue', { office: officeName(owner) })}</span></Field>
+            {lead.assignedChinaAgent && <Field label={t('common.chinaAgent')}>{lead.assignedChinaAgent}</Field>}
             {lead.referenceUrl && <Field label={t('leads.refLink')}><a href={lead.referenceUrl} target="_blank" rel="noreferrer noopener" className="break-all text-brand-600 underline">{lead.referenceUrl}</a></Field>}
           </dl>
           <h3 className="mt-6 flex items-center text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.summary')}
@@ -227,7 +260,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
           <Attachments leadId={lead.id} canEdit={perms.customers} />
           <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.timeline')}</h3>
           <ol className="mt-3 space-y-4 border-l border-ink-200 pl-4 dark:border-ink-800">
-            {[[t('leads.createdEvt'), lead.createdAt], ...(inChina ? [[t('leads.assignedTo', { who: lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d]) => (
+            {[[t('leads.createdEvt'), lead.createdAt], ...(lead.assignedOffice === 'CHINA' ? [[t('leads.assignedTo', { who: lead.assignedToName || lead.assignedChinaAgent || t('leads.officeChina') }), lead.updatedAt ?? lead.createdAt]] : [])].map(([t, d]) => (
               <li key={t} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-4 ring-white dark:ring-ink-900" /><div className="text-ink-800 dark:text-ink-100">{t}</div><div className="text-xs text-ink-500">{fmtDate(d, { dateStyle: 'medium' })}</div></li>
             ))}
           </ol>

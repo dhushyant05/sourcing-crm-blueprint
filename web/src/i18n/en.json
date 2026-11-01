@@ -396,5 +396,37 @@
     "safety": "Only download the app from this page on the official Source Easy site. Android may warn because the app is not from the Play Store; that is expected.",
     "scan": "Scan with your phone",
     "scanHint": "Opens this page on your Android phone"
+  },
+  "assign": {
+    "raisedBy": "Raised by",
+    "owner": "Assigned to",
+    "queue": "{{office}} office queue",
+    "queueOpt": "Office queue (all {{office}} staff, admins assign)",
+    "sendChina": "Send to China",
+    "returnIndia": "Return to India",
+    "reassign": "Reassign",
+    "takeIt": "Take it",
+    "member": "Team member",
+    "raiserDefault": "{{name}} (raised it)",
+    "sendHint": "China sees the SE reference, product, summary, photos and videos — never the customer name or contact details.",
+    "returnHint": "Defaults to the India member who raised the lead.",
+    "confirm": "Assign",
+    "sent": "Lead sent to {{who}}.",
+    "mine": "Assigned to me",
+    "all": "All leads",
+    "noneMine": "Nothing is assigned to you right now.",
+    "loadStaffFail": "Could not load team members"
+  },
+  "notif": {
+    "title": "Notifications",
+    "none": "You're all caught up.",
+    "markAll": "Mark all read",
+    "ASSIGNED": "{{by}} assigned {{ref}} to you",
+    "ASSIGNED_nobody": "{{ref}} was assigned to you",
+    "RETURNED": "{{by}} returned {{ref}} to you",
+    "RETURNED_nobody": "{{ref}} was returned to you",
+    "QUEUE": "{{ref}} is waiting in the {{office}} queue",
+    "newEnquiry": "New website enquiry {{ref}} in the India queue",
+    "unread": "{{n}} unread"
   }
 }

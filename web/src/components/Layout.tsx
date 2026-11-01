@@ -1,5 +1,6 @@
 import { clsx } from 'clsx';
-import { Bell, Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Factory, UserCog } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
+import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Factory, UserCog } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../lib/store';
 import { ROLES, type Role } from '../lib/roles';
@@ -9,8 +10,8 @@ import { Avatar } from './ui';
 
 export type Route = 'dashboard' | 'leads' | 'quotations' | 'shipping' | 'suppliers' | 'users' | 'settings';
 
-export function Layout({ route, go, search, setSearch, children }: {
-  route: Route; go: (r: Route) => void; search: string; setSearch: (s: string) => void; children: ReactNode;
+export function Layout({ route, go, search, setSearch, children, openLeadId }: {
+  route: Route; go: (r: Route) => void; search: string; setSearch: (s: string) => void; children: ReactNode; openLeadId: (id: string) => void;
 }) {
   const { session, perms, signOut, setRole } = useApp();
   const { t } = useTranslation();
@@ -104,7 +105,7 @@ export function Layout({ route, go, search, setSearch, children }: {
             )}
             <LanguageSwitch className="md:mr-1" />
             <button className="btn-ghost hidden p-2 md:inline-flex" onClick={() => setDark(!dark)} aria-label={t('header.theme')}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
-            <button className="btn-ghost relative hidden p-2 md:inline-flex" aria-label={t('header.notifications')}><Bell size={18} /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-rose-500" /></button>
+            <NotificationBell openLead={openLeadId} />
             <div className="ml-2 hidden items-center gap-2.5 border-l md:flex border-ink-200 pl-4 dark:border-ink-800">
               <Avatar name={session?.name ?? '?'} />
               <div className="hidden leading-tight lg:block"><div className="text-sm font-medium text-ink-900 dark:text-white">{session?.name}</div><div className="text-xs text-ink-500">{session && t(`role.${session.role}`)}</div></div>

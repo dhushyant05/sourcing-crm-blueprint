@@ -396,5 +396,37 @@
     "safety": "请仅从 Source Easy 官方网站的本页面下载应用。由于不是来自 Play 商店，安卓可能会提示风险，这是正常的。",
     "scan": "用手机扫码",
     "scanHint": "在安卓手机上打开本页面"
+  },
+  "assign": {
+    "raisedBy": "提交人",
+    "owner": "负责人",
+    "queue": "{{office}}办公室队列",
+    "queueOpt": "办公室队列（所有{{office}}员工可见，由管理员分配）",
+    "sendChina": "发送给中国团队",
+    "returnIndia": "退回印度团队",
+    "reassign": "重新分配",
+    "takeIt": "由我负责",
+    "member": "团队成员",
+    "raiserDefault": "{{name}}（提交人）",
+    "sendHint": "中国团队只能看到 SE 编号、产品、摘要、照片和视频，看不到客户名称或联系方式。",
+    "returnHint": "默认退回给提交该线索的印度成员。",
+    "confirm": "分配",
+    "sent": "线索已发送给 {{who}}。",
+    "mine": "分配给我",
+    "all": "全部线索",
+    "noneMine": "目前没有分配给您的线索。",
+    "loadStaffFail": "无法加载团队成员"
+  },
+  "notif": {
+    "title": "通知",
+    "none": "没有新通知。",
+    "markAll": "全部标为已读",
+    "ASSIGNED": "{{by}} 将 {{ref}} 分配给您",
+    "ASSIGNED_nobody": "{{ref}} 已分配给您",
+    "RETURNED": "{{by}} 将 {{ref}} 退回给您",
+    "RETURNED_nobody": "{{ref}} 已退回给您",
+    "QUEUE": "{{ref}} 正在{{office}}队列中等待分配",
+    "newEnquiry": "新的网站询盘 {{ref}} 已进入印度队列",
+    "unread": "{{n}} 条未读"
   }
 }

@@ -3,7 +3,7 @@ import { DemoApi, ServerApi, type Api, type Me } from './api';
 import { perms, type Role } from './roles';
 import { deviceLang, LANGS, setLang, type Lang } from '../i18n';
 
-export interface Session { name: string; email: string; role: Role; demo: boolean }
+export interface Session { id?: string; name: string; email: string; role: Role; demo: boolean }
 interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, token?: string): void; signOut(): void; setRole(r: Role): void }
 
 const C = createContext<Ctx>(null!);

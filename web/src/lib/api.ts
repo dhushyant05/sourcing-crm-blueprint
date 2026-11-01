@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Quotation, Shipment, Supplier, User , AppNotification, StaffLite, Office } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -18,6 +18,14 @@ export interface Api {
   updateLead(id: string, data: Partial<Pick<Lead, 'summary' | 'assignedChinaAgent' | 'status' | 'assignedOffice'>>): Promise<void>;
   /** Hand the lead to the China office (assignedOffice=CHINA, status ASSIGNED). */
   assignToChina(id: string, agent?: string): Promise<void>;
+  /** Leads; mine=true → only leads currently assigned to me. */
+  leads(mine?: boolean): Promise<Lead[]>;
+  lead(id: string): Promise<Lead | null>;
+  /** Send / return / reassign a lead. assignedTo null = office queue, undefined = server default (China: queue, India: raiser). */
+  assignLead(id: string, office: Office, assignedTo?: string | null): Promise<Lead>;
+  staff(office: Office): Promise<StaffLite[]>;
+  notifications(): Promise<{ data: AppNotification[]; unread: number }>;
+  markNotificationRead(id?: string): Promise<void>;
   /** India side: upload product photos / videos / documents to a lead. */
   uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void): Promise<Attachment[]>;
   deleteAttachment(leadId: string, id: string): Promise<void>;
@@ -71,13 +79,24 @@ export class ServerApi implements Api {
   private get india() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('INDIA'); }
   private get china() { return this.role === 'SUPER_ADMIN' || this.role.startsWith('CHINA'); }
 
-  async leads() {
-    return (await this.list('leads')).map((n) => ({
+  private mapLead = (n: Raw): Lead => ({
       ...n, contactPhone: n.contactPhone?.primaryPhoneNumber && [n.contactPhone.primaryPhoneCallingCode, n.contactPhone.primaryPhoneNumber].filter(Boolean).join(' '),
       contactEmail: n.contactEmail?.primaryEmail, referenceUrl: n.referenceUrl?.primaryLinkUrl,
       targetPrice: amount(n.targetPrice), targetCurrency: n.targetPrice?.currencyCode,
-    })) as Lead[];
+    }) as Lead;
+  async leads(mine?: boolean) { return (await this.req<Raw[]>('GET', `/records/leads${mine ? '?assignedTo=me' : ''}`)).map(this.mapLead); }
+  async lead(id: string) { try { return this.mapLead(await this.req<Raw>('GET', `/records/leads/${encodeURIComponent(id)}`)); } catch { return null; } }
+  async assignLead(id: string, office: Office, assignedTo?: string | null) {
+    return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/assign`, { office, ...(assignedTo !== undefined ? { assignedTo } : {}) }));
   }
+  staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
+  async notifications() {
+    const res = await fetch('/api/notifications', { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return res.json() as Promise<{ data: AppNotification[]; unread: number }>;
+  }
+  async markNotificationRead(id?: string) { await this.req('POST', id ? `/notifications/${encodeURIComponent(id)}/read` : '/notifications/read-all', {}); }
   async attachments(leadId: string) { return this.req<Attachment[]>('GET', `/leads/${encodeURIComponent(leadId)}/attachments`); }
   async attachmentUrl(leadId: string, a: Attachment) {
     const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(a.id)}`, { headers: { authorization: `Bearer ${this.token}` } });
@@ -157,7 +176,17 @@ export class ServerApi implements Api {
 /** In-browser demo data (used for screenshots and the "Explore with demo data" button). No server needed. */
 export class DemoApi implements Api {
   private wait = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 450));
-  leads() { return this.wait(demo.leads); }
+  leads(mine?: boolean) { return this.wait(mine ? demo.leads.filter((l) => l.assignedTo === 'demo-me') : demo.leads); }
+  async lead(id: string) { return structuredClone(demo.leads.find((l) => l.id === id) ?? null); }
+  async assignLead(id: string, office: Office, assignedTo?: string | null) {
+    const l = demo.leads.find((x) => x.id === id)!;
+    const to = assignedTo === undefined ? (office === 'INDIA' ? l.raisedBy ?? null : null) : assignedTo;
+    Object.assign(l, { ownerOffice: office, assignedTo: to, assignedToName: demoStaff.find((s) => s.id === to)?.name ?? null, ...(office === 'CHINA' ? { assignedOffice: 'CHINA', status: l.status === 'NEW' ? 'ASSIGNED' : l.status } : {}) });
+    return structuredClone(l);
+  }
+  async staff(office: Office) { return demoStaff.filter((s) => s.role.startsWith(office)); }
+  async notifications() { return structuredClone({ data: demoNotes, unread: demoNotes.filter((n) => !n.read).length }); }
+  async markNotificationRead(id?: string) { demoNotes.forEach((n) => { if (!id || n.id === id) n.read = true; }); }
   async attachments(leadId: string) { return structuredClone(demo.attachments[leadId] ?? []); }
   async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
@@ -190,3 +219,12 @@ export class DemoApi implements Api {
   async deleteUser(id: string) { const i = demo.users.findIndex((x) => x.id === id); if (i >= 0) demo.users.splice(i, 1); }
   backups() { return this.wait([{ label: 'Backup browser (demo)', url: 'https://backups.example.com' }]); }
 }
+
+const demoStaff: StaffLite[] = [
+  { id: 'demo-me', name: 'Dhushyanth Kumar', role: 'INDIA_STAFF' }, { id: 'demo-asha', name: 'Asha', role: 'INDIA_STAFF' },
+  { id: 'demo-li', name: 'Li Wei', role: 'CHINA_STAFF' }, { id: 'demo-chen', name: 'Chen Jing', role: 'CHINA_ADMIN' },
+];
+const demoNotes: AppNotification[] = [
+  { id: 'n1', leadId: 'L2', leadRef: 'SE-2611-0002', product: 'Bamboo cutting boards', kind: 'RETURNED', office: 'INDIA', byName: 'Li Wei', createdAt: new Date(Date.now() - 12 * 60e3).toISOString(), read: false },
+  { id: 'n2', leadId: 'L1', leadRef: 'SE-2611-0001', product: 'Steel water bottles', kind: 'ASSIGNED', office: 'INDIA', byName: 'Chen Jing', createdAt: new Date(Date.now() - 3 * 3600e3).toISOString(), read: true },
+];

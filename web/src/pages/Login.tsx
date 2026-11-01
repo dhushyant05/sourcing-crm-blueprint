@@ -17,7 +17,7 @@ export function Login() {
     try {
       const r = await login(email, password);
       if (!deviceLang() && LANGS.includes(r.user.language as Lang)) setLang(r.user.language as Lang);
-      signIn({ name: r.user.name, email: r.user.email, role: r.user.role, demo: false }, r.token);
+      signIn({ id: r.user.id, name: r.user.name, email: r.user.email, role: r.user.role, demo: false }, r.token);
     } catch (e) { setError((e as Error).message || t('login.failed')); } finally { setBusy(false); }
   };
   return (
