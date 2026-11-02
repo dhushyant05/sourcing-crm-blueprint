@@ -116,7 +116,18 @@
     "pipeline": "销售流程",
     "byStage": "各阶段线索数",
     "recentLeads": "最新线索",
-    "perCurrency": "按币种分别统计，不换算"
+    "perCurrency": "按币种分别统计，不换算",
+    "click": "点击查看这些线索",
+    "listTitle": "{{label}} · {{n}}",
+    "viewAll": "在线索页面打开",
+    "none": "这里没有线索。",
+    "filtered": "正在显示 {{label}}（{{n}}）",
+    "clearFilter": "显示全部",
+    "stage": "阶段：{{s}}",
+    "slaRisk": "SLA 风险",
+    "transitLeads": "有运输中货物的线索",
+    "quotedLeads": "已发送/已接受报价的线索",
+    "closedLeads": "已结束线索（赢单 + 丢单）"
   },
   "leads": {
     "count": "{{n}} 条线索 · 拖动卡片切换阶段",
@@ -468,15 +479,17 @@
     "LEAD_CLOSED_nobody": "{{ref}} 已关闭为丢单",
     "ORDER_SHIPPED": "{{by}} 已将 {{ref}} 标记为已发货",
     "ORDER_SHIPPED_nobody": "{{ref}} 已发货",
-    "SLA_WARN": "{{ref}} 时限已用 80%，请尽快处理",
-    "SLA_WARN_nobody": "{{ref}} 时限已用 80%，请尽快处理",
+    "SLA_WARN": "{{ref}} 时限即将到期，请立即处理",
+    "SLA_WARN_nobody": "{{ref}} 时限即将到期，请立即处理",
     "SLA_BREACH": "{{ref}} 已超时",
     "SLA_BREACH_nobody": "{{ref}} 已超时",
     "PRIORITY": "{{by}} 将 {{ref}} 标记为优先",
     "PRIORITY_nobody": "{{ref}} 已设为优先线索",
     "payment": "付款",
     "FOLLOW_UP": "{{ref}} 跟进提醒到期",
-    "FOLLOW_UP_nobody": "{{ref}} 跟进提醒到期"
+    "FOLLOW_UP_nobody": "{{ref}} 跟进提醒到期",
+    "toastOpen": "打开线索",
+    "toastClose": "关闭"
   },
   "lq": {
     "title": "供应商报价",
@@ -739,7 +752,9 @@
     "priorityH": "优先线索（小时）",
     "col": "时限",
     "bigLabel": "{{office}} 时限",
-    "overdueBy": "已超时 {{t}}"
+    "overdueBy": "已超时 {{t}}",
+    "warnMin": "SLA 到期前提醒（分钟）",
+    "warnHint": "在 SLA 到期前这么多分钟，负责人和超级管理员会收到带铃声的弹窗提醒，超时时再次提醒。"
   },
   "wf": {
     "stageN": "第 {{n}}/{{of}} 步",
@@ -780,7 +795,7 @@
       "SHIPPED": "中国已发货",
       "SHIPMENT_UPDATE": "物流：{{ship}}",
       "PRIORITY": "优先 {{on}}",
-      "SLA_WARN": "时限 80% 提醒",
+      "SLA_WARN": "时限即将到期",
       "SLA_BREACH": "超时（{{office}}）",
       "REOPENED": "重新打开 → {{office}}",
       "COPIED_TO": "已复制为新线索 {{ref}}",

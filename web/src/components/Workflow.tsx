@@ -9,9 +9,11 @@ import { Avatar } from './ui';
 /** Re-render every `ms` so countdowns move. */
 function useNow(ms = 30000) { const [n, setN] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setN(Date.now()), ms); return () => clearInterval(t); }, [ms]); return n; }
 const sides = (role: string) => ({ india: role.startsWith('INDIA') || role === 'SUPER_ADMIN', admin: role.endsWith('ADMIN'), sa: role === 'SUPER_ADMIN' });
+/** "About to expire" window (minutes before due), from SLA settings; same rule as the server's warning. */
+export const slaWarn = { minutes: 30 };
 export const slaState = (s: Sla, now: number) => {
   const start = Date.parse(s.startedAt), due = Date.parse(s.dueAt), left = due - now;
-  return { left, level: (s.breached || left <= 0 ? 'breach' : now >= start + (due - start) * 0.8 ? 'warn' : 'ok') as 'ok' | 'warn' | 'breach' };
+  return { left, level: (s.breached || left <= 0 ? 'breach' : left <= Math.min(slaWarn.minutes * 60e3, (due - start) * 0.8) ? 'warn' : 'ok') as 'ok' | 'warn' | 'breach' };
 };
 const fmtLeft = (ms: number) => { const m = Math.round(Math.abs(ms) / 60000), h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
 const tone = { ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300', warn: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200', breach: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' };
@@ -82,7 +84,7 @@ export function WorkflowPanel({ lead, onPriority }: { lead: Lead; onPriority?: (
 }
 
 /** Dashboard widget (admins): running clocks at risk + on-time % per office. */
-export function SlaWidget({ leads, openLead }: { leads: Lead[] | null; openLead: (l: Lead) => void }) {
+export function SlaWidget({ leads, openLead, onCounts }: { leads: Lead[] | null; openLead: (l: Lead) => void; onCounts?: () => void }) {
   const { api, perms } = useApp(); const { t } = useTranslation(); const now = useNow();
   const admin = perms.can('reports.view');
   const { data: rep } = useLoad(() => (admin && api.slaReport ? api.slaReport(30) : Promise.resolve(null)), [api, admin]);
@@ -90,7 +92,7 @@ export function SlaWidget({ leads, openLead }: { leads: Lead[] | null; openLead:
   const risk = running.filter((r) => r.level !== 'ok');
   return <div data-testid="sla-widget" className="card p-5">
     <div className="flex items-center gap-2"><Timer className="h-4 w-4 text-brand-600" /><h2 className="font-semibold text-ink-900 dark:text-white">{t('sla.widget')}</h2>
-      <span className="ml-auto text-xs text-ink-500">{t('sla.counts', { run: running.length, warn: risk.filter((r) => r.level === 'warn').length, breach: risk.filter((r) => r.level === 'breach').length })}</span></div>
+      <span role={onCounts ? 'button' : undefined} data-testid="sla-counts" onClick={onCounts} className={`ml-auto text-xs text-ink-500 ${onCounts ? 'cursor-pointer underline decoration-dotted hover:text-brand-700' : ''}`}>{t('sla.counts', { run: running.length, warn: risk.filter((r) => r.level === 'warn').length, breach: risk.filter((r) => r.level === 'breach').length })}</span></div>
     {rep && <div className="mt-3 grid grid-cols-2 gap-2">{rep.office.map((o) => <div key={o.office} data-testid={`sla-office-${o.office}`} className="rounded-xl bg-ink-50 p-3 dark:bg-ink-800/50">
       <div className="text-xs text-ink-500">{t(`sla.office.${o.office}`)} · {t('sla.days', { n: rep.days })}</div>
       <div className="mt-1 text-xl font-semibold text-ink-900 dark:text-white">{o.onTimePct == null ? '—' : `${o.onTimePct}%`}</div>
@@ -109,18 +111,19 @@ export function SlaWidget({ leads, openLead }: { leads: Lead[] | null; openLead:
 export function SlaSettingsCard() {
   const { api, perms } = useApp(); const { t } = useTranslation();
   const { data, setData } = useLoad(() => (api.slaSettings ? api.slaSettings() : Promise.resolve(null)), [api]);
-  const [f, setF] = useState<{ n: string; p: string } | null>(null), [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { if (data) setF({ n: String(data.normalMinutes / 60), p: String(data.priorityMinutes / 60) }); }, [data]);
+  const [f, setF] = useState<{ n: string; p: string; w: string } | null>(null), [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { if (data) setF({ n: String(data.normalMinutes / 60), p: String(data.priorityMinutes / 60), w: String(data.warnMinutes ?? 30) }); slaWarn.minutes = data?.warnMinutes ?? 30; }, [data]);
   if (!perms.can('settings.sla') || !data || !f) return null;
   const save = async () => {
     setMsg(null);
-    try { const s: SlaSettings = await api.saveSlaSettings!({ normalMinutes: Math.round(Number(f.n) * 60), priorityMinutes: Math.round(Number(f.p) * 60) }); setData(s); setMsg(t('orders.saved')); } catch (e) { setMsg((e as Error).message); }
+    try { const s: SlaSettings = await api.saveSlaSettings!({ normalMinutes: Math.round(Number(f.n) * 60), priorityMinutes: Math.round(Number(f.p) * 60), warnMinutes: Math.round(Number(f.w)) }); setData(s); slaWarn.minutes = s.warnMinutes ?? 30; setMsg(t('orders.saved')); } catch (e) { setMsg((e as Error).message); }
   };
   return <div data-testid="sla-settings" className="card p-5">
     <h2 className="font-semibold text-ink-900 dark:text-white">{t('sla.settings')}</h2><p className="mt-1 text-sm text-ink-500">{t('sla.settingsHint')}</p>
     <div className="mt-3 grid grid-cols-2 gap-3">
       <div><label className="label">{t('sla.normalH')}</label><input data-testid="sla-normal" type="number" min="0.1" step="0.5" className="input" value={f.n} onChange={(e) => setF({ ...f, n: e.target.value })} /></div>
-      <div><label className="label">{t('sla.priorityH')}</label><input data-testid="sla-priority" type="number" min="0.1" step="0.5" className="input" value={f.p} onChange={(e) => setF({ ...f, p: e.target.value })} /></div></div>
+      <div><label className="label">{t('sla.priorityH')}</label><input data-testid="sla-priority" type="number" min="0.1" step="0.5" className="input" value={f.p} onChange={(e) => setF({ ...f, p: e.target.value })} /></div>
+      <div className="col-span-2"><label className="label">{t('sla.warnMin')}</label><input data-testid="sla-warn" type="number" min="1" step="5" className="input" value={f.w} onChange={(e) => setF({ ...f, w: e.target.value })} /><p className="mt-1 text-xs text-ink-500">{t('sla.warnHint')}</p></div></div>
     <button data-testid="sla-save" className="btn-primary mt-3" onClick={() => void save()}>{t('orders.save')}</button>{msg && <span role="status" className="ml-3 text-sm text-ink-500">{msg}</span>}
   </div>;
 }

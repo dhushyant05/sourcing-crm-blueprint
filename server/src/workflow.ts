@@ -15,8 +15,10 @@ export type EventKind =
 export interface LeadEvent { id: string; leadId: string; at: string; kind: EventKind; actorId: string | null; actorName: string | null; actorOffice: Office | 'ADMIN' | null; data: Record<string, unknown>; vis: Vis }
 export interface Clock { leadId: string; office: Office; assignee: string | null; startedAt: string; dueAt: string; priority: boolean; warned: boolean; breached: boolean }
 export interface ClockRun { leadId: string; office: Office; assignee: string | null; startedAt: string; dueAt: string; endedAt: string; breached: boolean }
-export interface SlaSettings { normalMinutes: number; priorityMinutes: number }
-export const SLA_DEFAULT: SlaSettings = { normalMinutes: 5 * 60, priorityMinutes: 2 * 60 };
+export interface SlaSettings { normalMinutes: number; priorityMinutes: number; warnMinutes: number }
+export const SLA_DEFAULT: SlaSettings = { normalMinutes: 5 * 60, priorityMinutes: 2 * 60, warnMinutes: 30 };
+/** When the "about to expire" warning fires: `warnMinutes` before due, but never before 20% of the clock has run. */
+export const warnAt = (start: number, due: number, warnMinutes: number) => due - Math.min(warnMinutes * 60e3, (due - start) * 0.8);
 
 export interface LeadMeta { closedAt: string | null; closedBy: string | null; followUp: string | null; followUpBy: string | null; fromId: string | null; fromRef: string | null }
 export class WorkflowStore {
@@ -44,7 +46,8 @@ export class WorkflowStore {
   async setSla(s: Partial<SlaSettings>): Promise<SlaSettings> {
     const cur = await this.sla();
     const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 30 * 24 * 60;
-    const n = { normalMinutes: ok(s.normalMinutes) ? Math.round(s.normalMinutes!) : cur.normalMinutes, priorityMinutes: ok(s.priorityMinutes) ? Math.round(s.priorityMinutes!) : cur.priorityMinutes };
+    const n = { normalMinutes: ok(s.normalMinutes) ? Math.round(s.normalMinutes!) : cur.normalMinutes, priorityMinutes: ok(s.priorityMinutes) ? Math.round(s.priorityMinutes!) : cur.priorityMinutes,
+      warnMinutes: ok(s.warnMinutes) ? Math.round(s.warnMinutes!) : cur.warnMinutes };
     await this.db.run("INSERT INTO settings (key,value) VALUES ('sla',?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", JSON.stringify(n));
     for (const c of await this.clocks()) await this.recalc(c.leadId); // running clocks follow the new hours
     return n;
@@ -108,17 +111,17 @@ export class WorkflowStore {
   async recalc(leadId: string): Promise<Clock | null> {
     const c = await this.clock(leadId); if (!c) return null;
     const start = Date.parse(c.startedAt), total = (await this.minutes(leadId)) * 60e3, due = start + total, now = this.now();
-    const warned = c.warned && now >= start + total * 0.8, breached = c.breached && now >= due;
+    const warned = c.warned && now >= warnAt(start, due, (await this.sla()).warnMinutes), breached = c.breached && now >= due;
     await this.db.run('UPDATE sla_clocks SET due_at = ?, warned = ?, breached = ? WHERE lead_id = ?', this.iso(due), warned, breached, leadId);
     return this.clock(leadId);
   }
   /** Clocks that just crossed 80% / 100% (each reported once). */
   async tick(): Promise<{ warn: Clock[]; breach: Clock[] }> {
-    const now = this.now(), warn: Clock[] = [], breach: Clock[] = [];
+    const now = this.now(), warn: Clock[] = [], breach: Clock[] = [], wm = (await this.sla()).warnMinutes;
     for (const c of await this.clocks()) {
       const start = Date.parse(c.startedAt), due = Date.parse(c.dueAt);
       if (!c.breached && now >= due) { if (await this.db.run('UPDATE sla_clocks SET breached = true, warned = true WHERE lead_id = ? AND NOT breached', c.leadId)) breach.push({ ...c, breached: true }); }
-      else if (!c.warned && !c.breached && now >= start + (due - start) * 0.8) { if (await this.db.run('UPDATE sla_clocks SET warned = true WHERE lead_id = ? AND NOT warned', c.leadId)) warn.push({ ...c, warned: true }); }
+      else if (!c.warned && !c.breached && now >= warnAt(start, due, wm)) { if (await this.db.run('UPDATE sla_clocks SET warned = true WHERE lead_id = ? AND NOT warned', c.leadId)) warn.push({ ...c, warned: true }); }
     }
     return { warn, breach };
   }

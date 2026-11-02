@@ -31,7 +31,11 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
   const [drag, setDrag] = useState<string | null>(null), [moveErr, setMoveErr] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
-  const leads = data?.filter((l) => matches(l, search) && (showClosed ? l.status === 'CLOSED' : l.status !== 'CLOSED'));
+  const readFilter = () => { try { return JSON.parse(sessionStorage.getItem('se.leadFilter') ?? 'null') as { label: string; ids: string[] } | null; } catch { return null; } };
+  const [only, setOnly] = useState(readFilter);
+  useEffect(() => { const h = () => setOnly(readFilter()); window.addEventListener('se:lead-filter', h); return () => window.removeEventListener('se:lead-filter', h); }, []);
+  const clearOnly = () => { sessionStorage.removeItem('se.leadFilter'); setOnly(null); };
+  const leads = data?.filter((l) => matches(l, search) && (only ? only.ids.includes(l.id) : showClosed ? l.status === 'CLOSED' : l.status !== 'CLOSED'));
   const pick = (v: 'board' | 'table') => { setView(v); localStorage.leadView = v; };
 
   const move = async (id: string, status: LeadStatus) => {
@@ -61,6 +65,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
           {perms.customers && <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={16} />{t('leads.new')}</button>}
         </>} />
 
+      {only && <div data-testid="lead-filter-chip" className="mb-3 flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">{t('dashboard.filtered', { label: only.label, n: leads?.length ?? only.ids.length })}<button data-testid="lead-filter-clear" className="ml-auto text-xs underline" onClick={clearOnly}>{t('dashboard.clearFilter')}</button></div>}
       {mine && data && !data.length && <p className="mb-4 rounded-xl border border-dashed border-ink-200 px-4 py-3 text-sm text-ink-500 dark:border-ink-800">{t('assign.noneMine')}</p>}
       {view === 'board' ? (
         <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-4 md:snap-none">

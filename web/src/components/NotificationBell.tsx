@@ -6,6 +6,7 @@ import { useApp } from '../lib/store';
 import type { AppNotification } from '../lib/types';
 import { fmtDate } from '../i18n';
 import { Avatar } from './ui';
+import { createPortal } from 'react-dom';
 import { desktopNotify, playBell, setupAlerts } from '../lib/live';
 
 /** Text uses only the SE reference + product summary (never customer details), so it is safe for China recipients. */
@@ -24,6 +25,13 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
   const { t } = useTranslation();
   const [open, setOpen] = useState(false), [data, setData] = useState<{ data: AppNotification[]; unread: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  // In-app popups (with the bell): SLA warnings/breaches stay until dismissed, others fade after 10 s.
+  const [toasts, setToasts] = useState<AppNotification[]>([]);
+  const dropToast = (id: string) => setToasts((x) => x.filter((y) => y.id !== id));
+  const toastRef = useRef((n: AppNotification) => {
+    setToasts((x) => [n, ...x.filter((y) => y.id !== n.id)].slice(0, 4));
+    if (n.kind !== 'SLA_WARN' && n.kind !== 'SLA_BREACH') setTimeout(() => setToasts((x) => x.filter((y) => y.id !== n.id)), 10_000);
+  });
   const seen = useRef<Set<string> | null>(null);
   const alertRef = useRef<(n: AppNotification) => void>(() => {});
   // Poll fallback: anything unread we have not seen yet (stream was down) still rings once.
@@ -57,6 +65,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     const alert = (n: AppNotification) => {
       (window as any).__seLive = ((window as any).__seLive ?? 0) + 1;
       playBell();
+      toastRef.current(n);
       // Privacy: China users see only the SE reference + product; India sees the usual message.
       const ref = n.leadRef ?? 'Source Easy';
       const body = china ? [ref, n.product].filter(Boolean).join(' · ') : [notifText(tRef.current, n), n.product].filter(Boolean).join('\n');
@@ -118,6 +127,20 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
           </ul>
         </div>
       )}
+      {toasts.length > 0 && createPortal(<div className="fixed bottom-4 right-4 z-[120] flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2">
+        {toasts.map((n) => { const I = Icon(n), sla = n.kind === 'SLA_WARN' || n.kind === 'SLA_BREACH'; return (
+          <div key={n.id} role="alert" data-testid="notif-toast" className={clsx('flex gap-3 rounded-xl border p-3 shadow-lift', n.kind === 'SLA_BREACH' ? 'border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-950' : n.kind === 'SLA_WARN' ? 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950' : 'border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900')}>
+            <span className={clsx('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', sla ? (n.kind === 'SLA_BREACH' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700') : 'bg-brand-100 text-brand-700')}><I size={15} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink-900 dark:text-white">{china ? (n.leadRef ?? 'Source Easy') : notifText(t, n)}</span>
+              {n.product && <span className="block truncate text-xs text-ink-500">{n.product}</span>}
+              <span className="mt-1.5 flex gap-3 text-xs">
+                <button className="font-medium text-brand-700 dark:text-brand-300" onClick={() => { dropToast(n.id); void click(n); }}>{t('notif.toastOpen')}</button>
+                <button className="text-ink-500" onClick={() => dropToast(n.id)}>{t('notif.toastClose')}</button>
+              </span>
+            </span>
+          </div>); })}
+      </div>, document.body)}
     </div>
   );
 }

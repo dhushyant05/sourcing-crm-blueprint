@@ -37,7 +37,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   final Map<String, String?> _sel = {};
   void _onChange() {
     final c = _ses.lastChange.value;
-    if (mounted && c != null && c['type'] == 'lead' && c['deleted'] == true) { _sel.remove(c['id']); _reload(); }
+    if (mounted && c != null && c['type'] == 'lead') { if (c['deleted'] == true) _sel.remove(c['id']); _reload(); }
   }
 
   @override

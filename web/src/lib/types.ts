@@ -19,7 +19,7 @@ export interface Lead {
   priority?: boolean; sla?: Sla | null; followUp?: string | null; createdFromRef?: string | null; createdFromId?: string | null; closedAt?: string; closedByName?: string | null;
 }
 export interface Sla { office: Office; startedAt: string; dueAt: string; breached: boolean; assignee?: string | null; assigneeName?: string | null }
-export interface SlaSettings { normalMinutes: number; priorityMinutes: number }
+export interface SlaSettings { normalMinutes: number; priorityMinutes: number; warnMinutes?: number }
 export interface LeadEvent { id: string; at: string; kind: string; actorName: string | null; actorOffice: Office | 'ADMIN' | null; data: Record<string, any> }
 export const STAGES = ['NEW', 'CHINA', 'SOURCING', 'QUOTED', 'CQ_SENT', 'DECIDED', 'ORDER', 'SHIPPED', 'DELIVERED'] as const;
 export interface Timeline { events: LeadEvent[]; progress: { stage: (typeof STAGES)[number]; index: number; won: boolean; lost: boolean }; priority: boolean; sla: Sla | null; settings: SlaSettings }

@@ -116,7 +116,18 @@
     "pipeline": "Pipeline",
     "byStage": "Leads by stage",
     "recentLeads": "Recent leads",
-    "perCurrency": "per currency, not converted"
+    "perCurrency": "per currency, not converted",
+    "click": "Click to see these leads",
+    "listTitle": "{{label}} · {{n}}",
+    "viewAll": "Open in Leads page",
+    "none": "No leads here.",
+    "filtered": "Showing {{label}} ({{n}})",
+    "clearFilter": "Show all",
+    "stage": "Stage: {{s}}",
+    "slaRisk": "SLA at risk",
+    "transitLeads": "Leads with shipments in transit",
+    "quotedLeads": "Leads with quotes sent / accepted",
+    "closedLeads": "Closed leads (won + lost)"
   },
   "leads": {
     "count": "{{n}} leads · drag cards to move between stages",
@@ -468,15 +479,17 @@
     "LEAD_CLOSED_nobody": "{{ref}} closed as Lost",
     "ORDER_SHIPPED": "{{by}} marked {{ref}} as shipped",
     "ORDER_SHIPPED_nobody": "{{ref}} has shipped",
-    "SLA_WARN": "{{ref}} SLA: 80% of the time used — act soon",
-    "SLA_WARN_nobody": "{{ref}} SLA: 80% of the time used — act soon",
+    "SLA_WARN": "{{ref}} SLA ends soon — act now",
+    "SLA_WARN_nobody": "{{ref}} SLA ends soon — act now",
     "SLA_BREACH": "{{ref}} SLA breached",
     "SLA_BREACH_nobody": "{{ref}} SLA breached",
     "PRIORITY": "{{by}} marked {{ref}} as priority",
     "PRIORITY_nobody": "{{ref}} is now a priority lead",
     "payment": "Payment",
     "FOLLOW_UP": "Follow-up due for {{ref}}",
-    "FOLLOW_UP_nobody": "Follow-up due for {{ref}}"
+    "FOLLOW_UP_nobody": "Follow-up due for {{ref}}",
+    "toastOpen": "Open lead",
+    "toastClose": "Dismiss"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -739,7 +752,9 @@
     "priorityH": "Priority lead (hours)",
     "col": "SLA",
     "bigLabel": "{{office}} SLA",
-    "overdueBy": "Overdue by {{t}}"
+    "overdueBy": "Overdue by {{t}}",
+    "warnMin": "Warn before SLA ends (minutes)",
+    "warnHint": "The holder and super admin get a popup with a bell this many minutes before the SLA ends, and again on breach."
   },
   "wf": {
     "stageN": "Step {{n}} of {{of}}",
@@ -780,7 +795,7 @@
       "SHIPPED": "Shipped by China",
       "SHIPMENT_UPDATE": "Shipment: {{ship}}",
       "PRIORITY": "Priority {{on}}",
-      "SLA_WARN": "SLA 80% warning",
+      "SLA_WARN": "SLA about to expire",
       "SLA_BREACH": "SLA breached ({{office}})",
       "REOPENED": "Reopened → {{office}}",
       "COPIED_TO": "Copied to new lead {{ref}}",

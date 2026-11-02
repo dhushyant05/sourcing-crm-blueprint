@@ -5,7 +5,32 @@ import { money, totalsByCurrency } from '../lib/currency';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Chip, dot, PageHeader, Skeleton, Sparkline, pretty } from '../components/ui';
 import type { Lead, LeadQuote, Shipment } from '../lib/types';
-import { SlaWidget } from '../components/Workflow';
+import { SlaWidget, SlaChip, slaState } from '../components/Workflow';
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+
+/** Dashboard drill-down: the exact leads behind a count; "Open in Leads page" applies the same filter there. */
+export const LEAD_FILTER_KEY = 'se.leadFilter';
+export function showInLeads(label: string, ids: string[]) {
+  sessionStorage.setItem(LEAD_FILTER_KEY, JSON.stringify({ label, ids }));
+  window.dispatchEvent(new CustomEvent('se:lead-filter'));
+  location.hash = '/leads';
+}
+function LeadList({ label, leads, onClose, openLead, customers }: { label: string; leads: Lead[]; onClose: () => void; openLead: (l: Lead) => void; customers: boolean }) {
+  const { t } = useTranslation();
+  return createPortal(<div className="fixed inset-0 z-[90] flex items-start justify-center bg-ink-900/30 p-4 pt-[10vh]" onClick={onClose}>
+    <div data-testid="dash-list" role="dialog" className="card w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center"><h2 className="font-semibold text-ink-900 dark:text-white">{t('dashboard.listTitle', { label, n: leads.length })}</h2><button className="ml-auto text-ink-400" aria-label="close" onClick={onClose}>✕</button></div>
+      <ul className="mt-3 max-h-[55vh] divide-y divide-ink-100 overflow-y-auto dark:divide-ink-800">
+        {leads.map((l) => <li key={l.id}><button data-testid="dash-list-item" onClick={() => { onClose(); openLead(l); }} className="flex w-full items-center gap-2 py-2.5 text-left text-sm hover:bg-ink-50 dark:hover:bg-ink-800/60">
+          <span className="font-mono text-xs text-brand-700 dark:text-brand-300">{l.leadRef ?? l.id.slice(0, 6)}</span>
+          <span className="min-w-0 flex-1 truncate text-ink-800 dark:text-ink-100">{customers ? `${l.clientName ?? l.name} · ` : ''}{l.productInterest}</span>
+          {l.sla && <SlaChip sla={l.sla} compact />}<Chip value={l.status} /></button></li>)}
+        {!leads.length && <li className="py-4 text-sm text-ink-500">{t('dashboard.none')}</li>}
+      </ul>
+      {!!leads.length && <button data-testid="dash-view-all" className="btn-primary mt-4" onClick={() => { onClose(); showInLeads(label, leads.map((l) => l.id)); }}>{t('dashboard.viewAll')}</button>}
+    </div></div>, document.body);
+}
 
 export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const { api, perms } = useApp();
@@ -19,7 +44,20 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   // Per currency — amounts in different currencies are never added together.
   // Quoted pipeline = customer quotes (INR, incl. GST) that are sent or accepted.
   const pipeline = totalsByCurrency((quotes ?? []).filter((q) => q.cqTotals && (q.status === 'SENT' || q.status === 'ACCEPTED')), (q) => ['INR', q.cqTotals?.total]);
+  const transitIds = new Set((ships ?? []).filter((s) => s.status !== 'DELIVERED').map((s) => s.leadId));
   const transit = ships?.filter((s) => s.status !== 'DELIVERED').length ?? 0;
+  const quotedIds = new Set((quotes ?? []).filter((q) => q.status === 'SENT' || q.status === 'ACCEPTED').map((q) => q.leadId));
+  const [list, setList] = useState<{ label: string; leads: Lead[] } | null>(null);
+  const L = leads ?? [];
+  const drill = [
+    () => L.filter((l) => !['WON', 'LOST', 'CLOSED'].includes(l.status)),
+    () => L.filter((l) => quotedIds.has(l.id)),
+    () => L.filter((l) => ['WON', 'LOST'].includes(l.status)),
+    () => L.filter((l) => transitIds.has(l.id)),
+  ];
+  const drillLabel = [t('dashboard.openLeads'), t('dashboard.quotedLeads'), t('dashboard.closedLeads'), t('dashboard.transitLeads')];
+  const now = Date.now();
+  const atRisk = L.filter((l) => l.sla && slaState(l.sla, now).level !== 'ok');
 
   const kpis = [
     { label: t('dashboard.openLeads'), value: String(open), delta: 12.5, series: [4, 6, 5, 8, 7, 9, 11, open], color: '#2a9fd6' },
@@ -36,8 +74,8 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
     <>
       <PageHeader title={t('dashboard.greeting')} subtitle={t('dashboard.subtitle')} />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((k) => (
-          <div key={k.label} className="card p-5 transition-shadow hover:shadow-lift">
+        {kpis.map((k, i) => (
+          <button type="button" key={k.label} data-testid={`kpi-${i}`} title={t('dashboard.click')} disabled={!leads} onClick={() => setList({ label: drillLabel[i], leads: drill[i]() })} className="card cursor-pointer p-5 text-left transition-shadow hover:shadow-lift hover:ring-1 hover:ring-brand-300">
             <div className="text-sm text-ink-500" title={(k as { hint?: string }).hint}>{k.label}</div>
             <div className="mt-2 flex items-end justify-between gap-2">
               {data ? <div className="text-xl font-semibold tracking-tight text-ink-900 dark:text-white">{k.value}</div> : <Skeleton className="h-8 w-20" />}
@@ -46,24 +84,24 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
             <div className={`mt-2 inline-flex items-center gap-1 text-xs font-medium ${k.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
               {k.delta >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{Math.abs(k.delta)}% <span className="font-normal text-ink-400">{t('common.vsLastMonth')}</span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
-      <div className="mt-6"><SlaWidget leads={leads} openLead={openLead} /></div>
+      <div className="mt-6"><SlaWidget leads={leads} openLead={openLead} onCounts={() => setList({ label: t('dashboard.slaRisk'), leads: atRisk })} /></div>
       <div className="mt-6 grid gap-6 lg:grid-cols-5">
         <section className="card p-6 lg:col-span-3">
           <h2 className="font-semibold text-ink-900 dark:text-white">{t('dashboard.pipeline')}</h2>
           <p className="text-sm text-ink-500">{t('dashboard.byStage')}</p>
           <div className="mt-6 flex items-end gap-3">
             {counts.map(({ s, n }) => (
-              <div key={s} className="flex flex-1 flex-col items-center gap-2">
+              <button type="button" key={s} data-testid={`stage-${s}`} title={t('dashboard.click')} onClick={() => setList({ label: t('dashboard.stage', { s: pretty(s) }), leads: L.filter((l) => l.status === s) })} className="flex flex-1 cursor-pointer flex-col items-center gap-2 rounded-lg hover:bg-ink-50 dark:hover:bg-ink-800/40">
                 <span className="text-xs font-medium text-ink-600 dark:text-ink-300">{data ? n : ''}</span>
                 <div className="flex h-36 w-full items-end rounded-lg bg-ink-100/70 dark:bg-ink-800/60">
                   <div className={`w-full rounded-lg ${dot[s]} opacity-80 transition-[height] duration-700`} style={{ height: data ? `${(n / max) * 100}%` : '0%' }} />
                 </div>
                 <span className="text-[11px] text-ink-500">{pretty(s)}</span>
-              </div>
+              </button>
             ))}
           </div>
         </section>
@@ -83,6 +121,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
           </ul>
         </section>
       </div>
+      {list && <LeadList label={list.label} leads={list.leads} onClose={() => setList(null)} openLead={openLead} customers={perms.customers} />}
     </>
   );
 }

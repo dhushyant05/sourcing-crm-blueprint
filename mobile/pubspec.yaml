@@ -1,7 +1,7 @@
 name: source_easy
 description: "A new Flutter project."
 publish_to: 'none'
-version: 0.3.1+13
+version: 0.3.2+14
 
 environment:
   sdk: ^3.9.2

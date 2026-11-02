@@ -6,6 +6,7 @@ import '../../l10n/l10n.dart';
 import '../../data/models/models.dart';
 import '../../services/notifications.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_lead.dart' show tDel;
 import 'lead_detail_screen.dart';
 
 /// Privacy: text uses only the SE reference, product summary and the staff name of who handed it over.
@@ -20,6 +21,8 @@ String notifText(BuildContext context, AppNotification n) {
     case 'ORDER_NEW': return l.notifOrderNew(ref, product, by);
     case 'ORDER_UPDATE': return l.notifOrderUpdate(ref, product, by);
     case 'QUEUE': return l.notifQueue(ref, product, codeLabel(context, n.office ?? 'INDIA'), by);
+    case 'SLA_WARN': return tDel(context, '$ref · $product: SLA about to expire — act now', '$ref · $product：时限即将到期，请立即处理');
+    case 'SLA_BREACH': return tDel(context, '$ref · $product: SLA breached', '$ref · $product：已超时');
     default: return l.notifAssigned(ref, product, by);
   }
 }
@@ -44,7 +47,7 @@ class NotificationsScreen extends StatelessWidget {
                   final n = nc.items[i];
                   return ListTile(
                     key: Key('notif-${n.id}'),
-                    leading: Icon(n.kind == 'RETURNED' ? Icons.reply : n.kind == 'QUEUE' ? Icons.inbox_outlined : Icons.assignment_ind_outlined,
+                    leading: Icon(n.kind == 'RETURNED' ? Icons.reply : n.kind == 'QUEUE' ? Icons.inbox_outlined : n.kind.startsWith('SLA') ? Icons.timer_outlined : Icons.assignment_ind_outlined,
                         color: n.read ? Colors.grey : Theme.of(c).colorScheme.primary),
                     title: Text(notifText(c, n), style: TextStyle(fontWeight: n.read ? FontWeight.normal : FontWeight.w600)),
                     subtitle: n.createdAt == null ? null : Text(dateFmt.format(n.createdAt!.toLocal())),

@@ -9,6 +9,8 @@ import '../../data/models/models.dart';
 import '../../services/session.dart';
 import '../widgets/language_switch.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_lead.dart' show tDel;
+import 'lead_detail_screen.dart';
 
 const pipelineStages = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'DELIVERED', 'WON', 'LOST'];
 
@@ -32,6 +34,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _f = context.read<Session>().repo.leads();
+    _ses = context.read<Session>()..lastChange.addListener(_onChange);
+  }
+
+  late final Session _ses;
+  void _onChange() { final c = _ses.lastChange.value; if (mounted && c != null && c['type'] == 'lead') _reload(); }
+  @override
+  void dispose() { _ses.lastChange.removeListener(_onChange); super.dispose(); }
+
+  void _showList(String title, List<Lead> list) {
+    showModalBottomSheet(context: context, isScrollControlled: true, builder: (c) => SafeArea(
+      child: ConstrainedBox(constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.7),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(key: const Key('dash-list'), title: Text('$title (${list.length})', style: Theme.of(c).textTheme.titleMedium)),
+          if (list.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(tDel(c, 'No leads', '暂无线索'))),
+          Flexible(child: ListView(shrinkWrap: true, children: [
+            for (final l in list) ListTile(key: Key('dash-item-${l.id}'),
+              title: Text(l.leadRef ?? l.name), subtitle: Text(l.productInterest ?? l.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: Text(codeLabel(c, l.status)),
+              onTap: () { Navigator.pop(c); Navigator.push(context, MaterialPageRoute(builder: (_) => LeadDetailScreen(leadId: l.id))); }),
+          ])),
+        ]))));
   }
 
   void _reload() => setState(() => _f = context.read<Session>().repo.leads());
@@ -55,8 +78,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text(s.role.label, style: t.textTheme.bodyMedium),
               const SizedBox(height: 16),
               Row(children: [
-                _Kpi(context.l10n.kpiActiveLeads, '$active', Icons.trending_up),
-                _Kpi(context.l10n.codeWon, '${counts['WON']}', Icons.emoji_events_outlined),
+                _Kpi(context.l10n.kpiActiveLeads, '$active', Icons.trending_up,
+                    onTap: () => _showList(context.l10n.kpiActiveLeads, leads.where((l) => !['WON', 'LOST', 'DELIVERED'].contains(l.status)).toList())),
+                _Kpi(context.l10n.codeWon, '${counts['WON']}', Icons.emoji_events_outlined,
+                    onTap: () => _showList(context.l10n.codeWon, leads.where((l) => l.status == 'WON').toList())),
                 _Kpi(context.l10n.kpiPendingSync, '${s.pendingOps}', Icons.sync),
               ]),
               const SizedBox(height: 24),
@@ -65,7 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ...pipelineStages.map((st) {
                 final n = counts[st]!;
                 final frac = leads.isEmpty ? 0.0 : n / leads.length;
-                return Padding(
+                return InkWell(key: Key('stage-$st'), onTap: () => _showList(codeLabel(context, st), leads.where((l) => l.status == st).toList()), child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Row(children: [
                     SizedBox(width: 90, child: Text(codeLabel(context, st))),
@@ -73,7 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         borderRadius: BorderRadius.circular(5), color: statusColor(context, st))),
                     SizedBox(width: 36, child: Text('$n', textAlign: TextAlign.end)),
                   ]),
-                );
+                ));
               }),
             ]);
           },
@@ -84,13 +109,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class _Kpi extends StatelessWidget {
-  const _Kpi(this.label, this.value, this.icon);
+  const _Kpi(this.label, this.value, this.icon, {this.onTap});
   final String label, value;
   final IconData icon;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Card(
-          child: Padding(
+        child: Card(clipBehavior: Clip.antiAlias,
+          child: InkWell(onTap: onTap, child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(icon, color: Theme.of(context).colorScheme.primary),
@@ -98,7 +124,7 @@ class _Kpi extends StatelessWidget {
               Text(value, style: Theme.of(context).textTheme.headlineSmall),
               Text(label, style: Theme.of(context).textTheme.bodySmall),
             ]),
-          ),
+          )),
         ),
       );
 }

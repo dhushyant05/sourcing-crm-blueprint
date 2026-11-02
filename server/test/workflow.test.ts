@@ -87,7 +87,7 @@ describe('timeline + SLA + priority', () => {
     const { call } = await setup();
     expect((await call('ia', 'PUT', '/api/settings/sla', { normalMinutes: 1 })).statusCode).toBe(403);
     const lead = (await call('is', 'POST', '/api/records/leads', { name: 'L', clientName: 'C', productInterest: 'P' })).json().data;
-    expect((await call('sa', 'PUT', '/api/settings/sla', { normalMinutes: 3, priorityMinutes: 1 })).json().data).toEqual({ normalMinutes: 3, priorityMinutes: 1 });
+    expect((await call('sa', 'PUT', '/api/settings/sla', { normalMinutes: 3, priorityMinutes: 1 })).json().data).toMatchObject({ normalMinutes: 3, priorityMinutes: 1, warnMinutes: 30 });
     const tl = (await call('is', 'GET', `/api/leads/${lead.id}/timeline`)).json().data;
     expect(Date.parse(tl.sla.dueAt) - Date.parse(tl.sla.startedAt)).toBe(3 * 60e3);
     expect((await call('sa', 'PUT', '/api/settings/sla', { normalMinutes: 0 })).json().data.normalMinutes).toBe(3);

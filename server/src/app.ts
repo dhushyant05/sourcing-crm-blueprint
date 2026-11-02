@@ -149,7 +149,8 @@ export async function buildApp(o: AppOptions) {
       const lead = await leadDb.get(c.leadId);
       if (!lead) { await wf.forgetLead(c.leadId); continue; }
       const owner = c.assignee && o.users.byId(c.assignee)?.active ? [c.assignee] : [];
-      const recips = kind === 'SLA_WARN' ? (owner.length ? owner : queueWatchers(c.office)) : [...new Set([...queueWatchers(c.office), ...owner])];
+      const sa = o.users.list().filter((u) => u.active && u.role === 'SUPER_ADMIN').map((u) => u.id);
+      const recips = kind === 'SLA_WARN' ? [...new Set([...(owner.length ? owner : queueWatchers(c.office)), ...sa])] : [...new Set([...queueWatchers(c.office), ...owner])];
       if (kind === 'SLA_BREACH') await wf.log(c.leadId, 'SLA_BREACH', null, { office: c.office, dueAt: c.dueAt, assignee: (c.assignee && o.users.byId(c.assignee)?.name) || null, priority: c.priority });
       await assign.notify(recips, { leadId: c.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office: c.office, byName: null });
     }
@@ -378,7 +379,14 @@ export async function buildApp(o: AppOptions) {
       sourceChannel: 'WEBSITE', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     });
     if (files.length) await mediaSync(String(lead.id), uploads.commit(String(lead.id), files)); else uploads.discard(files);
-    { await ev(String(lead.id), 'CREATED', null, { channel: 'WEBSITE', files: files.length }); await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); } // India queue; India admins are notified
+    { await ev(String(lead.id), 'CREATED', null, { channel: 'WEBSITE', files: files.length }); await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null); }
+    // Every active India staff member (not only admins) hears about a new website enquiry, live.
+    {
+      const admins = new Set(queueWatchers('INDIA'));
+      const staff = o.users.list().filter((u) => u.active && officeOf(u.role) === 'INDIA' && !admins.has(u.id)).map((u) => u.id);
+      if (staff.length) await assign.notify(staff, { leadId: String(lead.id), leadRef, product, kind: 'QUEUE', office: 'INDIA', byName: null });
+      await liveData({ type: 'lead', id: String(lead.id), leadId: String(lead.id), created: true, at: Date.now() });
+    } // India queue; India admins are notified
     return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
   });
 
@@ -1173,7 +1181,7 @@ export async function buildApp(o: AppOptions) {
       return { data: { priority: await wf.priority(id), sla: await slaView(id, userNames()) } };
     });
     api.get('/api/settings/sla', async () => ({ data: await wf.sla() }));
-    api.put<{ Body: { normalMinutes?: number; priorityMinutes?: number } }>('/api/settings/sla', async (req) => {
+    api.put<{ Body: { normalMinutes?: number; priorityMinutes?: number; warnMinutes?: number } }>('/api/settings/sla', async (req) => {
       return { data: await wf.setSla(req.body ?? {}) };
     });
     api.get<{ Querystring: { days?: string } }>('/api/sla/report', async (req) => {
