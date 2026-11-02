@@ -66,7 +66,7 @@ void main() {
   test('super admin: SSE delivers a notification for a new enquiry', () async {
     final r = await repoFor(env['SE_ADMIN_EMAIL']!, env['SOURCEEASY_ADMIN_PW']!);
     final got = Completer<String>(), hello = Completer<void>();
-    final sub = r.notificationStream().listen((e) {
+    final sub = r.notificationStream().listen((e) { if (env['SE_DEBUG'] != null) print('EV item=${e.item?.product} unread=${e.unread} change=${e.change?['type']}');
       if (!hello.isCompleted) hello.complete();
       if (e.item != null && e.item!.product == 'qa-sse-probe' && !got.isCompleted) got.complete(e.item!.leadId);
     }, onError: (Object e) { if (!got.isCompleted) got.completeError(e); });
@@ -74,7 +74,7 @@ void main() {
     await http.post(Uri.parse('$base/api/public/enquiry'), headers: {'content-type': 'application/json'},
         body: jsonEncode({'name': 'QA SSE ${DateTime.now().millisecondsSinceEpoch}', 'phone': '9000000001', 'product': 'qa-sse-probe', 'qty': '1'}));
     final leadId = await got.future.timeout(const Duration(seconds: 20));
-    await sub.cancel();
+    unawaited(sub.cancel()); // an open SSE generator only finishes cancelling on its next chunk
     expect(leadId, isNotEmpty);
     await r.deleteLead(leadId, force: true);
   }, skip: skip ?? (env['SE_ADMIN_EMAIL'] == null ? 'no admin' : null), timeout: const Timeout(Duration(minutes: 1)));
