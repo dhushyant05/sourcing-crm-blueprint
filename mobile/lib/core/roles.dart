@@ -44,6 +44,9 @@ class Permissions {
   bool get _china => role.office == null || role.office == Office.china;
 
   // Customer side (India)
+  bool get isSuperAdmin => role == Role.superAdmin;
+  bool get canDeleteLead => can('leads.delete');
+  bool get canBulkDeleteLeads => isSuperAdmin;
   bool get canSeeCustomerDetails => _india;
   bool get canCreateLead => _india;
   bool get canRecordApproval => _india && can('quotes.customer');

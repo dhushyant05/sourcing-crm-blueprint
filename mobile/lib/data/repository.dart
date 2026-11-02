@@ -130,6 +130,15 @@ class SourceEasyRepository {
     return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(LeadAttachment.fromJson).toList();
   }
 
+  /// Delete a lead and everything linked. Throws ApiException 409 when an order is in progress
+  /// (super admin may retry with [force]).
+  Future<void> deleteLead(String id, {bool force = false}) =>
+      api.send('DELETE', '/api/records/leads/${Uri.encodeComponent(id)}', query: force ? {'force': '1'} : null);
+
+  /// Super admin bulk delete. Returns {deleted: [...], failed: [{id, code, error}]}.
+  Future<Map<String, dynamic>> bulkDeleteLeads(List<String> ids, {bool force = false}) async =>
+      (await api.send('POST', '/api/leads/bulk-delete', body: {'ids': ids, 'force': force}) as Map).cast<String, dynamic>();
+
   Future<void> deleteAttachment(String leadId, String fileId) =>
       api.send('DELETE', '/api/leads/${Uri.encodeComponent(leadId)}/attachments/${Uri.encodeComponent(fileId)}');
 

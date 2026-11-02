@@ -76,8 +76,9 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                   {!data && [0, 1].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
                   {col.map((l) => (
                     <article key={l.id} draggable onDragStart={() => setDrag(l.id)} onDragEnd={() => setDrag(null)} onClick={() => openLead(l)}
-                      className={clsx('cursor-pointer rounded-xl border border-ink-200/70 bg-white p-3.5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift dark:border-ink-800 dark:bg-ink-900', drag === l.id && 'opacity-50')}>
-                      <div className="text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>{perms.customers && <div className="mt-1"><RefTag v={l.leadRef} /></div>}
+                      className={clsx('group relative cursor-pointer rounded-xl border border-ink-200/70 bg-white p-3.5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift dark:border-ink-800 dark:bg-ink-900', drag === l.id && 'opacity-50')}>
+                      {canDel && <button className="absolute right-2 top-2 rounded-lg p-1 text-rose-600 opacity-60 hover:bg-rose-50 hover:opacity-100 group-hover:opacity-100 dark:hover:bg-rose-500/10" data-testid="lead-card-delete" title={t('del.rowTitle')} aria-label={t('del.rowTitle')} onClick={(e) => { e.stopPropagation(); setToDel([l]); }}><Trash2 size={14} /></button>}
+                      <div className="pr-6 text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>{perms.customers && <div className="mt-1"><RefTag v={l.leadRef} /></div>}
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
                       {(l.priority || l.sla || l.rejection?.actionNeeded) && <div className="mt-2 flex flex-wrap gap-1">{l.priority && <PriorityBadge />}<SlaChip sla={l.sla} compact />{l.rejection?.actionNeeded && <RejChip />}</div>}
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">

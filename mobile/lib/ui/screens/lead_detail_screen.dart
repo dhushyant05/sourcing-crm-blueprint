@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/delete_lead.dart';
 
 import '../../l10n/codes.dart';
 
@@ -38,6 +39,33 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
   void initState() {
     super.initState();
     _f = _load();
+    _ses = context.read<Session>()..lastChange.addListener(_onChange);
+  }
+
+  late final Session _ses;
+  bool _gone = false;
+  void _onChange() {
+    final c = _ses.lastChange.value;
+    if (c == null || _gone || !mounted) return;
+    if (c['type'] == 'lead' && c['deleted'] == true && (c['id'] == widget.leadId || c['leadId'] == widget.leadId)) {
+      _gone = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tDel(context, 'This lead was deleted.', '此线索已被删除。'))));
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  @override
+  void dispose() { _ses.lastChange.removeListener(_onChange); super.dispose(); }
+
+  Future<void> _delete() async {
+    final d = await _f;
+    if (!mounted) return;
+    _gone = true;
+    if (await confirmDeleteLeads(context, [(id: d.lead.id, ref: d.lead.leadRef)])) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tDel(context, 'Lead deleted', '线索已删除'))));
+      Navigator.of(context).pop(true);
+    } else { _gone = false; }
   }
 
   Future<_Detail> _load() async {
@@ -134,7 +162,10 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     final p = s.perms;
     final t = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.lead)),
+      appBar: AppBar(title: Text(context.l10n.lead), actions: [
+        if (p.canDeleteLead) IconButton(key: const Key('lead-delete'), tooltip: tDel(context, 'Delete lead', '删除线索'),
+            icon: Icon(Icons.delete_outline, color: Colors.red.shade700), onPressed: _delete),
+      ]),
       body: AsyncView<_Detail>(
         future: _f,
         onRetry: _reload,

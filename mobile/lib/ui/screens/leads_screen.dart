@@ -12,6 +12,7 @@ import '../widgets/common.dart';
 import 'dashboard_screen.dart' show pipelineStages;
 import 'lead_detail_screen.dart';
 import 'lead_form_screen.dart';
+import '../widgets/delete_lead.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -29,6 +30,26 @@ class _LeadsScreenState extends State<LeadsScreen> {
   void initState() {
     super.initState();
     _load();
+    _ses = context.read<Session>()..lastChange.addListener(_onChange);
+  }
+
+  late final Session _ses;
+  final Map<String, String?> _sel = {};
+  void _onChange() {
+    final c = _ses.lastChange.value;
+    if (mounted && c != null && c['type'] == 'lead' && c['deleted'] == true) { _sel.remove(c['id']); _reload(); }
+  }
+
+  @override
+  void dispose() { _ses.lastChange.removeListener(_onChange); super.dispose(); }
+
+  Future<void> _bulkDelete() async {
+    final list = _sel.entries.map((e) => (id: e.key, ref: e.value)).toList();
+    if (await confirmDeleteLeads(context, list)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tDel(context, '${list.length} leads deleted', '已删除 ${list.length} 条线索'))));
+      setState(_sel.clear); _reload();
+    }
   }
 
   void _load() => _f = context.read<Session>().repo.leads(office: _office, status: _status, mine: _mine);
@@ -39,7 +60,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final s = context.watch<Session>();
     final showCustomer = s.perms.canSeeCustomerDetails;
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.leads), actions: const [LanguageSwitch()]),
+      appBar: _sel.isNotEmpty
+          ? AppBar(
+              key: const Key('bulk-bar'),
+              leading: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(_sel.clear)),
+              title: Text(tDel(context, '${_sel.length} selected', '已选 ${_sel.length} 条')),
+              actions: [TextButton.icon(key: const Key('bulk-delete'), icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
+                  label: Text(tDel(context, 'Delete ${_sel.length} selected', '删除所选 ${_sel.length} 条'), style: TextStyle(color: Colors.red.shade700)),
+                  onPressed: _bulkDelete)])
+          : AppBar(title: Text(context.l10n.leads), actions: const [LanguageSwitch()]),
       floatingActionButton: s.perms.canCreateLead
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.add),
@@ -100,8 +129,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (c, i) {
                         final l = leads[i];
+                        final picked = _sel.containsKey(l.id);
                         return ListTile(
-                          leading: CircleAvatar(child: Text((showCustomer ? (l.clientName ?? l.name) : (l.productInterest ?? '?')).characters.first.toUpperCase())),
+                          selected: picked,
+                          onLongPress: s.perms.canBulkDeleteLeads && !l.pendingSync
+                              ? () => setState(() => picked ? _sel.remove(l.id) : _sel[l.id] = l.leadRef) : null,
+                          leading: picked ? const CircleAvatar(child: Icon(Icons.check)) : CircleAvatar(child: Text((showCustomer ? (l.clientName ?? l.name) : (l.productInterest ?? '?')).characters.first.toUpperCase())),
                           title: Text(showCustomer ? (l.clientName ?? l.name) : (l.productInterest ?? l.name)),
                           subtitle: Text([
                             l.leadRef,
@@ -112,7 +145,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           trailing: StatusChip(l.status),
                           onTap: l.pendingSync
                               ? null
-                              : () async {
+                              : _sel.isNotEmpty ? () => setState(() => picked ? _sel.remove(l.id) : _sel[l.id] = l.leadRef) : () async {
                                   await Navigator.push(c, MaterialPageRoute(builder: (_) => LeadDetailScreen(leadId: l.id)));
                                   _reload();
                                 },

@@ -157,7 +157,11 @@ class Session extends ChangeNotifier {
   }
 
   /// Live change from the server stream; refreshes /api/me when it is about this user's permissions.
+  /// Last live data change (screens listen, e.g. to close a lead someone deleted).
+  final ValueNotifier<Map<String, dynamic>?> lastChange = ValueNotifier(null);
+
   void onServerChange(Map<String, dynamic> c) {
+    lastChange.value = c;
     if (c['type'] == 'perms' && (c['id'] == null || c['id'] == userId)) unawaited(refreshMe());
   }
 
