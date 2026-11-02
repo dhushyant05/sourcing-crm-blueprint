@@ -59,6 +59,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   ];
   const drillLabel = [t('dashboard.openLeads'), t('dashboard.quotedLeads'), t('dashboard.closedLeads'), t('dashboard.transitLeads'), t('dashboard.completed')];
   const now = Date.now();
+  const unassigned = L.filter((l) => l.unassignedIndia);
   const atRisk = L.filter((l) => isOpenLead(l) && l.sla && slaState(l.sla, now).level !== 'ok');
 
   const kpis = [
@@ -91,6 +92,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
         ))}
       </div>
 
+      {!!unassigned.length && <button type="button" data-testid="dash-unassigned" onClick={() => setList({ label: t('owner.unassigned'), leads: unassigned })} className="mt-6 flex w-full items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-900 hover:shadow-lift dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"><span className="text-xl font-semibold tabular-nums">{unassigned.length}</span><span className="flex-1">{t('owner.dash')}</span><span className="text-xs underline">{t('dashboard.click')}</span></button>}
       <div className="mt-6"><SlaWidget leads={leads} openLead={openLead} onCounts={() => setList({ label: t('dashboard.slaRisk'), leads: atRisk })} /></div>
       <div className="mt-6 grid gap-6 lg:grid-cols-5">
         <section className="card p-6 lg:col-span-3">

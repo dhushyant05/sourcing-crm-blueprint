@@ -349,7 +349,13 @@
   "updateNone": "You have the latest version.",
   "updateCheckFailed": "Couldn't check for updates. Check your connection and try again.",
   "updateInstallFailed": "Install failed: {error}",
-  "@updateInstallFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@updateInstallFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "updateBrowser": "Download in browser",
   "updateDownloadFailed": "Download failed. Please try again.",
   "updateChecksumFailed": "The downloaded file is damaged (checksum mismatch). Please try again.",
@@ -688,5 +694,20 @@
   "modeRoad": "Road",
   "tagline": "Sourcing made easy",
   "camera": "Take photo",
-  "gallery": "Choose from gallery"
+  "gallery": "Choose from gallery",
+  "ownerUnassigned": "Unassigned (India)",
+  "ownerTake": "Take this lead",
+  "ownerTaken": "You are now the India owner of this lead",
+  "ownerClaimHint": "Website enquiry with no India owner yet. Take it to become its owner — quotes come back to you, SLA and notifications follow you.",
+  "ownerAssignIndia": "Assign to India staff",
+  "ownerFilterLabel": "Unassigned",
+  "ownerFilter": "Unassigned ({n})",
+  "@ownerFilter": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "ownerDash": "website leads have no India owner yet"
 }

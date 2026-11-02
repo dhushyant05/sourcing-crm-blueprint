@@ -49,7 +49,7 @@ describe.each(['CHINA_STAFF', 'CHINA_ADMIN'] as Role[])('%s', (role) => {
   it('sees only China-assigned leads, with no customer fields', async () => {
     const leads = await data(role, 'leads');
     expect(leads.map((l) => l.id)).toEqual(['lead-china-1']);
-    expect(keys(leads[0])).toEqual(['assignedChinaAgent', 'assignedOffice', 'assignedTo', 'assignedToName', 'attachmentCount', 'createdAt', 'createdFromId', 'createdFromRef', 'followUp', 'id', 'leadRef', 'name', 'office', 'ownerOffice', 'priority', 'productInterest', 'quantity', 'raisedBy', 'raisedByName', 'referenceUrl', 'rejection', 'sla', 'status', 'summary', 'unit', 'updatedAt']);
+    expect(keys(leads[0])).toEqual(['assignedChinaAgent', 'assignedOffice', 'assignedTo', 'assignedToName', 'attachmentCount', 'createdAt', 'createdFromId', 'createdFromRef', 'followUp', 'id', 'leadRef', 'name', 'office', 'ownerOffice', 'priority', 'productInterest', 'quantity', 'raisedBy', 'raisedByName', 'referenceUrl', 'rejection', 'sla', 'status', 'summary', 'unassignedIndia', 'unit', 'updatedAt']);
     expect(leads[0].name).toBe('Lead lead-chi');
   });
   it('sees the supplier directory; never any customer string in leads', async () => {

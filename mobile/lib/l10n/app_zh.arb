@@ -379,5 +379,13 @@
   "modeRoad": "陆运",
   "tagline": "轻松采购",
   "camera": "拍照",
-  "gallery": "从相册选择"
+  "gallery": "从相册选择",
+  "ownerUnassigned": "未分配（印度）",
+  "ownerTake": "我来跟进",
+  "ownerTaken": "您已成为此线索的印度负责人",
+  "ownerClaimHint": "网站询盘尚无印度负责人。认领后由您负责——报价退回给您，SLA 和通知随您。",
+  "ownerAssignIndia": "分配给印度员工",
+  "ownerFilterLabel": "未分配",
+  "ownerFilter": "未分配（{n}）",
+  "ownerDash": "条网站线索尚无印度负责人"
 }

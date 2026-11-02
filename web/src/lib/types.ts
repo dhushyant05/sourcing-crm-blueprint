@@ -14,7 +14,7 @@ export interface Lead {
   /** Product requirement summary (India writes, China reads). */
   summary?: string;
   /** Staff user who raised the lead (null for public enquiries) and the current owner (null = office queue). */
-  raisedBy?: string | null; raisedByName?: string | null; assignedTo?: string | null; assignedToName?: string | null; ownerOffice?: Office;
+  raisedBy?: string | null; raisedByName?: string | null; assignedTo?: string | null; assignedToName?: string | null; ownerOffice?: Office; unassignedIndia?: boolean;
   /** Priority lead (2 h SLA) and the running SLA clock of the office that holds it. */
   priority?: boolean; sla?: Sla | null; followUp?: string | null; createdFromRef?: string | null; createdFromId?: string | null; closedAt?: string; closedByName?: string | null;
 }

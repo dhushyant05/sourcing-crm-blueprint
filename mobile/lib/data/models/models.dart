@@ -40,6 +40,8 @@ class Lead {
   /// Full server record (priority, sla, followUp, rejection, createdFromRef, closedAt…).
   final Map<String, dynamic> raw;
   bool get priority => raw['priority'] == true;
+  /// Public enquiry with no India owner yet.
+  bool get unassignedIndia => raw['unassignedIndia'] == true;
   String? get followUp => raw['followUp'] as String?;
   String? get createdFromRef => raw['createdFromRef'] as String?;
   Map<String, dynamic>? get rejection => (raw['rejection'] as Map?)?.cast<String, dynamic>();

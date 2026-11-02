@@ -57,6 +57,15 @@ class PriorityBadge extends StatelessWidget {
         Text(tw(context, 'sla.priority'), style: TextStyle(color: Colors.orange.shade800, fontSize: 11, fontWeight: FontWeight.w600))]));
 }
 
+/// Public enquiry with no India owner yet.
+class UnassignedBadge extends StatelessWidget {
+  const UnassignedBadge({super.key});
+  @override
+  Widget build(BuildContext context) => Container(key: const Key('unassigned-badge'), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(20)),
+      child: Text(context.l10n.ownerUnassigned, style: TextStyle(color: Colors.amber.shade900, fontSize: 11, fontWeight: FontWeight.w600)));
+}
+
 /// Progress bar over the whole workflow.
 class WorkflowProgress extends StatelessWidget {
   const WorkflowProgress(this.p, {super.key});

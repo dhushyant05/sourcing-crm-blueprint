@@ -72,6 +72,7 @@ export interface Api {
   orders(): Promise<Order[]>;
   updateOrder(id: string, b: Record<string, unknown>): Promise<Order>;
   setRaiser(leadId: string, userId: string | null): Promise<Lead>;
+  setIndiaOwner(leadId: string, userId?: string): Promise<Lead>;
   /** Downloads one file with the staff token (never a public URL) and returns a blob: URL. */
   attachmentUrl(leadId: string, a: Attachment): Promise<string>;
   /** Workflow timeline (role-filtered on the server), progress stage and SLA clock. */
@@ -243,6 +244,7 @@ export class ServerApi implements Api {
   createOrder(quoteId: string, b: Record<string, unknown>) { return this.req<Order>('POST', `/quotes/${encodeURIComponent(quoteId)}/order`, b); }
   orders() { return this.req<Order[]>('GET', '/orders'); }
   updateOrder(id: string, b: Record<string, unknown>) { return this.req<Order>('PATCH', `/orders/${encodeURIComponent(id)}`, b); }
+  async setIndiaOwner(leadId: string, userId?: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/india-owner`, userId ? { userId } : {})); }
   setRaiser(leadId: string, userId: string | null) { return this.req<Lead>('POST', `/leads/${encodeURIComponent(leadId)}/assign`, { raisedBy: userId }); }
   uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void) { return this.xhrUpload<Attachment[]>(`/api/leads/${encodeURIComponent(leadId)}/attachments`, files, onProgress); }
   /** XHR (not fetch) so large videos show upload progress. */
@@ -310,6 +312,7 @@ export class DemoApi implements Api {
   async createOrder(quoteId: string, b: any) { const q = this.dq.find((x) => x.id === quoteId)!; const o: Order = { id: `do${Date.now()}`, leadId: q.leadId, quoteId, leadRef: null, product: q.product, qty: Number(b.qty ?? q.cq?.qty ?? 0), agreedPrice: Number(b.agreedPrice ?? q.cq?.unitPrice ?? 0), advance: Number(b.advance ?? 0), paymentStatus: b.paymentStatus ?? 'PENDING', expectedShip: b.expectedShip ?? null, production: 'NEW', tracking: null, container: null, etd: null, eta: null, indiaStatus: 'NONE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), leadStatus: 'WON' }; this.dor.push(o); q.orderId = o.id; return structuredClone(o); }
   async orders() { return structuredClone(this.dor); }
   async updateOrder(id: string, b: any) { const o = this.dor.find((x) => x.id === id)!; Object.assign(o, b); return structuredClone(o); }
+  async setIndiaOwner(leadId: string, userId?: string) { const l = demo.leads.find((x) => x.id === leadId)!; const id = userId ?? 'demo-me', name = demoStaff.find((s) => s.id === id)?.name ?? 'Me'; Object.assign(l, { raisedBy: id, raisedByName: name, unassignedIndia: false, ...(l.ownerOffice !== 'CHINA' ? { assignedTo: id, assignedToName: name } : {}) }); return structuredClone(l); }
   async setRaiser(leadId: string, userId: string | null) { const l = demo.leads.find((x) => x.id === leadId)!; Object.assign(l, { raisedBy: userId, raisedByName: demoStaff.find((s) => s.id === userId)?.name ?? null }); return structuredClone(l); }
   async createQuote(leadId: string, q: QuoteInput) {
     let supplierId = q.supplierId ?? null;

@@ -79,11 +79,14 @@ export async function buildApp(o: AppOptions) {
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
+  /** No India owner yet (typically a public website enquiry): nobody raised it and no India member holds it. */
+  const noIndiaOwner = (rec: Rec, a: Assignment | null | undefined) => !a?.raisedBy && !((a?.ownerOffice ?? 'INDIA') === 'INDIA' && a?.assignedTo) && !['CLOSED', 'LOST', 'COMPLETED', 'DELIVERED'].includes(String(rec.status));
   /** Adds raisedBy/assignedTo (+ names) to a filtered lead. Only staff names/ids, never customer data. */
   const decorate = async (rec: Rec, a: Assignment | null | undefined, names: Map<string, string>) => ({
     ...rec, raisedBy: a?.raisedBy ?? null, raisedByName: (a?.raisedBy && names.get(a.raisedBy)) || null,
     assignedTo: a?.assignedTo ?? null, assignedToName: (a?.assignedTo && names.get(a.assignedTo)) || null,
     ownerOffice: a?.ownerOffice ?? (rec.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA'),
+    unassignedIndia: noIndiaOwner(rec, a),
     rejection: rec.id ? await rejects.summary(String(rec.id), names) : null,
     priority: await wf.priority(String(rec.id)), sla: await slaView(String(rec.id), names),
     ...(await leadMetaView(rec, names)),
@@ -251,7 +254,8 @@ export async function buildApp(o: AppOptions) {
   /** Lead ids a user without `leads.all` may see: assigned to them, raised by them, or (China) quoted by them. */
   const mineSet = async (u: User) => {
     const ids = new Set<string>();
-    for (const [id, a] of await assign.all()) if (a?.assignedTo === u.id || a?.raisedBy === u.id) ids.add(id);
+    const india = officeOf(u.role) === 'INDIA';
+    for (const [id, a] of await assign.all()) if (a?.assignedTo === u.id || a?.raisedBy === u.id || (india && !a?.raisedBy && !a?.assignedTo && a?.ownerOffice === 'INDIA')) ids.add(id);
     for (const q of await quotes.all()) if (q.createdBy === u.id) ids.add(q.leadId);
     return ids;
   };
@@ -1128,6 +1132,32 @@ export async function buildApp(o: AppOptions) {
       if (b.office || to !== undefined) await handoff(lead, actor, office, to);
       const f = readFilter('lead', lead, await ctxOf(actor.role))!;
       return { data: await decorate(f, await assign.get(String(lead.id)), userNames()) };
+    });
+    // India owner of a lead (public enquiries): India staff take an unowned lead themselves; India admin / super admin assign or reassign any India member.
+    // The owner becomes the raiser (return-to-raiser, rejections), the India assignee + SLA holder while India holds it, and gets a bell notification.
+    api.post<{ Params: { id: string }; Body: { userId?: string } }>('/api/leads/:id/india-owner', async (req, reply) => {
+      const actor = req.user!, lead = await leadDb.get(req.params.id);
+      if (!lead || !readFilter('lead', lead, await ctxOf(actor.role))) return reply.code(404).send({ error: 'Not found' });
+      const admin = actor.role === 'SUPER_ADMIN' || actor.role === 'INDIA_ADMIN';
+      if (!admin && officeOf(actor.role) !== 'INDIA') throw new Forbidden('Only India staff can take a lead');
+      const to = String(req.body?.userId || actor.id), u = o.users.byId(to);
+      if (!indiaOwner(u)) return reply.code(400).send({ error: 'Owner must be an active India staff member' });
+      if (!admin && to !== actor.id) throw new Forbidden('Only India admins can assign other India staff');
+      const id = String(lead.id), prev = await assign.get(id);
+      if (!admin && !noIndiaOwner(lead, prev)) return reply.code(409).send({ error: 'This lead already has an India owner', code: 'taken' });
+      if (!admin) { // atomic claim: two staff tapping at once, only one wins
+        const n = await o.db.run("UPDATE leads SET raised_by = ?, assigned_at = COALESCE(assigned_at, ?) WHERE id = ? AND raised_by IS NULL", to, new Date().toISOString(), id);
+        if (!n) return reply.code(409).send({ error: 'This lead already has an India owner', code: 'taken' });
+      }
+      await assign.set(id, { raisedBy: to });
+      const office: Office = (await assign.get(id))?.ownerOffice ?? (lead.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA');
+      if (office === 'INDIA') await handoff(lead, actor, 'INDIA', to);
+      else {
+        await ev(id, 'REASSIGNED', actor, { office: 'INDIA', to: u!.name, raiser: true });
+        if (to !== actor.id) await assign.notify([to], { leadId: id, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'ASSIGNED', office: 'INDIA', byName: actor.name });
+      }
+      await liveData({ type: 'lead', id, leadId: id, at: Date.now() });
+      return { data: await decorate(readFilter('lead', lead, await ctxOf(actor.role))!, await assign.get(id), userNames()) };
     });
     // Active members of an office, for the assignee picker (id, name, role only).
     api.get<{ Querystring: { office?: string } }>('/api/staff', async (req) => {

@@ -896,5 +896,16 @@
     "payHint": "Payment is not fully received yet — follow up with the customer.",
     "active": "Active",
     "closed": "Closed / Completed"
+  },
+  "owner": {
+    "unassigned": "Unassigned (India)",
+    "take": "Take this lead",
+    "taken": "You are now the India owner of this lead",
+    "claimHint": "Website enquiry with no India owner yet. Take it to become its owner (quotes come back to you, SLA and notifications follow you).",
+    "assignIndia": "Assign to India staff",
+    "assign": "Assign",
+    "reassign": "Reassign",
+    "filter": "Unassigned ({{n}})",
+    "dash": "website leads have no India owner yet"
   }
 }

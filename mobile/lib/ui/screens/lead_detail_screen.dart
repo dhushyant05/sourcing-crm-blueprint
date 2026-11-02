@@ -13,6 +13,7 @@ import '../widgets/common.dart';
 import '../widgets/lead_attachments.dart';
 import '../widgets/lead_quotes.dart';
 import '../widgets/lead_workflow.dart';
+import '../../core/roles.dart';
 import 'chat_screen.dart';
 import 'quotation_screen.dart';
 import 'shipping_screen.dart';
@@ -118,6 +119,31 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     _reload();
   }
 
+  Future<void> _takeLead(Lead l) async {
+    try {
+      await context.read<Session>().repo.setIndiaOwner(l.id);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.ownerTaken)));
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+    _reload();
+  }
+
+  Future<void> _assignIndiaOwner(Lead l) async {
+    final repo = context.read<Session>().repo;
+    List<StaffLite> staff;
+    try { staff = (await repo.staff('INDIA')).where((m) => m.id != l.raisedBy).toList(); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); return; }
+    if (!mounted) return;
+    final chosen = await showDialog<StaffLite>(context: context, builder: (d) => SimpleDialog(
+      title: Text(context.l10n.ownerAssignIndia),
+      children: [for (final m in staff) SimpleDialogOption(key: Key('india-owner-${m.id}'), onPressed: () => Navigator.pop(d, m), child: Text(m.name))],
+    ));
+    if (chosen == null || !mounted) return;
+    try {
+      await repo.setIndiaOwner(l.id, userId: chosen.id);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.handedTo(chosen.name))));
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+    _reload();
+  }
+
   Future<void> _editSummary(Lead l) async {
     final c = TextEditingController(text: l.summary);
     final v = await showDialog<String>(
@@ -179,8 +205,14 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                     style: t.textTheme.headlineSmall)),
                 StatusChip(l.status),
               ]),
-              if (l.leadRef != null || l.priority || l.sla != null) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                if (l.leadRef != null) RefTag(l.leadRef!), if (l.priority) const PriorityBadge(), if (l.sla != null) SlaChip(l.sla!)])),
+              if (l.leadRef != null || l.priority || l.sla != null || l.unassignedIndia) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                if (l.leadRef != null) RefTag(l.leadRef!), if (l.unassignedIndia) const UnassignedBadge(), if (l.priority) const PriorityBadge(), if (l.sla != null) SlaChip(l.sla!)])),
+              if (l.unassignedIndia && s.role.office == Office.india && !s.role.isAdmin)
+                Card(key: const Key('claim-card'), color: Colors.amber.shade50, child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text(context.l10n.ownerClaimHint, style: TextStyle(color: Colors.amber.shade900)),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(key: const Key('claim-lead'), onPressed: () => _takeLead(l), icon: const Icon(Icons.how_to_reg), label: Text(context.l10n.ownerTake)),
+                ]))),
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -235,6 +267,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                   FilledButton.tonalIcon(key: const Key('return-india'), onPressed: () => _assign(l, 'INDIA'), icon: const Icon(Icons.reply), label: Text(context.l10n.returnToIndia)),
                 if (s.role.isAdmin && (s.role.office == null || s.role.office!.name.toUpperCase() == l.owner))
                   OutlinedButton.icon(key: const Key('reassign'), onPressed: () => _assign(l, l.owner), icon: const Icon(Icons.swap_horiz), label: Text(context.l10n.reassign)),
+                if (s.role == Role.superAdmin || s.role == Role.indiaAdmin)
+                  OutlinedButton.icon(key: const Key('india-owner'), onPressed: () => _assignIndiaOwner(l), icon: const Icon(Icons.person_add_alt), label: Text(context.l10n.ownerAssignIndia)),
                 if (p.canCreateSourcingRequest)
                   FilledButton.tonalIcon(
                     icon: const Icon(Icons.add_task),

@@ -1234,4 +1234,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gallery => 'Choose from gallery';
+
+  @override
+  String get ownerUnassigned => 'Unassigned (India)';
+
+  @override
+  String get ownerTake => 'Take this lead';
+
+  @override
+  String get ownerTaken => 'You are now the India owner of this lead';
+
+  @override
+  String get ownerClaimHint =>
+      'Website enquiry with no India owner yet. Take it to become its owner — quotes come back to you, SLA and notifications follow you.';
+
+  @override
+  String get ownerAssignIndia => 'Assign to India staff';
+
+  @override
+  String get ownerFilterLabel => 'Unassigned';
+
+  @override
+  String ownerFilter(int n) {
+    return 'Unassigned ($n)';
+  }
+
+  @override
+  String get ownerDash => 'website leads have no India owner yet';
 }

@@ -203,6 +203,12 @@ class SourceEasyRepository {
     return (j['data'] as List).cast<Map<String, dynamic>>().map(StaffLite.fromJson).toList();
   }
 
+  /// India owner (raiser + India assignee + SLA holder). No [userId] = take it myself (India staff).
+  Future<Lead> setIndiaOwner(String id, {String? userId}) async {
+    final j = await api.send('POST', '/api/leads/${Uri.encodeComponent(id)}/india-owner', body: {if (userId != null) 'userId': userId}) as Map<String, dynamic>;
+    return Lead.fromJson((j['data'] ?? j) as Map<String, dynamic>);
+  }
+
   /// Hands a lead to [office]. [assignedTo] null = office queue; [useDefault] omits it (China→India returns to the raiser).
   Future<Lead> assignLead(String id, String office, {String? assignedTo, bool useDefault = false}) async {
     final j = await api.send('POST', '/api/leads/${Uri.encodeComponent(id)}/assign',

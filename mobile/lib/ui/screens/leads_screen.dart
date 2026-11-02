@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/lead_workflow.dart';
 
 import '../../l10n/codes.dart';
 
@@ -23,6 +24,8 @@ class LeadsScreen extends StatefulWidget {
 class _LeadsScreenState extends State<LeadsScreen> {
   String? _office, _status;
   bool _mine = false;
+  bool _unassigned = false;
+  int? _unCount;
   String _q = '';
   late Future<List<Lead>> _f;
 
@@ -97,6 +100,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
               child: FilterChip(key: const Key('filter-mine'), avatar: const Icon(Icons.person_outline, size: 16), label: Text(context.l10n.assignedToMe), selected: _mine,
                   onSelected: (v) { _mine = v; _reload(); }),
             ),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(key: const Key('filter-unassigned'), avatar: const Icon(Icons.person_search_outlined, size: 16),
+                  label: Text(_unCount == null ? context.l10n.ownerFilterLabel : context.l10n.ownerFilter(_unCount!)), selected: _unassigned,
+                  onSelected: (v) => setState(() => _unassigned = v)),
+            ),
             for (final o in const ['INDIA', 'CHINA'])
               Padding(
                 padding: const EdgeInsets.only(right: 6),
@@ -120,7 +129,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
               future: _f,
               onRetry: _reload,
               builder: (c, all) {
-                final leads = all.where((l) => (_status != null || isOpenLead(l)) && (_q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
+                final un = all.where((l) => l.unassignedIndia).length;
+                if (un != _unCount) WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() => _unCount = un); });
+                final leads = all.where((l) => (!_unassigned || l.unassignedIndia) && (_status != null || isOpenLead(l)) && (_q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
                     .whereType<String>().any((v) => v.toLowerCase().contains(_q)))).toList();
                 return leads.isEmpty
                   ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noLeads))])
@@ -142,7 +153,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             if (l.quantity != null) 'Qty ${l.quantity!.toStringAsFixed(0)}',
                             if (l.pendingSync) 'not synced',
                           ].whereType<String>().join(' · ')),
-                          trailing: StatusChip(l.status),
+                          trailing: l.unassignedIndia ? Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [StatusChip(l.status), const SizedBox(height: 2), const UnassignedBadge()]) : StatusChip(l.status),
                           onTap: l.pendingSync
                               ? null
                               : _sel.isNotEmpty ? () => setState(() => picked ? _sel.remove(l.id) : _sel[l.id] = l.leadRef) : () async {

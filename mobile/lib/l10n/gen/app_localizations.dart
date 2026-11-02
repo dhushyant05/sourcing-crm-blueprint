@@ -2377,6 +2377,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Choose from gallery'**
   String get gallery;
+
+  /// No description provided for @ownerUnassigned.
+  ///
+  /// In en, this message translates to:
+  /// **'Unassigned (India)'**
+  String get ownerUnassigned;
+
+  /// No description provided for @ownerTake.
+  ///
+  /// In en, this message translates to:
+  /// **'Take this lead'**
+  String get ownerTake;
+
+  /// No description provided for @ownerTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'You are now the India owner of this lead'**
+  String get ownerTaken;
+
+  /// No description provided for @ownerClaimHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Website enquiry with no India owner yet. Take it to become its owner — quotes come back to you, SLA and notifications follow you.'**
+  String get ownerClaimHint;
+
+  /// No description provided for @ownerAssignIndia.
+  ///
+  /// In en, this message translates to:
+  /// **'Assign to India staff'**
+  String get ownerAssignIndia;
+
+  /// No description provided for @ownerFilterLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Unassigned'**
+  String get ownerFilterLabel;
+
+  /// No description provided for @ownerFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Unassigned ({n})'**
+  String ownerFilter(int n);
+
+  /// No description provided for @ownerDash.
+  ///
+  /// In en, this message translates to:
+  /// **'website leads have no India owner yet'**
+  String get ownerDash;
 }
 
 class _AppLocalizationsDelegate

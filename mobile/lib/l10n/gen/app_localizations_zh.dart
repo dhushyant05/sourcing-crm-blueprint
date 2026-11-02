@@ -1220,4 +1220,30 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get gallery => '从相册选择';
+
+  @override
+  String get ownerUnassigned => '未分配（印度）';
+
+  @override
+  String get ownerTake => '我来跟进';
+
+  @override
+  String get ownerTaken => '您已成为此线索的印度负责人';
+
+  @override
+  String get ownerClaimHint => '网站询盘尚无印度负责人。认领后由您负责——报价退回给您，SLA 和通知随您。';
+
+  @override
+  String get ownerAssignIndia => '分配给印度员工';
+
+  @override
+  String get ownerFilterLabel => '未分配';
+
+  @override
+  String ownerFilter(int n) {
+    return '未分配（$n）';
+  }
+
+  @override
+  String get ownerDash => '条网站线索尚无印度负责人';
 }
