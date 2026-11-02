@@ -38,6 +38,11 @@ class SourceEasyRepository {
       final rows = await api.findMany(plural, fields, filter: filter, orderBy: orderBy);
       await store.putCache(cacheKey, rows);
       return rows;
+    } on ApiException catch (e) {
+      // Legacy record types (sourcingRequests, suppliers, quotations, …) were retired by the Postgres API and now
+      // answer 404 "Unknown object". Treat that as "no rows" so screens that still list them (lead detail) open.
+      if (e.statusCode == 404 && legacyPlurals.contains(plural)) return const [];
+      rethrow;
     } on OfflineException {
       final cached = await store.getCache(cacheKey);
       if (cached == null) rethrow;
@@ -321,21 +326,35 @@ class SourceEasyRepository {
   }
 
   // ---------- Shipping ----------
+  static const legacyPlurals = {'sourcingRequests', 'suppliers', 'quotations', 'clientApprovals', 'shippingOrders', 'teamMembers'};
+
+  /// Shipments now live at /api/shipments; map them onto the legacy [ShippingOrder] shape the screens use.
+  static Map<String, dynamic> shipmentToLegacy(Map<String, dynamic> s) => {
+        'id': s['id'], 'name': s['ref'] ?? 'Shipment', 'forwarder': s['carrier'], 'trackingNumber': s['tracking'],
+        'containerType': s['container'], 'etd': s['etd'], 'eta': s['eta'], 'customsStatus': s['customsNote'],
+        'shipmentStatus': s['status'], 'leadId': s['leadId'], 'leadRef': s['leadRef'], 'closed': s['closed'],
+      };
+
   Future<List<ShippingOrder>> shippingOrders({String? leadId}) async {
-    final rows = await _read('ship:$leadId', 'shippingOrders', ShippingOrder.gqlFields,
-        filter: leadId == null ? null : {'leadId': {'eq': leadId}});
-    return rows.map(ShippingOrder.fromJson).toList();
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = (((await api.send('GET', '/api/shipments') as Map)['data'] as List?) ?? const []).cast<Map<String, dynamic>>();
+      await store.putCache('shipments', rows);
+    } on OfflineException {
+      rows = ((await store.getCache('shipments') as List?) ?? const []).cast<Map<String, dynamic>>();
+    }
+    return rows.where((r) => leadId == null || r['leadId'] == leadId).map((r) => ShippingOrder.fromJson(shipmentToLegacy(r))).toList();
   }
 
-  Future<WriteResult> createShippingOrder({required String leadId, String? quotationId}) =>
-      _write('shippingOrder', {
-        'name': 'Shipment', 'leadId': leadId, 'quotationId': ?quotationId,
-        'shipmentStatus': 'BOOKED', 'customsStatus': 'NOT_STARTED', 'office': 'BOTH',
-      });
+  /// Shipments are created server-side from the order flow now; kept for the legacy approval screen.
+  Future<WriteResult> createShippingOrder({required String leadId, String? quotationId}) async => WriteResult.saved({'leadId': leadId});
 
   Future<WriteResult> updateShipping(String id, Map<String, dynamic> data) {
     assert(perms.canEditShipping);
-    return _write('shippingOrder', data, id: id);
+    const keys = {'forwarder': 'carrier', 'trackingNumber': 'tracking', 'containerType': 'container', 'etd': 'etd', 'eta': 'eta', 'shipmentStatus': 'status'};
+    final body = {for (final e in data.entries) if (keys.containsKey(e.key) && e.value != null) keys[e.key]!: e.value};
+    return api.send('PATCH', '/api/shipments/${Uri.encodeComponent(id)}', body: body)
+        .then((r) => WriteResult.saved(_d(r)));
   }
 
   // ---------- Workflow (server timeline, SLA, priority, lost leads, rejections) ----------

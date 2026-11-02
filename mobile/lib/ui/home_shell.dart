@@ -38,7 +38,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState st) {
-    if (st == AppLifecycleState.resumed) { _nc.start(); } else if (st == AppLifecycleState.paused) { _nc.stop(); }
+    // Keep the live stream while backgrounded so a system notification (with the bell) still fires; stop only when detached.
+    if (st == AppLifecycleState.resumed) { _nc.start(); } else if (st == AppLifecycleState.detached) { _nc.stop(); }
   }
 
   @override

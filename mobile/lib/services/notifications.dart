@@ -8,7 +8,7 @@ import '../data/repository.dart';
 
 /// Real-time notifications while the app is in the foreground: an SSE stream from the server, with a
 /// 15 s poll as the fallback. New items update the badge and raise a system notification with the bell sound.
-/// No background worker (stopped when the app is paused).
+/// Keeps running while the app is backgrounded (until the OS kills the process); no separate background worker.
 class NotificationCenter extends ChangeNotifier {
   NotificationCenter(this._repo, {this.interval = const Duration(seconds: 15), this.live = true, MethodChannel? channel})
       : _ch = channel ?? const MethodChannel('sourceeasy/notify');
@@ -30,6 +30,7 @@ class NotificationCenter extends ChangeNotifier {
   void Function(Map<String, dynamic>)? onChange;
 
   void start() {
+    if (_running && _sub != null) { poll(); return; } // already live (e.g. resumed from background)
     _t?.cancel();
     _t = Timer.periodic(interval, (_) => poll());
     _running = true;
