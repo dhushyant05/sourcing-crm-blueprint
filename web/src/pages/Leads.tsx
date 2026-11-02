@@ -31,11 +31,12 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   const [view, setView] = useState<'board' | 'table'>(() => (localStorage.leadView as 'board') ?? 'board');
   const [drag, setDrag] = useState<string | null>(null), [moveErr, setMoveErr] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
+  const DONE = ['COMPLETED', 'CLOSED', 'DELIVERED']; // completed or closed permanently: hidden from the open list by default
   const readFilter = () => { try { return JSON.parse(sessionStorage.getItem('se.leadFilter') ?? 'null') as { label: string; ids: string[] } | null; } catch { return null; } };
   const [only, setOnly] = useState(readFilter);
   useEffect(() => { const h = () => setOnly(readFilter()); window.addEventListener('se:lead-filter', h); return () => window.removeEventListener('se:lead-filter', h); }, []);
   const clearOnly = () => { sessionStorage.removeItem('se.leadFilter'); setOnly(null); };
-  const leads = data?.filter((l) => matches(l, search) && (only ? only.ids.includes(l.id) : showClosed ? l.status === 'CLOSED' : l.status !== 'CLOSED'));
+  const leads = data?.filter((l) => matches(l, search) && (only ? only.ids.includes(l.id) : view === 'board' ? l.status !== 'CLOSED' : showClosed ? DONE.includes(l.status) : !DONE.includes(l.status)));
   const pick = (v: 'board' | 'table') => { setView(v); localStorage.leadView = v; };
 
   const move = async (id: string, status: LeadStatus) => {
@@ -56,7 +57,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
               <button key={String(v)} onClick={() => { setMine(v); localStorage.leadMine = v ? '1' : '0'; }} className={clsx('rounded-lg px-2.5 py-1.5 transition', mine === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}>{label}</button>
             ))}
           </div>
-          <button data-testid="show-closed" onClick={() => { setShowClosed((v) => !v); if (!showClosed) pick('table'); }} className={clsx('rounded-xl border px-2.5 py-1.5 text-sm', showClosed ? 'border-ink-700 bg-ink-800 text-white' : 'border-ink-200 bg-white text-ink-500 dark:border-ink-700 dark:bg-ink-900')}>{showClosed ? t('lost.hideClosed') : t('lost.showClosed', { n: data?.filter((l) => l.status === 'CLOSED').length ?? 0 })}</button>
+          <button data-testid="show-closed" onClick={() => { setShowClosed((v) => !v); if (!showClosed) pick('table'); }} className={clsx('rounded-xl border px-2.5 py-1.5 text-sm', showClosed ? 'border-ink-700 bg-ink-800 text-white' : 'border-ink-200 bg-white text-ink-500 dark:border-ink-700 dark:bg-ink-900')}>{showClosed ? t('lost.hideClosed') : t('lost.showClosed', { n: data?.filter((l) => DONE.includes(l.status)).length ?? 0 })}</button>
           <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 dark:border-ink-700 dark:bg-ink-900">
             {([['board', KanbanSquare], ['table', Rows3]] as const).map(([v, I]) => (
               <button key={v} onClick={() => pick(v)} className={clsx('rounded-lg px-2.5 py-1.5 text-sm transition', view === v ? 'bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-white' : 'text-ink-500')}><I size={16} /></button>
@@ -69,7 +70,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
       {mine && data && !data.length && <p className="mb-4 rounded-xl border border-dashed border-ink-200 px-4 py-3 text-sm text-ink-500 dark:border-ink-800">{t('assign.noneMine')}</p>}
       {view === 'board' ? (
         <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-4 md:snap-none">
-          {[...PIPELINE, 'LOST' as LeadStatus].map((s) => {
+          {[...PIPELINE, 'COMPLETED' as LeadStatus, 'LOST' as LeadStatus].map((s) => {
             const col = leads?.filter((l) => l.status === s) ?? [];
             return (
               <div key={s} onDragOver={(e) => e.preventDefault()} onDrop={() => drag && move(drag, s)}

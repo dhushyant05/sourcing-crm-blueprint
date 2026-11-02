@@ -14,6 +14,7 @@ const tone: Record<string, string> = {
   APPROVED: 'bg-teal-50 text-teal-700 ring-teal-600/15 dark:bg-teal-500/10 dark:text-teal-300',
   SHIPPING: 'bg-cyan-50 text-cyan-700 ring-cyan-600/15 dark:bg-cyan-500/10 dark:text-cyan-300',
   WON: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
+  COMPLETED: 'bg-ink-100 text-emerald-800 ring-emerald-700/20 dark:bg-ink-800 dark:text-emerald-300',
   ACCEPTED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
   DELIVERED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
   CLOSED: 'bg-ink-100 text-ink-600 ring-ink-500/15 dark:bg-ink-800 dark:text-ink-300',
@@ -22,7 +23,7 @@ const tone: Record<string, string> = {
 };
 export const dot: Record<string, string> = {
   NEW: 'bg-sky-500', ASSIGNED: 'bg-violet-500', SOURCING: 'bg-amber-500', QUOTED: 'bg-brand-500',
-  APPROVED: 'bg-teal-500', SHIPPING: 'bg-cyan-500', WON: 'bg-emerald-500', LOST: 'bg-rose-500', CLOSED: 'bg-ink-400',
+  APPROVED: 'bg-teal-500', SHIPPING: 'bg-cyan-500', WON: 'bg-emerald-500', COMPLETED: 'bg-emerald-800', LOST: 'bg-rose-500', CLOSED: 'bg-ink-400',
 };
 /** Translated label for a status enum (falls back to "In transit"-style prettifying). */
 export const pretty = (s: string) => i18n.t(`status.${s}`, { defaultValue: s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ') });

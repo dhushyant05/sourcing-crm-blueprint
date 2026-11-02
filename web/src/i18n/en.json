@@ -51,6 +51,7 @@
     "APPROVED": "Approved",
     "SHIPPING": "Shipping",
     "WON": "Won",
+    "COMPLETED": "Closed · Completed",
     "LOST": "Lost",
     "SENT": "Sent",
     "ACCEPTED": "Accepted",
@@ -127,7 +128,8 @@
     "slaRisk": "SLA at risk",
     "transitLeads": "Leads with shipments in transit",
     "quotedLeads": "Leads with quotes sent / accepted",
-    "closedLeads": "Closed leads (won + lost)"
+    "closedLeads": "Closed leads (completed + lost)",
+    "completed": "Closed / Completed"
   },
   "leads": {
     "count": "{{n}} leads · drag cards to move between stages",
@@ -477,6 +479,8 @@
     "REVISE_REQUESTED_nobody": "revised quote requested for {{ref}}",
     "LEAD_CLOSED": "{{by}} closed {{ref}} as Lost",
     "LEAD_CLOSED_nobody": "{{ref}} closed as Lost",
+    "LEAD_COMPLETED": "{{by}} closed {{ref}} as Completed (delivered)",
+    "LEAD_COMPLETED_nobody": "{{ref}} delivered — closed as Completed",
     "ORDER_SHIPPED": "{{by}} marked {{ref}} as shipped",
     "ORDER_SHIPPED_nobody": "{{ref}} has shipped",
     "SLA_WARN": "{{ref}} SLA ends soon — act now",
@@ -790,6 +794,7 @@
       "CQ_REJECTED": "Customer rejected quote #{{n}}",
       "REVISE_REQUESTED": "Revised quote requested from China",
       "LEAD_CLOSED": "Closed as Lost",
+      "COMPLETED": "Delivered — closed as Completed",
       "ORDER_CREATED": "Order created",
       "ORDER_UPDATE": "Order updated",
       "SHIPPED": "Shipped by China",
@@ -817,6 +822,7 @@
     "closedOn": "Closed permanently {{when}} by {{who}}",
     "createdFrom": "Created from {{ref}}",
     "showClosed": "Show closed ({{n}})",
+    "completedHint": "Delivered, so this lead closed automatically. Only the super admin can reopen it.",
     "hideClosed": "Hide closed",
     "onlySa": "Only the super admin can reopen a closed lead.",
     "copied": "New lead {{ref}} created"

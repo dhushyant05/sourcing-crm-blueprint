@@ -95,7 +95,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     openLead(n.leadId);
   };
   const unread = data?.unread ?? 0;
-  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' || n.kind === 'LEAD_CLOSED' ? XCircle : n.kind === 'REVISE_REQUESTED' ? CornerDownLeft : n.kind === 'ORDER_SHIPPED' ? Ship : n.kind === 'SLA_WARN' ? Timer : n.kind === 'SLA_BREACH' ? AlarmClock : n.kind === 'PRIORITY' ? Flame : n.kind.startsWith('ORDER') ? Package : n.kind === 'SHIPMENT_UPDATE' ? Ship : UserCheck);
+  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' || n.kind === 'LEAD_COMPLETED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' || n.kind === 'LEAD_CLOSED' ? XCircle : n.kind === 'REVISE_REQUESTED' ? CornerDownLeft : n.kind === 'ORDER_SHIPPED' ? Ship : n.kind === 'SLA_WARN' ? Timer : n.kind === 'SLA_BREACH' ? AlarmClock : n.kind === 'PRIORITY' ? Flame : n.kind.startsWith('ORDER') ? Package : n.kind === 'SHIPMENT_UPDATE' ? Ship : UserCheck);
   return (
     <div className="relative" ref={box}>
       <button data-testid="notif-bell" className="btn-ghost relative p-2" aria-label={t('header.notifications')} onClick={() => { setOpen(!open); if (!open) load(); }}>

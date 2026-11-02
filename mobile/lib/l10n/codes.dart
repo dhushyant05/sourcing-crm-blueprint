@@ -17,6 +17,7 @@ String codeLabel(BuildContext context, String? code) {
     'SHIPPING' => l.codeShipping,
     'DELIVERED' => l.codeDelivered,
     'WON' => l.codeWon,
+    'COMPLETED' => Localizations.localeOf(context).languageCode == 'zh' ? '已完成关闭' : 'Closed · Completed',
     'LOST' => l.codeLost,
     'OPEN' => l.codeOpen,
     'PENDING' => l.codePending,

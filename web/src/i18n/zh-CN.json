@@ -51,6 +51,7 @@
     "APPROVED": "已批准",
     "SHIPPING": "运输中",
     "WON": "已成交",
+    "COMPLETED": "已完成关闭",
     "LOST": "已流失",
     "SENT": "已发送",
     "ACCEPTED": "已接受",
@@ -127,7 +128,8 @@
     "slaRisk": "SLA 风险",
     "transitLeads": "有运输中货物的线索",
     "quotedLeads": "已发送/已接受报价的线索",
-    "closedLeads": "已结束线索（赢单 + 丢单）"
+    "closedLeads": "已结束线索（已完成 + 丢单）",
+    "completed": "已完成 / 关闭"
   },
   "leads": {
     "count": "{{n}} 条线索 · 拖动卡片切换阶段",
@@ -477,6 +479,8 @@
     "REVISE_REQUESTED_nobody": "已请求为 {{ref}} 重新报价",
     "LEAD_CLOSED": "{{by}} 已将 {{ref}} 关闭为丢单",
     "LEAD_CLOSED_nobody": "{{ref}} 已关闭为丢单",
+    "LEAD_COMPLETED": "{{by}} 已将 {{ref}} 标记为已完成（已交付）",
+    "LEAD_COMPLETED_nobody": "{{ref}} 已交付——已完成关闭",
     "ORDER_SHIPPED": "{{by}} 已将 {{ref}} 标记为已发货",
     "ORDER_SHIPPED_nobody": "{{ref}} 已发货",
     "SLA_WARN": "{{ref}} 时限即将到期，请立即处理",
@@ -790,6 +794,7 @@
       "CQ_REJECTED": "客户拒绝报价 #{{n}}",
       "REVISE_REQUESTED": "要求中国重新报价",
       "LEAD_CLOSED": "关闭为流失",
+      "COMPLETED": "已交付——自动关闭为已完成",
       "ORDER_CREATED": "创建订单",
       "ORDER_UPDATE": "订单更新",
       "SHIPPED": "中国已发货",
@@ -817,6 +822,7 @@
     "closedOn": "{{who}} 于 {{when}} 永久关闭",
     "createdFrom": "由 {{ref}} 创建",
     "showClosed": "显示已关闭（{{n}}）",
+    "completedHint": "已交付，线索已自动关闭。仅超级管理员可重新打开。",
     "hideClosed": "隐藏已关闭",
     "onlySa": "只有超级管理员可以重新打开已关闭的线索。",
     "copied": "已创建新线索 {{ref}}"

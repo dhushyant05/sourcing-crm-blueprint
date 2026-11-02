@@ -1,6 +1,6 @@
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useApp, useLoad } from '../lib/store';
-import { PIPELINE } from '../lib/types';
+import { PIPELINE, isOpenLead } from '../lib/types';
 import { money, totalsByCurrency } from '../lib/currency';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Chip, dot, PageHeader, Skeleton, Sparkline, pretty } from '../components/ui';
@@ -38,9 +38,10 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const { data } = useLoad(() => Promise.all([api.leads(), api.allQuotes(), api.shipments()]), [api]);
   const [leads, quotes, ships] = (data ?? [null, null, null]) as [Lead[] | null, LeadQuote[] | null, Shipment[] | null];
 
-  const open = leads?.filter((l) => !['WON', 'LOST'].includes(l.status)).length ?? 0;
-  const won = leads?.filter((l) => l.status === 'WON').length ?? 0;
-  const closed = leads?.filter((l) => ['WON', 'LOST'].includes(l.status)).length || 1;
+  const open = leads?.filter(isOpenLead).length ?? 0;
+  const completed = leads?.filter((l) => l.status === 'COMPLETED' || l.status === 'DELIVERED').length ?? 0;
+  const won = leads?.filter((l) => ['WON', 'COMPLETED', 'DELIVERED'].includes(l.status)).length ?? 0;
+  const closed = leads?.filter((l) => ['WON', 'COMPLETED', 'DELIVERED', 'LOST'].includes(l.status)).length || 1;
   // Per currency — amounts in different currencies are never added together.
   // Quoted pipeline = customer quotes (INR, incl. GST) that are sent or accepted.
   const pipeline = totalsByCurrency((quotes ?? []).filter((q) => q.cqTotals && (q.status === 'SENT' || q.status === 'ACCEPTED')), (q) => ['INR', q.cqTotals?.total]);
@@ -50,14 +51,15 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   const [list, setList] = useState<{ label: string; leads: Lead[] } | null>(null);
   const L = leads ?? [];
   const drill = [
-    () => L.filter((l) => !['WON', 'LOST', 'CLOSED'].includes(l.status)),
-    () => L.filter((l) => quotedIds.has(l.id)),
-    () => L.filter((l) => ['WON', 'LOST'].includes(l.status)),
+    () => L.filter(isOpenLead),
+    () => L.filter((l) => quotedIds.has(l.id) && isOpenLead(l)),
+    () => L.filter((l) => !isOpenLead(l)),
     () => L.filter((l) => transitIds.has(l.id)),
+    () => L.filter((l) => l.status === 'COMPLETED' || l.status === 'DELIVERED'),
   ];
-  const drillLabel = [t('dashboard.openLeads'), t('dashboard.quotedLeads'), t('dashboard.closedLeads'), t('dashboard.transitLeads')];
+  const drillLabel = [t('dashboard.openLeads'), t('dashboard.quotedLeads'), t('dashboard.closedLeads'), t('dashboard.transitLeads'), t('dashboard.completed')];
   const now = Date.now();
-  const atRisk = L.filter((l) => l.sla && slaState(l.sla, now).level !== 'ok');
+  const atRisk = L.filter((l) => isOpenLead(l) && l.sla && slaState(l.sla, now).level !== 'ok');
 
   const kpis = [
     { label: t('dashboard.openLeads'), value: String(open), delta: 12.5, series: [4, 6, 5, 8, 7, 9, 11, open], color: '#2a9fd6' },
@@ -66,6 +68,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
       : { label: t('dashboard.quotesSent'), value: String(quotes?.filter((q) => q.status === 'SENT' || q.status === 'ACCEPTED').length ?? 0), delta: 8.2, series: [1, 2, 2, 3, 3, 4, 5, 6], color: '#14b8a6' },
     { label: t('dashboard.winRate'), value: `${Math.round((won / closed) * 100)}%`, delta: -3.1, series: [60, 58, 62, 55, 57, 52, 54, 50], color: '#f59e0b' },
     { label: t('dashboard.inTransit'), value: String(transit), delta: 4.0, series: [1, 2, 1, 3, 2, 3, 2, transit], color: '#06b6d4' },
+    { label: t('dashboard.completed'), value: String(completed), delta: 0, series: [1, 1, 2, 2, 3, 3, 4, completed], color: '#10b981' },
   ];
   const counts = PIPELINE.map((s) => ({ s, n: leads?.filter((l) => l.status === s).length ?? 0 }));
   const max = Math.max(1, ...counts.map((c) => c.n));
@@ -73,7 +76,7 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   return (
     <>
       <PageHeader title={t('dashboard.greeting')} subtitle={t('dashboard.subtitle')} />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {kpis.map((k, i) => (
           <button type="button" key={k.label} data-testid={`kpi-${i}`} title={t('dashboard.click')} disabled={!leads} onClick={() => setList({ label: drillLabel[i], leads: drill[i]() })} className="card cursor-pointer p-5 text-left transition-shadow hover:shadow-lift hover:ring-1 hover:ring-brand-300">
             <div className="text-sm text-ink-500" title={(k as { hint?: string }).hint}>{k.label}</div>

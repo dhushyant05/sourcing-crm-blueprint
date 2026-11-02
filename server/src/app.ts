@@ -173,7 +173,7 @@ export async function buildApp(o: AppOptions) {
       const ls = await leadDb.list(); let n = 0;
       for (const l of ls) {
         const id = String(l.id), st = String(l.status ?? 'NEW');
-        if (['WON', 'LOST', 'DELIVERED', 'SHIPPING', 'CLOSED'].includes(st) || (await wf.clock(id))) continue;
+        if (['WON', 'LOST', 'DELIVERED', 'SHIPPING', 'CLOSED', 'COMPLETED'].includes(st) || (await wf.clock(id))) continue;
         const a = await assign.get(id), office = (a?.ownerOffice ?? (l.assignedOffice as Office) ?? 'INDIA') as Office;
         await wf.start(id, office, a?.assignedTo ?? null); n++;
       }
@@ -195,7 +195,7 @@ export async function buildApp(o: AppOptions) {
     const qs = (await quotes.list(String(lead.id))).filter((q) => !(revising && q.status === 'REJECTED')), ords = await orders.byLead(String(lead.id)), st = String(lead.status ?? 'NEW');
     const lost = st === 'LOST' || (qs.some((q) => q.status === 'REJECTED') && !qs.some((q) => q.status === 'ACCEPTED' || q.status === 'SENT'));
     let stage: (typeof STAGES)[number] = 'NEW';
-    if (st === 'DELIVERED' || ords.some((x) => x.indiaStatus === 'DELIVERED')) stage = 'DELIVERED';
+    if (st === 'DELIVERED' || st === 'COMPLETED' || ords.some((x) => x.indiaStatus === 'DELIVERED')) stage = 'DELIVERED';
     else if (st === 'SHIPPING' || ords.some((x) => x.production === 'SHIPPED')) stage = 'SHIPPED';
     else if (ords.length) stage = 'ORDER';
     else if (st === 'WON' || st === 'LOST' || qs.some((q) => q.status === 'ACCEPTED' || q.status === 'REJECTED')) stage = 'DECIDED';
@@ -783,6 +783,30 @@ export async function buildApp(o: AppOptions) {
       try { await leadDb.update(leadId, { status: ls }); if (lead) lead.status = ls; }
       catch (e) { app.log.error({ err: e, leadId, ls }, 'lead status sync failed'); }
     };
+    /** Delivered = done: once every shipped order of a lead is delivered, the lead closes as Completed, its SLA stops, and India + super admins are told. */
+    const completeIfDelivered = async (leadId: string, lead: Rec | null, u: User | null) => {
+      const l = lead ?? (await leadDb.get(leadId)); if (!l || ['COMPLETED', 'LOST', 'CLOSED'].includes(String(l.status))) return false;
+      const os = await orders.byLead(leadId); if (!os.length || os.some((x) => x.indiaStatus !== 'DELIVERED')) return false;
+      await setLeadStatus(leadId, l, 'COMPLETED'); await stopClock(leadId);
+      if (!(await wf.events(leadId)).some((e) => e.kind === 'COMPLETED')) await ev(leadId, 'COMPLETED', u, { from: 'DELIVERED' });
+      const supers = o.users.list().filter((x) => x.active && x.role === 'SUPER_ADMIN').map((x) => x.id);
+      const rs = [...new Set([...(await indiaPeople(leadId)), ...supers].filter((x) => x && x !== u?.id && !!o.users.byId(x)?.active))];
+      if (rs.length) await assign.notify(rs, { leadId, leadRef: (l.leadRef as string) ?? null, product: (l.productInterest as string) ?? null, kind: 'LEAD_COMPLETED', office: 'INDIA', byName: u?.name ?? null, detail: 'DELIVERED' });
+      await liveData({ type: 'lead', id: leadId, leadId, completed: true, at: Date.now() });
+      return true;
+    };
+    // One-off: leads already delivered before auto-close existed are closed as Completed now.
+    const cbf = setTimeout(() => { void (async () => {
+      if (!(await wf.once('delivered-close-v2'))) return;
+      let n = 0;
+      for (const l of await leadDb.list()) {
+        const id = String(l.id);
+        if (String(l.status) === 'DELIVERED' && !(await orders.byLead(id)).length) { await setLeadStatus(id, l, 'COMPLETED'); await stopClock(id); await ev(id, 'COMPLETED', null, { from: 'DELIVERED', backfill: true }); n++; continue; }
+        if (await completeIfDelivered(id, l, null)) n++;
+      }
+      app.log.info({ n }, 'delivered-close backfill');
+    })().catch((e) => app.log.warn(e, 'delivered-close backfill failed')); }, 8000);
+    cbf.unref?.(); app.addHook('onClose', async () => clearTimeout(cbf));
     const applyOrder = async (u: User, ord: Order, lead: Rec | null, b: Rec, shipExtra: Rec = {}) => {
       const has = (k: string) => k in b, val = (k: string) => (has(k) ? (b[k] == null ? '' : String(b[k]).trim()) : ((ord as any)[k] ?? ''));
       const shipped = ord.production === 'SHIPPED';
@@ -815,6 +839,7 @@ export async function buildApp(o: AppOptions) {
       if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') await stopClock(n.leadId);
       if (newlyShipped) await setLeadStatus(n.leadId, lead, 'SHIPPING');
       if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') await setLeadStatus(n.leadId, lead, 'DELIVERED');
+      if (n.indiaStatus === 'DELIVERED' && ord.indiaStatus !== 'DELIVERED') await completeIfDelivered(n.leadId, lead, u);
       const q = await quotes.get(n.quoteId), l = lead ?? (await leadOf(n.leadId));
       const changed = (keys: string[]) => Object.keys(b).some((k) => keys.includes(k) && String(b[k] ?? '') !== String((ord as any)[k] ?? '')) || Object.keys(shipExtra).some((k) => keys.includes(k));
       // Real-time notification for every status/payment change to India owner, China side and super admins (never the actor).
@@ -1041,7 +1066,7 @@ export async function buildApp(o: AppOptions) {
           if (!sides(role).india) throw new Forbidden('Only the India office marks an order delivered');
           deliverOrders = shippedOs.filter((x) => x.indiaStatus !== 'DELIVERED');
         }
-        if (shippedOs.length && !['SHIPPING', 'DELIVERED', 'WON', 'LOST'].includes(String(data.status))) throw bad('This lead has a shipped order and cannot go back to an earlier stage', 409);
+        if (shippedOs.length && !['SHIPPING', 'DELIVERED', 'WON', 'LOST', 'COMPLETED'].includes(String(data.status))) throw bad('This lead has a shipped order and cannot go back to an earlier stage', 409);
       }
       if (obj === 'lead' && !('assignedOffice' in data) && existing.assignedOffice !== 'CHINA' && CHINA_LEAD_STATUSES.includes(String(data.status))) data.assignedOffice = 'CHINA';
       let target: Office | null = null;
@@ -1057,12 +1082,13 @@ export async function buildApp(o: AppOptions) {
         const id = String(existing.id);
         if ('status' in data && data.status !== existing.status) {
           await ev(id, 'STATUS', req.user!, { from: existing.status ?? null, to: data.status });
-          if (['WON', 'LOST', 'DELIVERED'].includes(String(data.status))) await stopClock(id);
+          if (['WON', 'LOST', 'DELIVERED', 'COMPLETED'].includes(String(data.status))) await stopClock(id);
         }
         if ('summary' in data && data.summary !== existing.summary) await ev(id, 'SUMMARY', req.user!);
       }
       if (target) await handoff({ ...existing, ...data }, req.user!, target, to);
       for (const x of deliverOrders) await applyOrder(req.user!, x, { ...existing, ...data }, { indiaStatus: 'DELIVERED' });
+      if (obj === 'lead' && data.status === 'DELIVERED') await completeIfDelivered(String(existing.id), null, req.user!);
       return { data: { id: r.id ?? req.params.id } };
     });
 
@@ -1125,7 +1151,8 @@ export async function buildApp(o: AppOptions) {
     api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/reopen', async (req) => {
       const { u, lead, id, meta } = await lostLead(req), b = req.body ?? {};
       if (meta.closedAt && u.role !== 'SUPER_ADMIN') throw new Forbidden('This lead was closed permanently; only the super admin can reopen it');
-      if (!meta.closedAt && lead.status !== 'LOST') throw bad('Only lost or closed leads can be reopened', 409);
+      if (lead.status === 'COMPLETED' && u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can reopen a completed lead');
+      if (!meta.closedAt && lead.status !== 'LOST' && lead.status !== 'COMPLETED') throw bad('Only lost, completed or closed leads can be reopened', 409);
       const to: Office = String(b.office ?? 'INDIA').toUpperCase() === 'CHINA' ? 'CHINA' : 'INDIA';
       if (meta.closedAt) await wf.reopenLead(id);
       await leadDb.update(id, { status: to === 'CHINA' ? 'ASSIGNED' : 'NEW', assignedOffice: to });

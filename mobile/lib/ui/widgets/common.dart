@@ -14,7 +14,7 @@ final dateFmt = DateFormat('dd MMM yyyy');
 Color statusColor(BuildContext c, String status) {
   final cs = Theme.of(c).colorScheme;
   return switch (status) {
-    'WON' || 'DELIVERED' || 'APPROVED' || 'CLEARED' => Colors.green,
+    'WON' || 'DELIVERED' || 'COMPLETED' || 'APPROVED' || 'CLEARED' => Colors.green,
     'LOST' || 'REJECTED' || 'HELD' => cs.error,
     'NEW' || 'PENDING' => cs.tertiary,
     _ => cs.primary,

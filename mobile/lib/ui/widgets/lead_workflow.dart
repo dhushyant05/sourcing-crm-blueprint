@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../l10n/codes.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/models.dart';
@@ -235,6 +236,18 @@ class _LostActionsState extends State<LostActions> {
   Widget build(BuildContext context) {
     final s = context.watch<Session>(), l = widget.lead, closed = l.status == 'CLOSED' || l.raw['closedAt'] != null, sa = s.role.code == 'SUPER_ADMIN';
     final from = l.createdFromRef != null ? Text(tw(context, 'lost.createdFrom', {'ref': l.createdFromRef}), key: const Key('created-from'), style: Theme.of(context).textTheme.bodySmall) : null;
+    if (l.status == 'COMPLETED') {
+      return Card(key: const Key('completed-actions'), color: Colors.green.shade50, child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ?from,
+        Text(codeLabel(context, 'COMPLETED'), style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold)),
+        Text(tw(context, 'wf.ev.COMPLETED'), style: Theme.of(context).textTheme.bodySmall),
+        if (sa) Wrap(spacing: 8, children: [
+          OutlinedButton.icon(key: const Key('won-reopen-india'), onPressed: busy ? null : () => _run(() => s.repo.reopenLead(l.id, 'INDIA')), icon: const Icon(Icons.replay, size: 16), label: Text(tw(context, 'lost.reopenIndia'))),
+          OutlinedButton.icon(key: const Key('won-reopen-china'), onPressed: busy ? null : () => _run(() => s.repo.reopenLead(l.id, 'CHINA')), icon: const Icon(Icons.replay, size: 16), label: Text(tw(context, 'lost.reopenChina'))),
+        ]),
+        if (err != null) Text(err!, style: const TextStyle(color: Colors.red)),
+      ])));
+    }
     if (!_indiaSide(s) || (l.status != 'LOST' && !closed)) return from ?? const SizedBox.shrink();
     late final repo = s.repo;
     return Card(key: const Key('lost-actions'), color: Colors.red.shade50, child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

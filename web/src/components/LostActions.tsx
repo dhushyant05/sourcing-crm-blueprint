@@ -13,6 +13,16 @@ export function LostActions({ lead, onChange, openLead }: { lead: Lead; onChange
   const role = session?.role ?? '', s = sides(role), sa = role === 'SUPER_ADMIN';
   const closed = lead.status === 'CLOSED';
   const from = lead.createdFromRef ? <p data-testid="created-from" className="mt-3 text-xs text-ink-500">{t('lost.createdFrom', { ref: lead.createdFromRef })}</p> : null;
+  const reopen = (o: 'INDIA' | 'CHINA') => async () => { setBusy(true); setErr(null); try { onChange(await api.reopenLead!(lead.id, o)); window.dispatchEvent(new Event('se:leads-changed')); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  if (api.reopenLead && lead.status === 'COMPLETED') return <>{from}<section data-testid="completed-actions" className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/5">
+    <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">{t('status.COMPLETED')}</h3>
+    <p className="mt-1 text-xs text-ink-500">{t('lost.completedHint')}</p>
+    {sa ? <div className="mt-3 flex flex-wrap gap-2">
+      <button data-testid="won-reopen-india" disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50" onClick={() => void reopen('INDIA')()}><RotateCcw size={14} />{t('lost.reopenIndia')}</button>
+      <button data-testid="won-reopen-china" disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50" onClick={() => void reopen('CHINA')()}><RotateCcw size={14} />{t('lost.reopenChina')}</button></div>
+      : <p className="mt-2 text-xs text-ink-500">{t('lost.onlySa')}</p>}
+    {err && <p role="alert" className="mt-2 text-xs text-rose-600">{err}</p>}
+  </section></>;
   if (!api.reopenLead || !s.india || (lead.status !== 'LOST' && !closed)) return from;
   const run = async (f: () => Promise<Lead>, after?: (l: Lead) => void) => {
     setBusy(true); setErr(null); setMsg(null);

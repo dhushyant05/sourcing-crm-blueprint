@@ -12,7 +12,10 @@ import '../widgets/common.dart';
 import '../widgets/delete_lead.dart' show tDel;
 import 'lead_detail_screen.dart';
 
-const pipelineStages = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'DELIVERED', 'WON', 'LOST'];
+const pipelineStages = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'DELIVERED', 'WON', 'COMPLETED', 'LOST'];
+/// Closed = delivered/completed, lost or closed permanently: never counted as open.
+const closedStatuses = ['COMPLETED', 'LOST', 'CLOSED', 'DELIVERED'];
+bool isOpenLead(Lead l) => !closedStatuses.contains(l.status);
 
 Map<String, int> pipelineCounts(List<Lead> leads) {
   final m = {for (final s in pipelineStages) s: 0};
@@ -72,22 +75,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onRetry: _reload,
           builder: (c, leads) {
             final counts = pipelineCounts(leads);
-            final active = leads.where((l) => !['WON', 'LOST', 'DELIVERED'].contains(l.status)).length;
+            final active = leads.where(isOpenLead).length;
+            final done = leads.where((l) => l.status == 'COMPLETED' || l.status == 'DELIVERED').toList();
             return ListView(padding: const EdgeInsets.all(16), children: [
               Text(context.l10n.helloName(s.displayName ?? ''), style: t.textTheme.titleLarge),
               Text(s.role.label, style: t.textTheme.bodyMedium),
               const SizedBox(height: 16),
               Row(children: [
                 _Kpi(context.l10n.kpiActiveLeads, '$active', Icons.trending_up,
-                    onTap: () => _showList(context.l10n.kpiActiveLeads, leads.where((l) => !['WON', 'LOST', 'DELIVERED'].contains(l.status)).toList())),
-                _Kpi(context.l10n.codeWon, '${counts['WON']}', Icons.emoji_events_outlined,
-                    onTap: () => _showList(context.l10n.codeWon, leads.where((l) => l.status == 'WON').toList())),
+                    onTap: () => _showList(context.l10n.kpiActiveLeads, leads.where(isOpenLead).toList())),
+                _Kpi(codeLabel(context, 'COMPLETED'), '${done.length}', Icons.task_alt,
+                    onTap: () => _showList(codeLabel(context, 'COMPLETED'), done)),
                 _Kpi(context.l10n.kpiPendingSync, '${s.pendingOps}', Icons.sync),
               ]),
               const SizedBox(height: 24),
               Text(context.l10n.pipeline, style: t.textTheme.titleMedium),
               const SizedBox(height: 8),
-              ...pipelineStages.map((st) {
+              ...pipelineStages.where((st) => !closedStatuses.contains(st)).map((st) {
                 final n = counts[st]!;
                 final frac = leads.isEmpty ? 0.0 : n / leads.length;
                 return InkWell(key: Key('stage-$st'), onTap: () => _showList(codeLabel(context, st), leads.where((l) => l.status == st).toList()), child: Padding(

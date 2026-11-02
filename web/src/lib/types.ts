@@ -1,4 +1,4 @@
-export type LeadStatus = 'NEW' | 'ASSIGNED' | 'SOURCING' | 'QUOTED' | 'APPROVED' | 'SHIPPING' | 'WON' | 'LOST' | 'CLOSED';
+export type LeadStatus = 'NEW' | 'ASSIGNED' | 'SOURCING' | 'QUOTED' | 'APPROVED' | 'SHIPPING' | 'WON' | 'LOST' | 'CLOSED' | 'DELIVERED' | 'COMPLETED';
 export type Currency = 'CNY' | 'USD' | 'INR';
 
 export interface Rejection { id: string; quoteId: string; reasonCode: string; reasonText: string | null; byName: string | null; at: string; resolution: 'REVISE' | 'CLOSED' | null;
@@ -28,7 +28,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -90,6 +90,9 @@ export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' 
 export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string; avatarUrl?: string | null }
 export interface BackupLink { label: string; url: string }
 
+/** Closed = completed (delivered), lost, or closed permanently — never counted as open. WON = customer accepted, order still running. */
+export const CLOSED_ST = ['COMPLETED', 'LOST', 'CLOSED', 'DELIVERED'];
+export const isOpenLead = (l: { status: string }) => !CLOSED_ST.includes(l.status);
 export const PIPELINE: LeadStatus[] = ['NEW', 'ASSIGNED', 'SOURCING', 'QUOTED', 'APPROVED', 'SHIPPING', 'WON'];
 // shippingOrder.shipmentStatus options in twenty-setup/schema.json
 /** Gated: China books, then "Mark shipped" (→ IN_TRANSIT, needs tracking/container + ETD); only then India moves it on to DELIVERED. */

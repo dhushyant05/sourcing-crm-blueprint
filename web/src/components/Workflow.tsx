@@ -76,7 +76,7 @@ export function WorkflowPanel({ lead, onPriority }: { lead: Lead; onPriority?: (
       {data.sla && <p className="mt-2 text-xs text-ink-500" data-testid="sla-line">{t('sla.line', { office: t(`sla.office.${data.sla.office}`), who: data.sla.assigneeName || t('sla.queue'), d: new Date(data.sla.dueAt).toLocaleString() })}</p>}
       <ol data-testid="wf-events" className="mt-3 space-y-3 border-l border-ink-200 pl-4 dark:border-ink-800">
         {data.events.map((e) => <li key={e.id} data-kind={e.kind} className="relative text-sm">
-          <span className={clsx('absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ring-4 ring-white dark:ring-ink-900', e.kind.startsWith('SLA') ? 'bg-rose-500' : e.kind === 'SHIPPED' || e.kind === 'CQ_ACCEPTED' ? 'bg-emerald-500' : e.kind === 'CQ_REJECTED' || e.kind === 'LEAD_CLOSED' ? 'bg-rose-400' : 'bg-brand-500')} />
+          <span className={clsx('absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ring-4 ring-white dark:ring-ink-900', e.kind.startsWith('SLA') ? 'bg-rose-500' : e.kind === 'SHIPPED' || e.kind === 'CQ_ACCEPTED' || e.kind === 'COMPLETED' ? 'bg-emerald-500' : e.kind === 'CQ_REJECTED' || e.kind === 'LEAD_CLOSED' ? 'bg-rose-400' : 'bg-brand-500')} />
           <div className="flex items-start gap-2 text-ink-800 dark:text-ink-100">{e.actorName && <Avatar name={e.actorName} person className="h-5 w-5 text-[9px]" />}<span>{evText(t, e.kind, e.data)}</span></div>
           <div className="text-xs text-ink-400">{e.actorName ? `${e.actorName} · ` : ''}{new Date(e.at).toLocaleString()}</div></li>)}
       </ol></>}

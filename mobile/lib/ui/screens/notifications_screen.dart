@@ -22,6 +22,7 @@ String notifText(BuildContext context, AppNotification n) {
     case 'ORDER_UPDATE': return l.notifOrderUpdate(ref, product, by);
     case 'QUEUE': return l.notifQueue(ref, product, codeLabel(context, n.office ?? 'INDIA'), by);
     case 'SLA_WARN': return tDel(context, '$ref · $product: SLA about to expire — act now', '$ref · $product：时限即将到期，请立即处理');
+    case 'LEAD_COMPLETED': return tDel(context, '$ref · $product: delivered — closed as Completed', '$ref · $product：已交付，已完成关闭');
     case 'SLA_BREACH': return tDel(context, '$ref · $product: SLA breached', '$ref · $product：已超时');
     default: return l.notifAssigned(ref, product, by);
   }
@@ -47,7 +48,7 @@ class NotificationsScreen extends StatelessWidget {
                   final n = nc.items[i];
                   return ListTile(
                     key: Key('notif-${n.id}'),
-                    leading: Icon(n.kind == 'RETURNED' ? Icons.reply : n.kind == 'QUEUE' ? Icons.inbox_outlined : n.kind.startsWith('SLA') ? Icons.timer_outlined : Icons.assignment_ind_outlined,
+                    leading: Icon(n.kind == 'RETURNED' ? Icons.reply : n.kind == 'QUEUE' ? Icons.inbox_outlined : n.kind.startsWith('SLA') ? Icons.timer_outlined : n.kind == 'LEAD_COMPLETED' ? Icons.task_alt : Icons.assignment_ind_outlined,
                         color: n.read ? Colors.grey : Theme.of(c).colorScheme.primary),
                     title: Text(notifText(c, n), style: TextStyle(fontWeight: n.read ? FontWeight.normal : FontWeight.w600)),
                     subtitle: n.createdAt == null ? null : Text(dateFmt.format(n.createdAt!.toLocal())),

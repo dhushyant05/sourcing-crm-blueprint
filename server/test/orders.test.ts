@@ -136,9 +136,12 @@ describe('customer quote, PDF and orders', () => {
     expect((await call('sa', 'POST', '/api/leads/bulk-delete', { ids: [lead.id] })).json().failed[0]).toMatchObject({ code: 'ORDER_IN_PROGRESS' });
     expect((await call('is', 'POST', '/api/leads/bulk-delete', { ids: [lead.id], force: true })).statusCode).toBe(403);
     const io = (await call('is', 'PATCH', `/api/orders/${o.id}`, { indiaStatus: 'DELIVERED', paymentStatus: 'PAID' })).json().data;
-    expect(io).toMatchObject({ indiaStatus: 'DELIVERED', tracking: 'MSKU123', leadStatus: 'DELIVERED' });
+    expect(io).toMatchObject({ indiaStatus: 'DELIVERED', tracking: 'MSKU123', leadStatus: 'COMPLETED' });
     const sh = (await call('is', 'GET', `/api/shipments/${cs1.id}`)).json().data;
     expect(sh).toMatchObject({ tracking: 'MSKU123', container: 'CNT9', eta: '2026-12-25', status: 'DELIVERED', carrier: 'Maersk' });
+    expect((await call('sa', 'GET', `/api/leads/${lead.id}/timeline`)).json().data.events.map((e: { kind: string }) => e.kind)).toContain('COMPLETED');
+    expect((await call('is', 'POST', `/api/leads/${lead.id}/reopen`, { office: 'INDIA' })).statusCode).toBe(403);
+    expect((await call('sa', 'POST', `/api/leads/${lead.id}/reopen`, { office: 'INDIA' })).json().data.status).toBe('NEW');
     expect((await call('sa', 'DELETE', `/api/records/leads/${lead.id}`)).statusCode).toBe(204);
     expect((await call('sa', 'GET', '/api/orders')).json().data).toHaveLength(0);
     expect((await call('sa', 'GET', '/api/shipments')).json().data).toHaveLength(0);

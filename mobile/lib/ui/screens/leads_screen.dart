@@ -9,7 +9,7 @@ import '../../data/models/models.dart';
 import '../../services/session.dart';
 import '../widgets/language_switch.dart';
 import '../widgets/common.dart';
-import 'dashboard_screen.dart' show pipelineStages;
+import 'dashboard_screen.dart' show pipelineStages, isOpenLead;
 import 'lead_detail_screen.dart';
 import 'lead_form_screen.dart';
 import '../widgets/delete_lead.dart';
@@ -120,8 +120,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
               future: _f,
               onRetry: _reload,
               builder: (c, all) {
-                final leads = all.where((l) => _q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
-                    .whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
+                final leads = all.where((l) => (_status != null || isOpenLead(l)) && (_q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
+                    .whereType<String>().any((v) => v.toLowerCase().contains(_q)))).toList();
                 return leads.isEmpty
                   ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noLeads))])
                   : ListView.separated(
