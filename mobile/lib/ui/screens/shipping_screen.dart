@@ -1,3 +1,4 @@
+import '../widgets/live_refresh.dart';
 import '../widgets/seg_tabs.dart';
 import 'package:flutter/material.dart';
 
@@ -21,7 +22,15 @@ class ShippingScreen extends StatefulWidget {
   State<ShippingScreen> createState() => _ShippingScreenState();
 }
 
-class _ShippingScreenState extends State<ShippingScreen> {
+class _ShippingScreenState extends State<ShippingScreen> with LiveRefresh {
+  @override
+  Set<String> get liveTypes => const {'order', 'shipment'};
+  @override
+  String? get liveLeadId => widget.leadId;
+  @override
+  void liveRefresh() => _reload();
+  @override
+  void dispose() { stopLive(); super.dispose(); }
   late Future<List<ShippingOrder>> _f;
   String _q = '';
   bool _closed = false;
@@ -29,6 +38,7 @@ class _ShippingScreenState extends State<ShippingScreen> {
   void initState() {
     super.initState();
     _f = context.read<Session>().repo.shippingOrders(leadId: widget.leadId);
+    startLive();
   }
 
   void _reload() => setState(() => _f = context.read<Session>().repo.shippingOrders(leadId: widget.leadId));

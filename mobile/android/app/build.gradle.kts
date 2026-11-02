@@ -7,6 +7,9 @@ plugins {
 
 import java.util.Properties
 
+// Push (FCM) is enabled only when the Firebase config is present; without it the app builds and uses SSE + polling.
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
 // Release signing: key.properties (storeFile, storePassword, keyAlias, keyPassword) is read from
 // $SOURCEEASY_KEY_PROPERTIES, else android/key.properties, else android/app/key.properties (all git-ignored,
 // android/key.properties may be a symlink to a secrets folder). storeFile may be absolute or relative to that file.

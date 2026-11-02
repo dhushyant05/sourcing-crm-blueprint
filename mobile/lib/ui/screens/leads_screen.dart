@@ -1,3 +1,4 @@
+import '../widgets/live_refresh.dart';
 import 'package:flutter/material.dart';
 import '../widgets/lead_workflow.dart';
 
@@ -21,7 +22,11 @@ class LeadsScreen extends StatefulWidget {
   State<LeadsScreen> createState() => _LeadsScreenState();
 }
 
-class _LeadsScreenState extends State<LeadsScreen> {
+class _LeadsScreenState extends State<LeadsScreen> with LiveRefresh {
+  @override
+  Set<String> get liveTypes => const {'order', 'shipment', 'quote'};
+  @override
+  void liveRefresh() => _reload();
   String? _office, _status;
   bool _mine = false;
   bool _unassigned = false;
@@ -34,6 +39,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     super.initState();
     _load();
     _ses = context.read<Session>()..lastChange.addListener(_onChange);
+    startLive();
   }
 
   late final Session _ses;
@@ -44,7 +50,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }
 
   @override
-  void dispose() { _ses.lastChange.removeListener(_onChange); super.dispose(); }
+  void dispose() { stopLive(); _ses.lastChange.removeListener(_onChange); super.dispose(); }
 
   Future<void> _bulkDelete() async {
     final list = _sel.entries.map((e) => (id: e.key, ref: e.value)).toList();

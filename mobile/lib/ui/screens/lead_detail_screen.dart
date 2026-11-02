@@ -1,3 +1,4 @@
+import '../widgets/live_refresh.dart';
 import 'customers_screen.dart';
 import 'package:flutter/material.dart';
 import '../widgets/delete_lead.dart';
@@ -34,7 +35,13 @@ class LeadDetailScreen extends StatefulWidget {
   State<LeadDetailScreen> createState() => _LeadDetailScreenState();
 }
 
-class _LeadDetailScreenState extends State<LeadDetailScreen> {
+class _LeadDetailScreenState extends State<LeadDetailScreen> with LiveRefresh {
+  @override
+  Set<String> get liveTypes => const {'lead', 'order', 'shipment', 'quote'};
+  @override
+  String? get liveLeadId => widget.leadId;
+  @override
+  void liveRefresh() { if (!_gone) _reload(); }
   late Future<_Detail> _f;
 
   @override
@@ -42,6 +49,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
     super.initState();
     _f = _load();
     _ses = context.read<Session>()..lastChange.addListener(_onChange);
+    startLive();
   }
 
   late final Session _ses;
@@ -57,7 +65,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
   }
 
   @override
-  void dispose() { _ses.lastChange.removeListener(_onChange); super.dispose(); }
+  void dispose() { stopLive(); _ses.lastChange.removeListener(_onChange); super.dispose(); }
 
   Future<void> _delete() async {
     final d = await _f;

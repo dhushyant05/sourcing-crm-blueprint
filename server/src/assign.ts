@@ -19,6 +19,8 @@ const asg = (r: any): Assignment => ({ leadId: r.id, raisedBy: r.raised_by, assi
 const notif = (r: any): Notification => ({ id: r.id, leadId: r.lead_id, leadRef: r.lead_ref, product: r.product, kind: r.kind, office: r.office, byName: r.by_name, detail: r.detail ?? null, createdAt: r.created_at, read: !!r.read_at });
 
 export class AssignStore {
+  /** Fan-out hook for mobile push (set by the app). */
+  onNotify?: (userIds: string[], n: Notification) => void;
   private subs = new Map<string, Set<(n: Notification, unread: number) => void>>();
   constructor(private db: Db, private bus: Bus) {
     bus.subscribe(NOTIF_CHANNEL, (m: { userId: string; n: Notification; unread: number }) => {
@@ -53,6 +55,7 @@ export class AssignStore {
         id, u, n.leadId, n.leadRef, product, n.kind, n.office, n.byName, at, n.detail ?? null);
       const ev: Notification = { id, leadId: n.leadId, leadRef: n.leadRef, product, kind: n.kind, office: n.office, byName: n.byName, detail: n.detail ?? null, createdAt: at, read: false };
       await this.bus.publish(NOTIF_CHANNEL, { userId: u, n: ev, unread: await this.unreadOf(u) }).catch(() => undefined);
+      try { this.onNotify?.([u], ev); } catch { /* push is best effort */ }
     }
   }
   /** Live listeners (SSE streams on this process) per user. */

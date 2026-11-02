@@ -21,6 +21,7 @@ import { customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
 import { RejectStore, REJECT_REASONS } from './rejections.js';
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
+import { PushStore } from './push.js';
 import { AssignStore, type Assignment, type Office, type NotifKind } from './assign.js';
 import { WorkflowStore, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 
@@ -31,6 +32,7 @@ export interface AppOptions {
   jwtSecret: string;
   jwtTtl?: string;
   webDir?: string;
+  push?: PushStore;
   backupLinks?: { label: string; url: string }[];
   logger?: boolean;
   /** Private folder for enquiry attachments (default: in-memory temp dir for tests). */
@@ -64,6 +66,13 @@ export async function buildApp(o: AppOptions) {
 
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
+  const push = o.push ?? new PushStore(o.db);
+  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed' };
+  if (push.enabled) assign.onNotify = (ids, n) => {
+    const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
+    void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
+      data: { id: n.id, leadId: n.leadId, kind: n.kind } }).catch((e) => app.log.warn(e, 'push failed'));
+  };
   const quotes = new QuoteStore(o.db);
   const customers = new CustomerStore(o.db);
   const orders = new OrderStore(o.db);
@@ -1370,6 +1379,14 @@ export async function buildApp(o: AppOptions) {
       return { data: { days, office, members: [...m.values()].sort((a, b) => b.breached - a.breached || b.total - a.total), settings: await wf.sla() } };
     });
     api.get('/api/notifications', async (req) => assign.list(req.user!.id));
+    // Mobile push device tokens (FCM). Registering a token moves it to the signed-in user.
+    api.post<{ Body: { token?: string; platform?: string } }>('/api/devices', async (req, reply) => {
+      const t = String(req.body?.token ?? '');
+      if (!t || t.length > 4096) return reply.code(400).send({ error: 'token required' });
+      await push.register(req.user!.id, t, String(req.body?.platform ?? 'android'));
+      return { ok: true, push: push.enabled };
+    });
+    api.delete<{ Body: { token?: string } | null }>('/api/devices', async (req) => { await push.unregister(req.user!.id, req.body?.token ? String(req.body.token) : undefined); return { ok: true }; });
     // Real-time stream (Server-Sent Events). Sends `notification` events with the same privacy-safe payload as the list.
     api.get('/api/notifications/stream', async (req, reply) => {
       const uid = req.user!.id, unread0 = await assign.unreadOf(uid);

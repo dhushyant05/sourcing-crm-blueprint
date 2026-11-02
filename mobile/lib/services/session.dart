@@ -1,3 +1,4 @@
+import 'push.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -203,7 +204,13 @@ class Session extends ChangeNotifier {
   /// Set by the app: clears the navigation stack so the login screen shows (also for automatic sign-outs).
   static VoidCallback? onSignedOut;
 
+  /// Mobile push: registers this device's FCM token for the signed-in user.
+  Future<void> registerDevice(String token) async { await _api?.send('POST', '/api/devices', body: {'token': token, 'platform': 'android'}); }
+
   Future<void> signOut() async {
+    final t = Push.token;
+    if (t != null && _api != null) { try { await _api!.send('DELETE', '/api/devices', body: {'token': t}).timeout(const Duration(seconds: 3)); } catch (_) {} }
+    unawaited(Push.stop());
     granted = null; userId = null; avatarUrl = null;
     _repo = null;
     _api = null;

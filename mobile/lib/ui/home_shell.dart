@@ -1,3 +1,5 @@
+import 'dart:async';
+import '../services/push.dart';
 import 'screens/customers_screen.dart';
 import 'package:flutter/material.dart';
 import 'widgets/version_label.dart';
@@ -36,6 +38,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _nc.start();
     _nc.requestPermission();
+    unawaited(Push.init(ses.registerDevice));
   }
 
   @override

@@ -19,3 +19,4 @@ mobile/android/app/*.keystore
 mobile/android/.gradle/
 *.iml
 .idea/
+mobile/android/app/google-services.json

@@ -8,6 +8,8 @@
         android:label="Source Easy"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="alerts_bell" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_notify" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

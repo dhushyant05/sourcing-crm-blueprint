@@ -61,6 +61,18 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Create the bell channel up front so FCM pushes that arrive while the app is closed also ring the bell.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) try {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm.getNotificationChannel("alerts_bell") == null) {
+                val bell = Uri.parse("android.resource://$packageName/" + R.raw.bell)
+                nm.createNotificationChannel(NotificationChannel("alerts_bell", "Source Easy alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+                    setSound(bell, android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                    enableVibration(true)
+                })
+            }
+        } catch (_: Exception) {}
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sourceeasy/notify").setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestPermission" -> {

@@ -45,7 +45,7 @@ class AsyncView<T> extends StatelessWidget {
   Widget build(BuildContext context) => FutureBuilder<T>(
         future: future,
         builder: (c, s) {
-          if (s.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (s.connectionState != ConnectionState.done) return s.hasData ? builder(c, s.data as T) : const Center(child: CircularProgressIndicator());
           if (s.hasError) {
             final offline = s.error is OfflineException;
             return Center(

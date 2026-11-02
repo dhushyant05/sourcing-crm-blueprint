@@ -1,3 +1,4 @@
+import '../widgets/live_refresh.dart';
 import '../widgets/seg_tabs.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -17,12 +18,18 @@ class OrdersScreen extends StatefulWidget {
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class _OrdersScreenState extends State<OrdersScreen> with LiveRefresh {
+  @override
+  Set<String> get liveTypes => const {'order', 'shipment', 'quote'};
+  @override
+  void liveRefresh() => _load();
+  @override
+  void dispose() { stopLive(); super.dispose(); }
   List<SeOrder>? _list;
   String? _err;
   bool _closed = false;
   @override
-  void initState() { super.initState(); if (widget.initial != null) { _list = widget.initial; } else { _load(); } }
+  void initState() { super.initState(); startLive(); if (widget.initial != null) { _list = widget.initial; } else { _load(); } }
   Future<void> _load() async {
     try { final r = await context.read<Session>().repo.orders(); if (mounted) setState(() { _list = r; _err = null; }); }
     catch (e) { if (mounted) setState(() { _list ??= []; _err = '$e'; }); }
