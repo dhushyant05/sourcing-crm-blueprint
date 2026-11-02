@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
 import { LostActions } from '../components/LostActions';
+import { DeleteLeadDialog } from '../components/DeleteLead';
 import { BigSla, PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
 import { LeadQuotes } from '../components/LeadQuotes';
 import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
@@ -19,8 +20,10 @@ export const RefTag = ({ v }: { v?: string }) => (v ? <span data-testid="lead-re
 export const matches = (l: Lead, q: string) => !q || [l.leadRef, l.name, l.clientName, l.productInterest, l.assignedChinaAgent].some((v) => v?.toLowerCase().includes(q.toLowerCase()));
 
 export function Leads({ search, openLead }: { search: string; openLead: (l: Lead) => void }) {
-  const { api, perms } = useApp();
+  const { api, perms, session } = useApp();
   const { t } = useTranslation();
+  const canDel = perms.can('leads.delete'), bulk = session?.role === 'SUPER_ADMIN';
+  const [sel, setSel] = useState<Set<string>>(new Set()), [toDel, setToDel] = useState<Lead[] | null>(null);
   const [mine, setMine] = useState(() => localStorage.leadMine === '1');
   const { data, setData, reload } = useLoad(() => api.leads(mine), [api, mine]);
   useEffect(() => { const h = () => reload(); window.addEventListener('se:leads-changed', h); return () => window.removeEventListener('se:leads-changed', h); }, [reload]);
@@ -91,13 +94,17 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
         </div>
       ) : (
         <div className="card overflow-hidden">
+          {bulk && sel.size > 0 && <div className="flex items-center gap-3 border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200" data-testid="bulk-bar">
+            {t('del.selected', { n: sel.size })}<button className="btn-outline ml-auto !text-rose-600" data-testid="bulk-delete" onClick={() => setToDel((data ?? []).filter((l) => sel.has(l.id)))}><Trash2 size={15} />{t('del.bulk', { n: sel.size })}</button>
+            <button className="text-xs" onClick={() => setSel(new Set())}>{t('del.clear')}</button></div>}
           {!data ? <TableSkeleton /> : !leads?.length ? <Empty title={t('leads.noMatch')} hint={t('leads.tryOther')} /> : (
             <div className="md:max-h-[calc(100vh-220px)] md:overflow-auto">
               <table className="rtable w-full text-sm">
-                <thead><tr><th className="th">{perms.customers ? t('common.client') : t('common.lead')}</th><th className="th">{t('common.product')}</th><th className="th text-right">{t('common.qty')}</th>{perms.clientPricing && <th className="th text-right">{t('leads.target')}</th>}<th className="th">{t('common.status')}</th><th className="th">{t('sla.col')}</th><th className="th">{t('common.chinaAgent')}</th><th className="th">{t('common.created')}</th></tr></thead>
+                <thead><tr>{bulk && <th className="th w-8"><input type="checkbox" aria-label={t('del.selectAll')} data-testid="lead-select-all" checked={leads.length > 0 && leads.every((l) => sel.has(l.id))} onChange={(e) => setSel(e.target.checked ? new Set(leads.map((l) => l.id)) : new Set())} /></th>}<th className="th">{perms.customers ? t('common.client') : t('common.lead')}</th><th className="th">{t('common.product')}</th><th className="th text-right">{t('common.qty')}</th>{perms.clientPricing && <th className="th text-right">{t('leads.target')}</th>}<th className="th">{t('common.status')}</th><th className="th">{t('sla.col')}</th><th className="th">{t('common.chinaAgent')}</th><th className="th">{t('common.created')}</th>{canDel && <th className="th w-10"><span className="sr-only">{t('common.delete')}</span></th>}</tr></thead>
                 <tbody>
                   {leads.map((l) => (
-                    <tr key={l.id} onClick={() => openLead(l)} className="cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40">
+                    <tr key={l.id} onClick={() => openLead(l)} className={clsx('cursor-pointer transition hover:bg-ink-50 dark:hover:bg-ink-800/40', sel.has(l.id) && 'bg-rose-50/60 dark:bg-rose-500/10')}>
+                      {bulk && <td className="td w-8" onClick={(e) => e.stopPropagation()}><input type="checkbox" data-testid="lead-select" aria-label={l.leadRef ?? l.id} checked={sel.has(l.id)} onChange={(e) => setSel((s) => { const n = new Set(s); if (e.target.checked) n.add(l.id); else n.delete(l.id); return n; })} /></td>}
                       <td className="td"><div className="flex items-center gap-3"><Avatar name={who(l, perms.customers)} /><span className="font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</span>{perms.customers && <RefTag v={l.leadRef} />}</div></td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
@@ -106,6 +113,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <td className="td" data-testid="sla-cell">{l.sla ? <SlaChip sla={l.sla} /> : <span className="text-ink-400">—</span>}</td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.assignedToName ?? l.assignedChinaAgent ?? '—'}</td>
                       <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
+                      {canDel && <td className="td w-10 text-right"><button className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10" data-testid="lead-row-delete" title={t('del.rowTitle')} aria-label={t('del.rowTitle')} onClick={(e) => { e.stopPropagation(); setToDel([l]); }}><Trash2 size={16} /></button></td>}
                     </tr>
                   ))}
                 </tbody>
@@ -115,6 +123,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
         </div>
       )}
       <NewLead open={creating} onClose={() => setCreating(false)} onCreated={() => setCreating(false)} />
+      {toDel && <DeleteLeadDialog leads={toDel} onClose={() => setToDel(null)} onDeleted={(ids) => { setData((d) => d && d.filter((l) => !ids.includes(l.id))); setSel((s) => new Set([...s].filter((x) => !ids.includes(x)))); }} />}
     </>
   );
 }
@@ -239,10 +248,12 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
     catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const [newReq, setNewReq] = useState(false);
-  const delLead = async () => {
-    if (!lead || !confirm(t('leads.deleteConfirm', { ref: lead.leadRef ?? '' }))) return; setBusy(true);
-    try { await api.deleteLead(lead.id); window.dispatchEvent(new Event('se:leads-changed')); onClose(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
-  };
+  const [delOpen, setDelOpen] = useState(false);
+  // Someone else deleted this lead: close the drawer (live).
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.deleted && lead && d.id === lead.id) { setMsg(t('del.goneLive')); setTimeout(onClose, 1500); } };
+    addEventListener('se:data', h); return () => removeEventListener('se:data', h);
+  }, [lead?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const owner: Office = lead?.ownerOffice ?? (lead?.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA');
   const role = session?.role ?? 'INDIA_STAFF', isAdmin = role.endsWith('ADMIN');
   const canSend = perms.customers && owner !== 'CHINA';
@@ -253,7 +264,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.rejection?.actionNeeded && <RejChip />}{lead.priority && <PriorityBadge />}<span>{lead.productInterest}</span>{lead.sla && <div className="basis-full"><BigSla sla={lead.sla} /></div>}</div>}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline text-rose-600" data-testid="lead-delete" disabled={busy} onClick={() => void delLead()}><Trash2 size={15} />{t('common.delete')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline !border-rose-300 !text-rose-600 hover:!bg-rose-50" data-testid="lead-delete" disabled={busy} onClick={() => setDelOpen(true)}><Trash2 size={15} />{t('del.button')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
         {!mode && canSend && <button className="btn-primary" data-testid="assign-china" onClick={() => openPicker('CHINA')}><Send size={15} />{t('assign.sendChina')}</button>}</>}>
@@ -315,6 +326,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
         </>
       )}
     </SlideOver>
+    {delOpen && lead && <DeleteLeadDialog leads={[lead]} onClose={() => setDelOpen(false)} onDeleted={() => { setDelOpen(false); onClose(); }} />}
     <NewLead open={newReq} prefill={lead ? { clientName: lead.clientName ?? '', productInterest: '' } : undefined} onClose={() => setNewReq(false)} onCreated={() => { setNewReq(false); setMsg(t('leads.createdMsg')); }} />
   </>);
 }

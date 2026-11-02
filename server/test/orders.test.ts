@@ -130,6 +130,11 @@ describe('customer quote, PDF and orders', () => {
     expect((await call('is', 'PATCH', `/api/records/leads/${lead.id}`, { status: 'QUOTED' })).statusCode).toBe(409);
     expect((await call('is', 'PATCH', `/api/shipments/${cs1.id}`, { status: 'OUT_FOR_DELIVERY' })).json().data.status).toBe('OUT_FOR_DELIVERY');
     expect((await call('is', 'GET', `/api/orders/${o.id}`)).json().data.indiaStatus).toBe('OUT_FOR_DELIVERY');
+    // Order in progress: delete is blocked (409) unless a super admin forces it.
+    const blk = await call('sa', 'DELETE', `/api/records/leads/${lead.id}`);
+    expect(blk.statusCode).toBe(409); expect(blk.json()).toMatchObject({ code: 'ORDER_IN_PROGRESS', activeOrders: 1 });
+    expect((await call('sa', 'POST', '/api/leads/bulk-delete', { ids: [lead.id] })).json().failed[0]).toMatchObject({ code: 'ORDER_IN_PROGRESS' });
+    expect((await call('is', 'POST', '/api/leads/bulk-delete', { ids: [lead.id], force: true })).statusCode).toBe(403);
     const io = (await call('is', 'PATCH', `/api/orders/${o.id}`, { indiaStatus: 'DELIVERED', paymentStatus: 'PAID' })).json().data;
     expect(io).toMatchObject({ indiaStatus: 'DELIVERED', tracking: 'MSKU123', leadStatus: 'DELIVERED' });
     const sh = (await call('is', 'GET', `/api/shipments/${cs1.id}`)).json().data;
@@ -137,6 +142,26 @@ describe('customer quote, PDF and orders', () => {
     expect((await call('sa', 'DELETE', `/api/records/leads/${lead.id}`)).statusCode).toBe(204);
     expect((await call('sa', 'GET', '/api/orders')).json().data).toHaveLength(0);
     expect((await call('sa', 'GET', '/api/shipments')).json().data).toHaveLength(0);
+    expect((await call('sa', 'GET', '/api/leads/delete-audit')).json().data[0]).toMatchObject({ lead_id: lead.id, had_orders: 1, forced: false });
+  });
+  it('super admin force-deletes an in-progress lead and bulk-deletes leads, with audit', async () => {
+    const { call, ids } = await setup();
+    const a = (await call('is', 'POST', '/api/records/leads', { name: 'A', clientName: 'C', productInterest: 'P' })).json().data;
+    const b = (await call('is', 'POST', '/api/records/leads', { name: 'B', clientName: 'C', productInterest: 'P' })).json().data;
+    await call('is', 'POST', `/api/leads/${a.id}/assign`, { office: 'CHINA', assignedTo: ids.cs });
+    const q = (await call('cs', 'POST', `/api/leads/${a.id}/quotes`, { product: 'x', unitPrice: 1, currency: 'USD' })).json().data;
+    await call('is', 'PUT', `/api/quotes/${q.id}/customer`, { qty: 10, unitPrice: 200 });
+    await call('is', 'POST', `/api/quotes/${q.id}/status`, { status: 'SENT' });
+    await call('is', 'POST', `/api/quotes/${q.id}/status`, { status: 'ACCEPTED' });
+    expect((await call('is', 'POST', `/api/quotes/${q.id}/order`, {})).statusCode).toBeLessThan(300);
+    expect((await call('sa', 'DELETE', `/api/records/leads/${a.id}`)).statusCode).toBe(409);
+    const r = (await call('sa', 'POST', '/api/leads/bulk-delete', { ids: [a.id, b.id], force: true })).json();
+    expect(r.deleted.sort()).toEqual([a.id, b.id].sort()); expect(r.failed).toHaveLength(0);
+    expect((await call('sa', 'GET', `/api/records/leads/${a.id}`)).statusCode).toBe(404);
+    expect((await call('sa', 'GET', '/api/orders')).json().data).toHaveLength(0);
+    const au = (await call('sa', 'GET', '/api/leads/delete-audit')).json().data;
+    expect(au).toHaveLength(2); expect(au.find((x: any) => x.lead_id === a.id)).toMatchObject({ forced: true });
+    expect((await call('is', 'GET', '/api/leads/delete-audit')).statusCode).toBe(403);
   });
   it('rejection returns the lead to India; revise loops to China; close makes it LOST', async () => {
     const { call, ids } = await setup();

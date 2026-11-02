@@ -847,5 +847,24 @@
       "staff.manage": "管理员工（办公室管理员）",
       "settings.sla": "修改 SLA 设置"
     }
+  },
+  "del": {
+    "button": "删除线索",
+    "rowTitle": "删除此线索",
+    "titleOne": "删除线索 {{ref}}？",
+    "titleMany": "删除 {{n}} 条线索？",
+    "body": "将永久删除该线索及其报价、订单、发货、照片/文件和通知。此操作会记录在审计日志中，且无法撤销。",
+    "typeRef": "输入 {{ref}} 以确认",
+    "typeCount": "输入 {{n}}（线索数量）以确认",
+    "confirm": "永久删除",
+    "inProgress": "{{refs}}：仍有 {{n}} 个订单进行中。",
+    "forceHint": "删除后，所有人的相关订单和物流跟踪也会一并删除。",
+    "onlySa": "只有超级管理员可以删除有进行中订单的线索。",
+    "force": "仍然删除",
+    "selectAll": "全选",
+    "selected": "已选 {{n}} 条",
+    "bulk": "删除 {{n}} 条",
+    "clear": "清除",
+    "goneLive": "此线索已被其他用户删除。"
   }
 }

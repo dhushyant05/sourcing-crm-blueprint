@@ -411,6 +411,7 @@ export async function buildApp(o: AppOptions) {
       'GET /api/sla/report': () => ['reports.view'],
       'PUT /api/settings/sla': () => ['settings.sla'],
       'DELETE /api/records/leads/:id': () => ['leads.delete'],
+      'POST /api/leads/bulk-delete': () => ['leads.delete'],
       'GET /api/export/:kind': () => ['data.export'],
     };
     api.addHook('preHandler', async (req) => {
@@ -436,7 +437,7 @@ export async function buildApp(o: AppOptions) {
       else if ((m = path.match(/^\/api\/shipments\/([^/]+)/))) { type = 'shipment'; id = m[1]; leadId = (await ships.get(m[1]))?.leadId ?? null; }
       else if (path.startsWith('/api/suppliers')) type = 'supplier';
       else return;
-      await liveData({ type, id, leadId, at: Date.now() });
+      await liveData({ type, id, leadId, ...(req.method === 'DELETE' && type === 'lead' ? { deleted: true } : {}), at: Date.now() });
     });
     api.get('/api/me', async (req) => me(req.user!));
     // Per-user UI language (devices also keep their own choice).
@@ -882,14 +883,41 @@ export async function buildApp(o: AppOptions) {
       const { sh: n } = await applyOrder(u, ord, lead, op, extra);
       return { data: await viewShip(u, n, lead) };
     });
-    // Super admin only: permanently remove a lead with its quotes, files, assignment and notifications (e.g. test data).
-    api.delete<{ Params: { id: string } }>('/api/records/leads/:id', async (req, reply) => {
-      const id = await attLead(req);
+    // Permanently remove a lead with its quotes, orders, shipments, files, assignment and notifications (`leads.delete`).
+    // An order still in progress blocks the delete (409 ORDER_IN_PROGRESS); only a super admin may override with ?force=1. Every delete is audited.
+    const activeOrders = async (id: string) => (await orders.byLead(id)).filter((x) => x.indiaStatus !== 'DELIVERED');
+    const purgeLead = async (u: { id: string; name?: string | null; role: string }, id: string, force: boolean) => {
+      const lead = await leadDb.get(id); if (!lead) return { id, status: 404 as const, error: 'Not found' };
+      const all = await orders.byLead(id), act = await activeOrders(id);
+      if (act.length && !(force && u.role === 'SUPER_ADMIN'))
+        return { id, status: 409 as const, code: 'ORDER_IN_PROGRESS', leadRef: (lead.leadRef as string) ?? null, activeOrders: act.length,
+          error: `Lead ${(lead.leadRef as string) ?? id} has ${act.length} order(s) in progress` + (u.role === 'SUPER_ADMIN' ? ' — confirm to delete anyway' : ' — only a super admin can delete it') };
       for (const q of await quotes.list(id)) { uploads.removeAll(qKey(q.id)); await mediaSync(qKey(q.id), []); }
       await quotes.removeLead(id); await rejects.forgetLead(id); await ships.removeLead(id); await orders.removeLead(id); uploads.removeAll(id); await o.db.run('DELETE FROM lead_media WHERE owner_key = ?', id);
       await assign.forgetLead(id); await wf.forgetLead(id);
       await leadDb.remove(id);
+      await o.db.run('INSERT INTO lead_delete_audit (lead_id, lead_ref, product, client_name, had_orders, active_orders, forced, deleted_by, deleted_by_name) VALUES (?,?,?,?,?,?,?,?,?)',
+        id, (lead.leadRef as string) ?? null, (lead.productInterest as string) ?? null, (lead.clientName as string) ?? null, all.length, act.length, act.length > 0, u.id, u.name ?? null);
+      return { id, status: 204 as const, leadRef: (lead.leadRef as string) ?? null };
+    };
+    api.delete<{ Params: { id: string }; Querystring: { force?: string } }>('/api/records/leads/:id', async (req, reply) => {
+      const id = await attLead(req);
+      const r = await purgeLead(req.user! as any, id, req.query?.force === '1' || req.query?.force === 'true');
+      if (r.status !== 204) return reply.code(r.status).send(r);
       return reply.code(204).send();
+    });
+    api.post<{ Body: { ids?: string[]; force?: boolean } }>('/api/leads/bulk-delete', async (req, reply) => {
+      const u = req.user!; if (u.role !== 'SUPER_ADMIN') return reply.code(403).send({ error: 'Super admin only' });
+      const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body!.ids.map(String))].slice(0, 500) : [];
+      if (!ids.length) return reply.code(400).send({ error: 'ids required' });
+      const results = []; for (const id of ids) results.push(await purgeLead(u as any, id, req.body?.force === true));
+      const deleted = results.filter((r) => r.status === 204).map((r) => r.id);
+      for (const id of deleted) await liveData({ type: 'lead', id, leadId: id, deleted: true, at: Date.now() });
+      return { deleted, failed: results.filter((r) => r.status !== 204) };
+    });
+    api.get<{ Querystring: { limit?: string } }>('/api/leads/delete-audit', async (req, reply) => {
+      if (req.user!.role !== 'SUPER_ADMIN') return reply.code(403).send({ error: 'Super admin only' });
+      return { data: await o.db.all('SELECT * FROM lead_delete_audit ORDER BY deleted_at DESC, id DESC LIMIT ?', Math.min(500, Number(req.query?.limit) || 100)) };
     });
     // ---- Supplier directory (China + super admin). India never sees supplier identity. ----
     /** Per-supplier activity: quotes given, how many were accepted, orders placed, last quote date. */

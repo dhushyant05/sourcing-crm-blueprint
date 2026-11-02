@@ -847,5 +847,24 @@
       "staff.manage": "Manage staff (office admin)",
       "settings.sla": "Change SLA settings"
     }
+  },
+  "del": {
+    "button": "Delete lead",
+    "rowTitle": "Delete this lead",
+    "titleOne": "Delete lead {{ref}}?",
+    "titleMany": "Delete {{n}} leads?",
+    "body": "This permanently removes the lead with its quotes, orders, shipments, photos/files and notifications. It is recorded in the audit log and cannot be undone.",
+    "typeRef": "Type {{ref}} to confirm",
+    "typeCount": "Type {{n}} (the number of leads) to confirm",
+    "confirm": "Delete permanently",
+    "inProgress": "{{refs}}: {{n}} order(s) still in progress.",
+    "forceHint": "Deleting will also remove the order(s) and shipment tracking for everyone.",
+    "onlySa": "Only a super admin can delete a lead with an order in progress.",
+    "force": "Delete anyway",
+    "selectAll": "Select all",
+    "selected": "{{n}} selected",
+    "bulk": "Delete {{n}}",
+    "clear": "Clear",
+    "goneLive": "This lead was deleted by another user."
   }
 }

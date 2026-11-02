@@ -7,7 +7,8 @@ export interface NewLead { clientName: string; productInterest: string; quantity
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
-  deleteLead(id: string): Promise<void>;
+  deleteLead(id: string, force?: boolean): Promise<void>;
+  bulkDeleteLeads(ids: string[], force?: boolean): Promise<BulkDelete>;
   shipments(): Promise<Shipment[]>;
   updateShipment?(id: string, b: Record<string, unknown>): Promise<Shipment>;
   /** China side + super admin: supplier directory with activity stats (search on the server). */
@@ -89,7 +90,8 @@ type Raw = Record<string, any>;
 const amount = (c?: { amountMicros?: number }) => (c?.amountMicros != null ? c.amountMicros / 1e6 : undefined);
 const micros = (v: number, c: Currency) => ({ amountMicros: Math.round(v * 1e6), currencyCode: c });
 
-export class HttpError extends Error { status: number; constructor(m: string, s: number) { super(m); this.status = s; } }
+export type BulkDelete = { deleted: string[]; failed: { id: string; code?: string; leadRef?: string | null; error?: string; activeOrders?: number }[] };
+export class HttpError extends Error { status: number; body: Record<string, any>; constructor(m: string, s: number, b: Record<string, any> = {}) { super(m); this.status = s; this.body = b; } }
 
 /** Sign in against the Source Easy server (same origin). Returns a JWT; no Twenty key ever reaches the browser. */
 export async function login(email: string, password: string): Promise<{ token: string; user: Me }> {
@@ -113,7 +115,7 @@ export class ServerApi implements Api {
     });
     const j = await res.json().catch(() => ({}));
     if (res.status === 401) this.onAuthError();
-    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j);
     return j.data as T;
   }
 
@@ -132,7 +134,7 @@ export class ServerApi implements Api {
     const res = await fetch(userId ? `/api/users/${encodeURIComponent(userId)}/avatar` : '/api/me/avatar', { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });
     const j = await res.json().catch(() => ({}));
     if (res.status === 401) this.onAuthError();
-    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j);
     return (userId ? j.data?.avatarUrl : j.avatarUrl) ?? null;
   }
   async removeAvatar(userId?: string) {
@@ -142,7 +144,7 @@ export class ServerApi implements Api {
   async changePassword(current: string, next: string) {
     const res = await fetch('/api/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: current, newPassword: next }), headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' } });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status);
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j);
     return j.token as string;
   }
   staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
@@ -186,7 +188,12 @@ export class ServerApi implements Api {
     if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
     return URL.createObjectURL(await res.blob());
   }
-  async deleteLead(id: string) { await this.req('DELETE', `/records/leads/${encodeURIComponent(id)}`); }
+  async deleteLead(id: string, force = false) { await this.req('DELETE', `/records/leads/${encodeURIComponent(id)}${force ? '?force=1' : ''}`); }
+  async bulkDeleteLeads(ids: string[], force = false): Promise<BulkDelete> {
+    const res = await fetch('/api/leads/bulk-delete', { method: 'POST', body: JSON.stringify({ ids, force }), headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' } });
+    const j = await res.json().catch(() => ({})); if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j); return j as BulkDelete;
+  }
   async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); } // server sets assignedOffice=CHINA for China stages
   shipments() { return this.req<Shipment[]>('GET', '/shipments'); }
   updateShipment(id: string, b: Record<string, unknown>) { return this.req<Shipment>('PATCH', `/shipments/${id}`, b); }
@@ -324,6 +331,7 @@ export class DemoApi implements Api {
   async quoteSuppliers() { return structuredClone(this.ds); }
   async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
   async deleteLead(id: string) { demo.leads = demo.leads.filter((x) => x.id !== id); }
+  async bulkDeleteLeads(ids: string[]): Promise<BulkDelete> { demo.leads = demo.leads.filter((x) => !ids.includes(x.id)); return { deleted: ids, failed: [] }; }
   async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
   async shipments(): Promise<Shipment[]> { return []; }
   suppliers(q?: string) { return this.wait(demo.suppliers.filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()))); }
