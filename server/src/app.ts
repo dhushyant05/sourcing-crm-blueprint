@@ -739,8 +739,8 @@ export async function buildApp(o: AppOptions) {
       const s = sides(u.role), q = await quotes.get(ord.quoteId), shp = await ships.byOrder(ord.id);
       const base = { id: ord.id, leadId: ord.leadId, quoteId: ord.quoteId, leadRef: ord.leadRef, product: ord.product, qty: ord.qty, expectedShip: ord.expectedShip,
         production: ord.production, tracking: ord.tracking, container: ord.container, etd: ord.etd, eta: ord.eta, indiaStatus: ord.indiaStatus,
-        createdAt: ord.createdAt, updatedAt: ord.updatedAt, leadStatus: lead?.status ?? null, shipmentId: shp?.id ?? null, shipmentRef: shp?.ref ?? null };
-      const india = { agreedPrice: ord.agreedPrice, advance: ord.advance, paymentStatus: ord.paymentStatus, total: ord.qty * ord.agreedPrice,
+        createdAt: ord.createdAt, updatedAt: ord.updatedAt, leadStatus: lead?.status ?? null, shipmentId: shp?.id ?? null, shipmentRef: shp?.ref ?? null, closed: !!ord.closedAt, closedAt: ord.closedAt };
+      const india = { agreedPrice: ord.agreedPrice, advance: ord.advance, paymentStatus: ord.paymentStatus, paymentPending: ord.paymentStatus !== 'PAID', total: ord.qty * ord.agreedPrice,
         customer: lead?.clientName ?? null, assignedToName: (lead as any)?.assignedToName ?? null };
       const china = { supplier: q?.supplierId ? await quotes.supplier(q.supplierId) : null, unitPrice: q?.unitPrice ?? null, currency: q?.currency ?? null,
         shipCost: q?.shipCost ?? null, shipCurrency: q?.shipCurrency ?? null };
@@ -787,8 +787,10 @@ export async function buildApp(o: AppOptions) {
     const completeIfDelivered = async (leadId: string, lead: Rec | null, u: User | null) => {
       const l = lead ?? (await leadDb.get(leadId)); if (!l || ['COMPLETED', 'LOST', 'CLOSED'].includes(String(l.status))) return false;
       const os = await orders.byLead(leadId); if (!os.length || os.some((x) => x.indiaStatus !== 'DELIVERED')) return false;
-      await setLeadStatus(leadId, l, 'COMPLETED'); await stopClock(leadId);
-      if (!(await wf.events(leadId)).some((e) => e.kind === 'COMPLETED')) await ev(leadId, 'COMPLETED', u, { from: 'DELIVERED' });
+      await setLeadStatus(leadId, l, 'COMPLETED'); await stopClock(leadId); await orders.setClosed(leadId, true);
+      const unpaid = os.filter((x) => x.paymentStatus !== 'PAID').length;
+      if (!(await wf.events(leadId)).some((e) => e.kind === 'COMPLETED')) await ev(leadId, 'COMPLETED', u, { from: 'DELIVERED', orders: os.length, unpaid });
+      for (const x of os) await liveData({ type: 'order', id: x.id, leadId, closed: true, at: Date.now() });
       const supers = o.users.list().filter((x) => x.active && x.role === 'SUPER_ADMIN').map((x) => x.id);
       const rs = [...new Set([...(await indiaPeople(leadId)), ...supers].filter((x) => x && x !== u?.id && !!o.users.byId(x)?.active))];
       if (rs.length) await assign.notify(rs, { leadId, leadRef: (l.leadRef as string) ?? null, product: (l.productInterest as string) ?? null, kind: 'LEAD_COMPLETED', office: 'INDIA', byName: u?.name ?? null, detail: 'DELIVERED' });
@@ -809,6 +811,7 @@ export async function buildApp(o: AppOptions) {
     cbf.unref?.(); app.addHook('onClose', async () => clearTimeout(cbf));
     const applyOrder = async (u: User, ord: Order, lead: Rec | null, b: Rec, shipExtra: Rec = {}) => {
       const has = (k: string) => k in b, val = (k: string) => (has(k) ? (b[k] == null ? '' : String(b[k]).trim()) : ((ord as any)[k] ?? ''));
+      if (ord.closedAt) throw bad('This order is delivered and closed; the super admin can reopen it', 409);
       const shipped = ord.production === 'SHIPPED';
       if (has('production')) {
         const p = String(b.production ?? '').toUpperCase();
@@ -870,8 +873,9 @@ export async function buildApp(o: AppOptions) {
     const viewShip = async (u: User, sh: Shipment, lead: Rec | null) => {
       const s = sides(u.role), ord = await orders.get(sh.orderId), q = ord ? await quotes.get(ord.quoteId) : null;
       const base = { ...sh, leadRef: (lead?.leadRef as string) ?? ord?.leadRef ?? null, product: ord?.product ?? null, qty: ord?.qty ?? null, leadStatus: lead?.status ?? null,
-        production: ord?.production ?? null, expectedShip: ord?.expectedShip ?? null };
-      const india = { customer: (lead?.clientName as string) ?? null, deliveryCity: (lead?.deliveryCity as string) ?? null };
+        production: ord?.production ?? null, expectedShip: ord?.expectedShip ?? null, closed: !!ord?.closedAt, closedAt: ord?.closedAt ?? null };
+      const payPending = ord ? ord.paymentStatus !== 'PAID' : false;
+      const india = { paymentPending: payPending, customer: (lead?.clientName as string) ?? null, deliveryCity: (lead?.deliveryCity as string) ?? null };
       const china = { supplier: q?.supplierId ? (await quotes.supplier(q.supplierId))?.name ?? null : null };
       if (s.superAdmin) return { ...base, ...india, ...china };
       if (!s.india) delete (base as any).customsNote;
@@ -890,6 +894,7 @@ export async function buildApp(o: AppOptions) {
     api.get<{ Params: { id: string } }>('/api/shipments/:id', async (req) => { const { sh, lead } = await shipOf(req.user!, req.params.id); return { data: await viewShip(req.user!, sh, lead) }; });
     api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipments/:id', async (req) => {
       const u = req.user!, s = sides(u.role), b = { ...(req.body ?? {}) }, { sh, lead } = await shipOf(u, req.params.id);
+      if ((await orders.get(sh.orderId))?.closedAt) throw bad('This shipment is delivered and closed; the super admin can reopen it', 409);
       for (const k of Object.keys(b)) {
         if (k === 'status') {
           const st = String(b.status ?? '').toUpperCase();
@@ -1155,8 +1160,14 @@ export async function buildApp(o: AppOptions) {
       if (!meta.closedAt && lead.status !== 'LOST' && lead.status !== 'COMPLETED') throw bad('Only lost, completed or closed leads can be reopened', 409);
       const to: Office = String(b.office ?? 'INDIA').toUpperCase() === 'CHINA' ? 'CHINA' : 'INDIA';
       if (meta.closedAt) await wf.reopenLead(id);
-      await leadDb.update(id, { status: to === 'CHINA' ? 'ASSIGNED' : 'NEW', assignedOffice: to });
-      await ev(id, 'REOPENED', u, { office: to });
+      const wasDone = lead.status === 'COMPLETED', shippedAny = wasDone && (await orders.byLead(id)).some((x) => x.production === 'SHIPPED');
+      // A completed lead with shipped orders reopens back into Shipping (its orders/shipments reopen too); others restart.
+      const ns = shippedAny ? 'SHIPPING' : to === 'CHINA' ? 'ASSIGNED' : 'NEW';
+      if (wasDone) await orders.setClosed(id, false);
+      await leadDb.update(id, shippedAny ? { status: ns } : { status: ns, assignedOffice: to });
+      await ev(id, 'REOPENED', u, { office: to, orders: wasDone || undefined });
+      if (wasDone) { for (const x of await orders.byLead(id)) await liveData({ type: 'order', id: x.id, leadId: id, closed: false, at: Date.now() }); await liveData({ type: 'lead', id, leadId: id, at: Date.now() }); }
+      if (shippedAny) return { data: await leadOut(u, id) };
       await handoff({ ...lead, status: to === 'CHINA' ? 'ASSIGNED' : 'NEW' }, u, to, b.assignedTo === undefined ? undefined : (b.assignedTo as string | null));
       return { data: await leadOut(u, id) };
     });

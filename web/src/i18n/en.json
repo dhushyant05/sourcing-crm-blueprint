@@ -794,7 +794,7 @@
       "CQ_REJECTED": "Customer rejected quote #{{n}}",
       "REVISE_REQUESTED": "Revised quote requested from China",
       "LEAD_CLOSED": "Closed as Lost",
-      "COMPLETED": "Delivered — closed as Completed",
+      "COMPLETED": "Delivered — lead, order & shipment closed as Completed",
       "ORDER_CREATED": "Order created",
       "ORDER_UPDATE": "Order updated",
       "SHIPPED": "Shipped by China",
@@ -887,5 +887,14 @@
     "bulk": "Delete {{n}}",
     "clear": "Clear",
     "goneLive": "This lead was deleted by another user."
+  },
+  "closedOrder": {
+    "locked": "Delivered — order and shipment closed (read-only).",
+    "reopen": "Reopen order",
+    "reopenConfirm": "Reopen this order, its shipment and the lead?",
+    "payPending": "Payment pending",
+    "payHint": "Payment is not fully received yet — follow up with the customer.",
+    "active": "Active",
+    "closed": "Closed / Completed"
   }
 }

@@ -141,7 +141,13 @@ describe('customer quote, PDF and orders', () => {
     expect(sh).toMatchObject({ tracking: 'MSKU123', container: 'CNT9', eta: '2026-12-25', status: 'DELIVERED', carrier: 'Maersk' });
     expect((await call('sa', 'GET', `/api/leads/${lead.id}/timeline`)).json().data.events.map((e: { kind: string }) => e.kind)).toContain('COMPLETED');
     expect((await call('is', 'POST', `/api/leads/${lead.id}/reopen`, { office: 'INDIA' })).statusCode).toBe(403);
-    expect((await call('sa', 'POST', `/api/leads/${lead.id}/reopen`, { office: 'INDIA' })).json().data.status).toBe('NEW');
+    expect((await call('is', 'GET', `/api/orders/${o.id}`)).json().data).toMatchObject({ closed: true, paymentPending: false });
+    expect((await call('is', 'GET', `/api/shipments/${cs1.id}`)).json().data.closed).toBe(true);
+    expect((await call('is', 'PATCH', `/api/orders/${o.id}`, { advance: 1 })).statusCode).toBe(409);
+    expect((await call('is', 'PATCH', `/api/shipments/${cs1.id}`, { status: 'CUSTOMS' })).statusCode).toBe(409);
+    expect((await call('sa', 'POST', `/api/leads/${lead.id}/reopen`, { office: 'INDIA' })).json().data.status).toBe('SHIPPING');
+    expect((await call('is', 'GET', `/api/orders/${o.id}`)).json().data.closed).toBe(false);
+    expect((await call('is', 'GET', `/api/shipments/${cs1.id}`)).json().data.closed).toBe(false);
     expect((await call('sa', 'DELETE', `/api/records/leads/${lead.id}`)).statusCode).toBe(204);
     expect((await call('sa', 'GET', '/api/orders')).json().data).toHaveLength(0);
     expect((await call('sa', 'GET', '/api/shipments')).json().data).toHaveLength(0);

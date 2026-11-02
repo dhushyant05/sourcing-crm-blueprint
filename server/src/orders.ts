@@ -13,7 +13,7 @@ export const INDIA_SHIP = ['NONE', 'IN_TRANSIT', 'CUSTOMS', 'OUT_FOR_DELIVERY', 
 export interface Order {
   id: string; leadId: string; quoteId: string; leadRef: string | null; product: string; qty: number; agreedPrice: number; advance: number;
   paymentStatus: string; expectedShip: string | null; production: string; tracking: string | null; container: string | null;
-  etd: string | null; eta: string | null; indiaStatus: string; createdBy: string; createdAt: string; updatedAt: string;
+  etd: string | null; eta: string | null; indiaStatus: string; createdBy: string; createdAt: string; updatedAt: string; closedAt: string | null;
 }
 const s = (v: unknown, max = 120) => { const t = v == null ? '' : String(v).trim(); return t ? t.slice(0, max) : null; };
 const n = (v: unknown, what: string, req = false) => {
@@ -30,7 +30,7 @@ export class OrderStore {
   constructor(private db: Db) {}
   private o = (r: any): Order => ({ id: r.id, leadId: r.lead_id, quoteId: r.quote_id, leadRef: r.lead_ref, product: r.product, qty: r.qty, agreedPrice: r.agreed_price,
     advance: r.advance, paymentStatus: r.payment_status, expectedShip: r.expected_ship, production: r.production, tracking: r.tracking, container: r.container,
-    etd: r.etd, eta: r.eta, indiaStatus: r.india_status, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at });
+    etd: r.etd, eta: r.eta, indiaStatus: r.india_status, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at, closedAt: r.closed_at ?? null });
   async all(): Promise<Order[]> { return ((await this.db.all('SELECT * FROM orders ORDER BY created_at DESC, id')) as any[]).map(this.o); }
   async byLead(leadId: string): Promise<Order[]> { return (await this.db.all('SELECT * FROM orders WHERE lead_id = ? ORDER BY created_at DESC, id', leadId)).map(this.o); }
   async get(id: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE id = ?', id)); return r ? this.o(r) : null; }
@@ -53,6 +53,11 @@ export class OrderStore {
     };
     (await this.db.run(`UPDATE orders SET qty=?, agreed_price=?, advance=?, payment_status=?, expected_ship=?, india_status=?, production=?, tracking=?, container=?, etd=?, eta=?, updated_at=? WHERE id=?`, v.qty, v.agreedPrice, v.advance, v.paymentStatus, v.expectedShip, v.indiaStatus, v.production, v.tracking, v.container, v.etd, v.eta, new Date().toISOString(), id));
     return (await this.get(id))!;
+  }
+  /** Delivered + lead completed = closed (read-only); reopening the lead clears it. */
+  async setClosed(leadId: string, closed: boolean) {
+    if (closed) (await this.db.run("UPDATE orders SET closed_at = ? WHERE lead_id = ? AND india_status = 'DELIVERED' AND closed_at IS NULL", new Date().toISOString(), leadId));
+    else (await this.db.run('UPDATE orders SET closed_at = NULL WHERE lead_id = ?', leadId));
   }
   async removeLead(leadId: string) { (await this.db.run('DELETE FROM orders WHERE lead_id = ?', leadId)); }
   async removeQuote(qid: string) { (await this.db.run('DELETE FROM orders WHERE quote_id = ?', qid)); }

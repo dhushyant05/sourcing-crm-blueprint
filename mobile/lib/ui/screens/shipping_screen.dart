@@ -23,6 +23,7 @@ class ShippingScreen extends StatefulWidget {
 class _ShippingScreenState extends State<ShippingScreen> {
   late Future<List<ShippingOrder>> _f;
   String _q = '';
+  bool _closed = false;
   @override
   void initState() {
     super.initState();
@@ -41,7 +42,13 @@ class _ShippingScreenState extends State<ShippingScreen> {
           future: _f,
           onRetry: _reload,
           builder: (c, all) {
-            final list = all.where((o) => _q.isEmpty || [o.leadRef, o.trackingNumber, o.name].whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
+            final zh = Localizations.localeOf(context).languageCode == 'zh';
+            bool done(ShippingOrder o) => o.shipmentStatus == 'DELIVERED';
+            final nC = all.where(done).length;
+            final tabs = Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: SegmentedButton<bool>(key: const Key('ship-tabs'),
+              segments: [ButtonSegment(value: false, label: Text('${zh ? '进行中' : 'Active'} (${all.length - nC})')), ButtonSegment(value: true, label: Text('${zh ? '已完成 / 关闭' : 'Closed / Completed'} ($nC)'))],
+              selected: {_closed}, onSelectionChanged: (v) => setState(() => _closed = v.first)));
+            final list = all.where((o) => done(o) == _closed).where((o) => _q.isEmpty || [o.leadRef, o.trackingNumber, o.name].whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
             final search = Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: TextField(
@@ -52,7 +59,7 @@ class _ShippingScreenState extends State<ShippingScreen> {
             return all.isEmpty
               ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noShipmentsYet))])
               : ListView(
-                  children: [search, ...list
+                  children: [tabs, search, ...list
                       .map((o) => Card(
                             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             child: ListTile(

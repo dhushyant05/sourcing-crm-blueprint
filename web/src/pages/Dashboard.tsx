@@ -45,8 +45,8 @@ export function Dashboard({ openLead }: { openLead: (l: Lead) => void }) {
   // Per currency — amounts in different currencies are never added together.
   // Quoted pipeline = customer quotes (INR, incl. GST) that are sent or accepted.
   const pipeline = totalsByCurrency((quotes ?? []).filter((q) => q.cqTotals && (q.status === 'SENT' || q.status === 'ACCEPTED')), (q) => ['INR', q.cqTotals?.total]);
-  const transitIds = new Set((ships ?? []).filter((s) => s.status !== 'DELIVERED').map((s) => s.leadId));
-  const transit = ships?.filter((s) => s.status !== 'DELIVERED').length ?? 0;
+  const transitIds = new Set((ships ?? []).filter((s) => s.status !== 'DELIVERED' && !s.closed).map((s) => s.leadId));
+  const transit = ships?.filter((s) => s.status !== 'DELIVERED' && !s.closed).length ?? 0;
   const quotedIds = new Set((quotes ?? []).filter((q) => q.status === 'SENT' || q.status === 'ACCEPTED').map((q) => q.leadId));
   const [list, setList] = useState<{ label: string; leads: Lead[] } | null>(null);
   const L = leads ?? [];

@@ -40,7 +40,7 @@ export interface Quotation {
 export interface Shipment {
   id: string; orderId: string; leadId: string; ref: string; leadRef: string | null; product: string | null; qty: number | null; leadStatus: string | null;
   mode: string | null; incoterm: string | null; port: string | null; transit: string | null; carrier: string | null; tracking: string | null; container: string | null;
-  etd: string | null; eta: string | null; status: string; customsNote?: string | null; deliveredAt: string | null; production: string | null; expectedShip: string | null;
+  etd: string | null; eta: string | null; status: string; customsNote?: string | null; deliveredAt: string | null; production: string | null; expectedShip: string | null; closed?: boolean; closedAt?: string | null; paymentPending?: boolean;
   customer?: string | null; deliveryCity?: string | null; supplier?: string | null; createdAt: string; updatedAt: string;
 }
 /** China-side supplier directory row (PostgreSQL `suppliers`) with activity stats. Never sent to India. */
@@ -79,7 +79,7 @@ export interface CustomerQuote {
   otherCharges: number; otherLabel: string | null; validity: string | null; terms: string | null;
 }
 export interface Order {
-  shipmentId?: string | null; shipmentRef?: string | null;
+  shipmentId?: string | null; shipmentRef?: string | null; closed?: boolean; closedAt?: string | null; paymentPending?: boolean;
   id: string; leadId: string; quoteId: string; leadRef: string | null; product: string; qty: number; expectedShip: string | null;
   production: string; tracking: string | null; container: string | null; etd: string | null; eta: string | null; indiaStatus: string;
   createdAt: string; updatedAt: string; leadStatus: string | null;

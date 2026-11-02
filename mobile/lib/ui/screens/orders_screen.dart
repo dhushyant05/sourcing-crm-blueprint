@@ -19,6 +19,7 @@ class OrdersScreen extends StatefulWidget {
 class _OrdersScreenState extends State<OrdersScreen> {
   List<SeOrder>? _list;
   String? _err;
+  bool _closed = false;
   @override
   void initState() { super.initState(); if (widget.initial != null) { _list = widget.initial; } else { _load(); } }
   Future<void> _load() async {
@@ -28,10 +29,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l = context.l10n, list = _list;
+    final l = context.l10n, all = _list, list = all?.where((o) => (o.j['closed'] == true) == _closed).toList();
+    final zh = Localizations.localeOf(context).languageCode == 'zh';
+    final nC = all?.where((o) => o.j['closed'] == true).length ?? 0, nO = (all?.length ?? 0) - nC;
     return Scaffold(
       appBar: AppBar(title: Text(l.orTitle)),
       body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: [
+        SegmentedButton<bool>(key: const Key('orders-tabs'), segments: [ButtonSegment(value: false, label: Text('${zh ? '进行中' : 'Active'} ($nO)')), ButtonSegment(value: true, label: Text('${zh ? '已完成 / 关闭' : 'Closed / Completed'} ($nC)'))],
+          selected: {_closed}, onSelectionChanged: (v) => setState(() => _closed = v.first)),
+        const SizedBox(height: 8),
         if (_err != null) Text(_err!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
         if (list == null) const LinearProgressIndicator()
         else if (list.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(l.orNone)))
@@ -82,7 +88,7 @@ class _OrderCardState extends State<_OrderCard> {
   Widget build(BuildContext context) {
     final l = context.l10n, t = Theme.of(context), role = context.watch<Session>().role.name;
     final sa = role == 'superAdmin', china = role.startsWith('china') || sa, india = role.startsWith('india') || sa, o = widget.o;
-    final perms = context.watch<Session>().perms, shipped = o.production == 'SHIPPED';
+    final perms = context.watch<Session>().perms, shipped = o.production == 'SHIPPED', closed = o.j['closed'] == true;
     const prodOpts = ['NEW', 'DEPOSIT_PAID', 'IN_PRODUCTION', 'READY'], indOpts = ['IN_TRANSIT', 'CUSTOMS', 'OUT_FOR_DELIVERY', 'DELIVERED'];
     final canShip = (c['tracking']!.text.trim().isNotEmpty || c['container']!.text.trim().isNotEmpty) && c['etd']!.text.trim().isNotEmpty;
     String? nn(String k) => c[k]!.text.trim().isEmpty ? null : c[k]!.text.trim();
@@ -95,7 +101,8 @@ class _OrderCardState extends State<_OrderCard> {
         '${l.orProduction}: ${seCode(l, 'prod', o.production)}', '${l.orShipment}: ${seCode(l, 'ind', o.indiaStatus)}',
         if (o.tracking != null) '${l.orTracking}: ${o.tracking}', if (o.etd != null) 'ETD ${o.etd}', if (o.eta != null) 'ETA ${o.eta}',
       ].join(' · '), style: t.textTheme.bodySmall),
-      if (china && perms.canEditShipping) ...[const Divider(),
+      if (closed) ...[const Divider(), _closedBox(context, o, perms.isSuperAdmin)],
+      if (!closed && china && perms.canEditShipping) ...[const Divider(),
         Text(tw(context, 'orders.chinaPart'), style: t.textTheme.labelSmall),
         if (!shipped) seDropdown('o-production', l.orProduction, prodOpts.contains(prod) ? prod : 'NEW', prodOpts, (x) => tw(context, 'orders.prod.$x'), (v) => setState(() => prod = v), allowEmpty: false),
         f('tracking', l.orTracking), f('container', l.orContainer), Row(children: [Expanded(child: f('etd', l.orEtd)), const SizedBox(width: 8), Expanded(child: f('eta', l.orEta))]),
@@ -105,7 +112,7 @@ class _OrderCardState extends State<_OrderCard> {
           if (!shipped && !canShip) Text(tw(context, 'ship.needForShip'), style: const TextStyle(color: Colors.orange, fontSize: 12)),
           if (shipped) Text('✓ ${tw(context, 'ship.shippedNote')}', key: const Key('o-shipped'), style: const TextStyle(color: Colors.green, fontSize: 12)),
         ])],
-      if (india && (perms.canEditPayment || perms.canEditShipping)) ...[const Divider(),
+      if (!closed && india && (perms.canEditPayment || perms.canEditShipping)) ...[const Divider(),
         Text(tw(context, 'orders.indiaPart'), style: t.textTheme.labelSmall),
         if (perms.canEditShipping) shipped
             ? seDropdown('o-india', l.orShipment, ind, indOpts.contains(ind) ? indOpts : [ind, ...indOpts], (x) => tw(context, 'orders.ind.$x'), (v) => setState(() => ind = v), allowEmpty: false)
@@ -115,4 +122,20 @@ class _OrderCardState extends State<_OrderCard> {
         FilledButton.tonal(key: const Key('o-save-india'), onPressed: busy ? null : () => _saveIndia(shipped, perms, nn), child: Text(l.save))],
     ])));
   }
+}
+
+/// Delivered + lead completed: order & shipment are closed and read-only; super admin reopens (lead, order, shipment together).
+Widget _closedBox(BuildContext context, SeOrder o, bool sa) {
+  final zh = Localizations.localeOf(context).languageCode == 'zh', unpaid = o.j['paymentPending'] == true;
+  return Container(key: const Key('o-closed'), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 6, runSpacing: 4, children: [
+        Chip(visualDensity: VisualDensity.compact, backgroundColor: Colors.green.withValues(alpha: 0.15), label: Text(zh ? '✓ 已完成关闭' : '✓ Closed · Completed')),
+        if (unpaid) Chip(key: const Key('o-pay-pending'), visualDensity: VisualDensity.compact, backgroundColor: Colors.amber.withValues(alpha: 0.2), label: Text(zh ? '待收款' : 'Payment pending')),
+      ]),
+      Text(zh ? '🔒 已交付——订单和货运已关闭（只读）。' : '🔒 Delivered — order and shipment closed (read-only).', style: Theme.of(context).textTheme.bodySmall),
+      if (sa) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(key: const Key('o-reopen'), icon: const Icon(Icons.replay, size: 16), label: Text(zh ? '重新打开订单' : 'Reopen order'),
+        onPressed: () async { final m = ScaffoldMessenger.of(context); try { await context.read<Session>().repo.reopenLead(o.leadId, 'INDIA'); m.showSnackBar(SnackBar(content: Text(zh ? '已重新打开' : 'Reopened'))); } catch (e) { m.showSnackBar(SnackBar(content: Text('$e'))); } }))
+      else Text(zh ? '仅超级管理员可重新打开' : 'Only the super admin can reopen', style: Theme.of(context).textTheme.labelSmall),
+    ]));
 }

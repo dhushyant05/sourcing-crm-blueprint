@@ -794,7 +794,7 @@
       "CQ_REJECTED": "客户拒绝报价 #{{n}}",
       "REVISE_REQUESTED": "要求中国重新报价",
       "LEAD_CLOSED": "关闭为流失",
-      "COMPLETED": "已交付——自动关闭为已完成",
+      "COMPLETED": "已交付——线索、订单及货运已自动关闭为已完成",
       "ORDER_CREATED": "创建订单",
       "ORDER_UPDATE": "订单更新",
       "SHIPPED": "中国已发货",
@@ -887,5 +887,14 @@
     "bulk": "删除 {{n}} 条",
     "clear": "清除",
     "goneLive": "此线索已被其他用户删除。"
+  },
+  "closedOrder": {
+    "locked": "已交付——订单和货运已关闭（只读）。",
+    "reopen": "重新打开订单",
+    "reopenConfirm": "重新打开此订单、货运及线索？",
+    "payPending": "待收款",
+    "payHint": "款项尚未全部收到——请跟进客户。",
+    "active": "进行中",
+    "closed": "已完成 / 关闭"
   }
 }
