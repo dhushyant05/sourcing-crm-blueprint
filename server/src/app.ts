@@ -422,6 +422,7 @@ export async function buildApp(o: AppOptions) {
       'PATCH /api/customers/:id': () => ['customers.edit'],
       'POST /api/customers/:id/merge': () => ['customers.edit'],
       'DELETE /api/customers/:id': () => ['customers.edit'],
+      'GET /api/leads/:id/customer': () => ['customers.view'],
       'POST /api/leads/:id/customer': () => ['customers.edit'],
       'GET /api/suppliers': () => ['suppliers.view'],
       'GET /api/suppliers/:id': () => ['suppliers.view'],
@@ -1066,6 +1067,15 @@ export async function buildApp(o: AppOptions) {
       if (role !== 'SUPER_ADMIN' && role !== 'INDIA_ADMIN') throw new Forbidden('Only an India admin can delete customers');
       if (await customers.leadCount(req.params.id)) throw bad('This customer has leads, merge it into another customer instead', 409);
       return (await customers.remove(req.params.id)) ? reply.code(204).send() : reply.code(404).send({ error: 'Not found' });
+    });
+    /** The directory customer a lead is linked to (India + super admin), with its totals; null when unlinked. */
+    api.get<{ Params: { id: string } }>('/api/leads/:id/customer', async (req, reply) => {
+      const u = req.user!; custOnly(u.role);
+      const lead = await leadDb.get(req.params.id); if (!lead) return reply.code(404).send({ error: 'Not found' });
+      const cid = await customers.customerOf(req.params.id); const c = cid ? await customers.get(cid) : null;
+      if (!c) return { data: null };
+      const st = (await customers.stats(c.id)).get(c.id) ?? NO_STATS;
+      return { data: { ...c, ...st, ...(can(u, 'prices.inr') ? {} : { orderTotal: null, paid: null, due: null }) } };
     });
     /** Re-link a lead to another customer (India side). */
     api.post<{ Params: { id: string }; Body: { customerId?: string } }>('/api/leads/:id/customer', async (req, reply) => {

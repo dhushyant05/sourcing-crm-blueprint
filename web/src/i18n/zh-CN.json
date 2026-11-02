@@ -105,7 +105,8 @@
     "signingIn": "登录中…",
     "or": "或",
     "demo": "使用演示数据体验",
-    "failed": "登录失败"
+    "failed": "登录失败",
+    "backHome": "返回首页"
   },
   "dashboard": {
     "greeting": "早上好 👋",

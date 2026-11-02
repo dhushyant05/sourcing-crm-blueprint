@@ -192,6 +192,14 @@ class SourceEasyRepository {
   Future<Map<String, dynamic>> customer(String id) async => _d(await api.send('GET', '/api/customers/${Uri.encodeComponent(id)}'));
   Future<Map<String, dynamic>> saveCustomer(Map<String, dynamic> b, [String? id]) async =>
       _d(await api.send(id == null ? 'POST' : 'PATCH', id == null ? '/api/customers' : '/api/customers/${Uri.encodeComponent(id)}', body: b));
+  /// The directory customer a lead is linked to (null when unlinked).
+  Future<Map<String, dynamic>?> leadCustomer(String leadId) async {
+    final j = await api.send('GET', '/api/leads/${Uri.encodeComponent(leadId)}/customer') as Map<String, dynamic>;
+    return (j['data'] as Map?)?.cast<String, dynamic>();
+  }
+  /// Merge duplicate customers [from] into [into]; their leads move over.
+  Future<void> mergeCustomers(String into, List<String> from) async =>
+      api.send('POST', '/api/customers/${Uri.encodeComponent(into)}/merge', body: {'from': from});
   Future<List<QuoteSupplier>> quoteSuppliers() async {
     final j = await api.send('GET', '/api/suppliers') as Map<String, dynamic>;
     return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(QuoteSupplier.fromJson).toList();

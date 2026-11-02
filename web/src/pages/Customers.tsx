@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GitMerge, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useApp, useLoad } from '../lib/store';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +17,8 @@ export function Customers({ search, openLead }: { search: string; openLead: (id:
   const { t } = useTranslation();
   const canEdit = perms.can('customers.edit');
   const { data, reload } = useLoad(() => api.customers(), [api]);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(() => { const id = sessionStorage.openCustomer ?? null; delete sessionStorage.openCustomer; return id; });
+  useEffect(() => { const h = (e: Event) => { delete sessionStorage.openCustomer; setOpenId((e as CustomEvent<string>).detail); }; addEventListener('open-customer', h); return () => removeEventListener('open-customer', h); }, []);
   const [edit, setEdit] = useState<{ id?: string; f: Form } | null>(null);
   const [merge, setMerge] = useState<Customer | null>(null);
   const [err, setErr] = useState<string | null>(null);

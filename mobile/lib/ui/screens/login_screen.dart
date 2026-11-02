@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+import '../../l10n/web_strings.dart';
 import 'package:flutter/material.dart';
 import '../widgets/version_label.dart';
 
@@ -39,6 +41,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _openHome() => const MethodChannel('sourceeasy/installer').invokeMethod('openUrl', {'url': 'https://sourceeasy.in/'}).catchError((_) => null);
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -51,11 +55,14 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             child: AutofillGroup(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Image.asset('assets/brand/lockup.png', height: 150, semanticLabel: 'Source Easy'),
+                // Logo opens the public homepage in the browser (same native channel the updater uses).
+                InkWell(key: const Key('login-logo'), borderRadius: BorderRadius.circular(16), onTap: _openHome,
+                    child: Image.asset('assets/brand/lockup.png', height: 150, semanticLabel: 'Source Easy')),
                 Text(context.l10n.tagline, key: const Key('brand-tagline'), textAlign: TextAlign.center, style: t.textTheme.titleMedium?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 Text(context.l10n.indiaChinaSourcing, textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
-                const SizedBox(height: 32),
+                Center(child: TextButton.icon(key: const Key('login-back-home'), onPressed: _openHome, icon: const Icon(Icons.home_outlined, size: 18), label: Text(tw(context, 'login.backHome')))),
+                const SizedBox(height: 16),
                 TextField(controller: _email, keyboardType: TextInputType.emailAddress,
                     autofillHints: [AutofillHints.email], decoration: InputDecoration(labelText: context.l10n.email)),
                 const SizedBox(height: 12),

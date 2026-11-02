@@ -23,14 +23,15 @@ export function Login() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-accent-600 p-12 text-white lg:flex lg:flex-col">
-        <div className="flex items-center gap-2.5"><div className="grid h-11 w-11 place-items-center rounded-xl bg-white p-1 shadow"><img src="/brand/mark.png" alt="" className="h-full w-full object-contain" /></div><span className="text-lg font-semibold">{t('app.name')}</span></div>
+        <a href="/" onClick={goHome} aria-label="Source Easy home" data-testid="login-home-panel" className="flex w-fit items-center gap-2.5 hover:opacity-90"><div className="grid h-11 w-11 place-items-center rounded-xl bg-white p-1 shadow"><img src="/brand/mark.png" alt="" className="h-full w-full object-contain" /></div><span className="text-lg font-semibold">{t('app.name')}</span></a>
         <div className="mt-auto max-w-md"><h1 className="text-3xl font-semibold leading-tight tracking-tight">{t('login.tagline')}</h1><p className="mt-4 text-brand-100">{t('login.sub')}</p></div>
         <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
       </div>
       <div className="relative flex items-center justify-center p-8">
+        <a href="/" onClick={goHome} data-testid="login-back-home" className="absolute left-6 top-6 inline-flex min-h-[36px] items-center gap-1 text-sm font-medium text-brand-600 hover:underline">← {t('login.backHome')}</a>
         <LanguageSwitch className="absolute right-6 top-6" />
         <form className="w-full max-w-sm animate-fade-in" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-          <a href="/" aria-label="Source Easy home" data-testid="login-home"><img src="/brand/lockup.png" alt="Source Easy" data-testid="login-logo" className="mb-2 h-24 w-auto cursor-pointer object-contain" /></a><div data-testid="brand-tagline" className="mb-8 text-sm font-medium text-brand-600">{t('app.tagline')}</div>
+          <a href="/" onClick={goHome} aria-label="Source Easy home" data-testid="login-home" className="inline-block"><img src="/brand/lockup.png" alt="Source Easy" data-testid="login-logo" className="mb-2 h-24 w-auto cursor-pointer object-contain" /></a><div data-testid="brand-tagline" className="mb-8 text-sm font-medium text-brand-600">{t('app.tagline')}</div>
           <h2 className="text-xl font-semibold tracking-tight text-ink-900 dark:text-white">{t('login.title')}</h2>
           <p className="mt-1 text-sm text-ink-500">{t('login.hint')}</p>
           <div className="mt-6 space-y-4">
@@ -47,3 +48,6 @@ export function Login() {
     </div>
   );
 }
+
+/** Full page load of the public homepage (never the in-app router / a stale hash). */
+function goHome(e: { preventDefault: () => void }) { e.preventDefault(); location.assign(`${location.origin}/`); }

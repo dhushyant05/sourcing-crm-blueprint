@@ -357,6 +357,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
           {perms.customers && (<>
             <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-ink-400">{t('leads.customer')}</h3>
             <dl className="mt-1 divide-y divide-ink-100 dark:divide-ink-800">
+              <LinkedCustomer leadId={lead.id} onOpen={onClose} />
               {lead.contactName && <Field label={t('leads.contactName')}>{lead.contactName}</Field>}
               <Field label={t('common.phone')}>{lead.contactPhone && <a className="text-brand-600" href={`tel:${lead.contactPhone.replace(/\s/g, '')}`}>{lead.contactPhone}</a>}</Field><Field label={t('common.email')}>{lead.contactEmail}</Field>
               {lead.deliveryCity && <Field label={t('leads.deliveryCity')}>{lead.deliveryCity}</Field>}
@@ -459,3 +460,15 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
 }
 
 export function RejChip() { const { t } = useTranslation(); return <span data-testid="rej-chip" className="ml-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">{t('rej.actionNeeded')}</span>; }
+
+/** India side + super admin: the Customers-directory record this lead belongs to, with a link that opens it. */
+function LinkedCustomer({ leadId, onOpen }: { leadId: string; onOpen: () => void }) {
+  const { api, perms } = useApp(); const { t } = useTranslation();
+  const [c, setC] = useState<Customer | null | undefined>(undefined);
+  const ok = perms.customers && perms.can('customers.view');
+  useEffect(() => { if (!ok) return; let live = true; setC(undefined); api.leadCustomer(leadId).then((x) => live && setC(x)).catch(() => live && setC(null)); return () => { live = false; }; }, [api, leadId, ok]);
+  if (!ok || !c) return null;
+  const open = () => { sessionStorage.openCustomer = c.id; onOpen(); location.hash = '#/customers'; dispatchEvent(new CustomEvent('open-customer', { detail: c.id })); };
+  return <Field label={t('nav.customers')}><button data-testid="lead-linked-customer" className="text-left font-medium text-brand-600 hover:underline" onClick={open}>{c.company && c.company !== c.name ? `${c.name} · ${c.company}` : c.name}</button>
+    <span className="ml-1 text-xs text-ink-500">{t('customers.stats', { leads: c.leads, quotes: c.quotes, orders: c.orders })}</span></Field>;
+}

@@ -1,3 +1,4 @@
+import 'customers_screen.dart';
 import 'package:flutter/material.dart';
 import '../widgets/delete_lead.dart';
 
@@ -219,6 +220,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Column(children: [
                     if (p.canSeeCustomerDetails) ...[
+                      if (p.canSeeCustomers) _LinkedCustomer(leadId: l.id),
                       if (l.contactName != null) InfoRow(context.l10n.contactPerson, l.contactName),
                       InfoRow(context.l10n.contact, l.contactPhone),
                       InfoRow(context.l10n.email, l.contactEmail),
@@ -318,4 +320,28 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
       ),
     );
   }
+}
+
+/// India side + super admin: the Customers-directory record this lead belongs to; tap opens it.
+class _LinkedCustomer extends StatefulWidget {
+  const _LinkedCustomer({required this.leadId});
+  final String leadId;
+  @override
+  State<_LinkedCustomer> createState() => _LinkedCustomerState();
+}
+
+class _LinkedCustomerState extends State<_LinkedCustomer> {
+  late Future<Map<String, dynamic>?> _f = context.read<Session>().repo.leadCustomer(widget.leadId).catchError((_) => null);
+  @override
+  void didUpdateWidget(_LinkedCustomer o) { super.didUpdateWidget(o); if (o.leadId != widget.leadId) _f = context.read<Session>().repo.leadCustomer(widget.leadId).catchError((_) => null); }
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>?>(future: _f, builder: (c, s) {
+    final x = s.data; if (x == null) return const SizedBox.shrink();
+    final l = context.l10n;
+    return ListTile(key: const Key('lead-linked-customer'), dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.contacts_outlined),
+      title: Text(x['company'] != null && x['company'] != x['name'] ? '${x['name']} · ${x['company']}' : '${x['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text('${l.customers} · ${l.custStats(x['leads'] as int? ?? 0, x['quotes'] as int? ?? 0, x['orders'] as int? ?? 0)}'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomerDetailScreen(id: x['id'] as String))));
+  });
 }

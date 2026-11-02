@@ -1,3 +1,4 @@
+import '../../l10n/web_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -58,6 +59,29 @@ class CustomerDetailScreen extends StatefulWidget {
 
 class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   late Future<Map<String, dynamic>> _f = context.read<Session>().repo.customer(widget.id);
+  Future<void> _merge(Map<String, dynamic> into) async {
+    final repo = context.read<Session>().repo, l = context.l10n;
+    final List<Map<String, dynamic>> all;
+    try { all = (await repo.customers()).where((x) => x['id'] != into['id']).toList(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); return; }
+    if (!mounted) return;
+    final sel = <String>{};
+    final go = await showDialog<bool>(context: context, builder: (dc) => StatefulBuilder(builder: (dc, set) => AlertDialog(
+      title: Text(tw(dc, 'customers.mergeTitle', {'name': into['name']})),
+      content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tw(dc, 'customers.mergeHint'), style: Theme.of(dc).textTheme.bodySmall),
+        Flexible(child: ListView(shrinkWrap: true, children: [for (final x in all) CheckboxListTile(dense: true, value: sel.contains(x['id']),
+          title: Text('${x['name']}'), subtitle: Text([x['company'], x['phone'], l.custStats(x['leads'] as int? ?? 0, x['quotes'] as int? ?? 0, x['orders'] as int? ?? 0)].whereType<Object>().join(' · ')),
+          onChanged: (v) => set(() => v == true ? sel.add(x['id'] as String) : sel.remove(x['id'])))])),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(dc, false), child: Text(l.cancel)),
+        FilledButton(key: const Key('merge-go'), onPressed: sel.isEmpty ? null : () => Navigator.pop(dc, true), child: Text(tw(dc, 'customers.mergeGo', {'n': sel.length})))],
+    )));
+    if (go != true || !mounted) return;
+    try { await repo.mergeCustomers(into['id'] as String, sel.toList()); if (mounted) setState(() => _f = repo.customer(widget.id)); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = context.l10n, edit = context.read<Session>().perms.canEditCustomers;
@@ -72,6 +96,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       ]);
       return Scaffold(
         appBar: AppBar(title: Text('${d?['name'] ?? ''}'), actions: [
+          if (edit && d != null) IconButton(key: const Key('customer-merge'), tooltip: tw(c, 'customers.merge'), icon: const Icon(Icons.call_merge), onPressed: () => _merge(d)),
           if (edit && d != null) IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () async {
             if (await Navigator.push<bool>(c, MaterialPageRoute(builder: (_) => CustomerFormScreen(initial: d))) == true) setState(() => _f = context.read<Session>().repo.customer(widget.id));
           }),

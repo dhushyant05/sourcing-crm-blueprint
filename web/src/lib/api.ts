@@ -20,6 +20,8 @@ export interface Api {
   customer(id: string): Promise<CustomerDetail>;
   saveCustomer(c: Partial<Customer> & { name: string }, id?: string): Promise<Customer>;
   mergeCustomers(into: string, from: string[]): Promise<Customer>;
+  /** The directory customer a lead is linked to (null when unlinked). */
+  leadCustomer(leadId: string): Promise<Customer | null>;
   deleteCustomer(id: string): Promise<void>;
   /** Returns the new lead id. */
   createLead(l: NewLead): Promise<string>;
@@ -223,6 +225,7 @@ export class ServerApi implements Api {
     return id ? this.req<Customer>('PATCH', `/customers/${encodeURIComponent(id)}`, b) : this.req<Customer>('POST', '/customers', b);
   }
   mergeCustomers(into: string, from: string[]) { return this.req<Customer>('POST', `/customers/${encodeURIComponent(into)}/merge`, { from }); }
+  leadCustomer(leadId: string) { return this.req<Customer | null>('GET', `/leads/${encodeURIComponent(leadId)}/customer`); }
   async deleteCustomer(id: string) { await this.req('DELETE', `/customers/${encodeURIComponent(id)}`); }
   async createLead(l: NewLead) {
     const r = await this.req<{ id: string }>('POST', '/records/leads', { ...(l.customerId ? { customerId: l.customerId } : {}),
@@ -369,6 +372,7 @@ export class DemoApi implements Api {
     const n: Customer = { tags: [], leads: 0, quotes: 0, orders: 0, shipments: 0, paymentPending: 0, orderTotal: 0, paid: 0, due: 0, lastLeadAt: null, ...c, id: `C${this.dc.length + 1}` }; this.dc.push(n); return n;
   }
   async mergeCustomers(into: string, from: string[]) { this.dc = this.dc.filter((x) => !from.includes(x.id)); return this.dc.find((x) => x.id === into)!; }
+  async leadCustomer(_leadId: string) { return null; }
   async deleteCustomer(id: string) { this.dc = this.dc.filter((x) => x.id !== id); }
   async createLead(l: NewLead) {
     const id = `L${demo.leads.length + 1}`;

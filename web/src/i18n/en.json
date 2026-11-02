@@ -105,7 +105,8 @@
     "signingIn": "Signing in…",
     "or": "or",
     "demo": "Explore with demo data",
-    "failed": "Sign-in failed"
+    "failed": "Sign-in failed",
+    "backHome": "Back to home"
   },
   "dashboard": {
     "greeting": "Good morning 👋",
