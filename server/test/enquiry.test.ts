@@ -134,3 +134,24 @@ describe('lead media, summary and China assignment', () => {
     expect(full.rawPayload.equals(MP4)).toBe(true); // original bytes
   });
 });
+
+describe('media delete permissions', () => {
+  it('any user who can see the lead can delete; others get 404', async () => {
+    const { app, users } = await setup();
+    for (const [e, r] of [['u@x.in', 'INDIA_STAFF'], ['o@x.in', 'INDIA_STAFF'], ['a@x.in', 'INDIA_ADMIN'], ['s@x.in', 'SUPER_ADMIN'], ['c@x.in', 'CHINA_STAFF']] as const) await users.create(e, r, r, 'demo-password-1');
+    const tok = async (email: string) => (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'demo-password-1' } })).json().token;
+    const h = (t: string) => ({ authorization: `Bearer ${t}` });
+    const [ut, ot, at, st, ct] = await Promise.all(['u@x.in', 'o@x.in', 'a@x.in', 's@x.in', 'c@x.in'].map(tok));
+    const id = (await app.inject({ method: 'POST', url: '/api/records/leads', headers: h(ut), payload: { name: 'Del test', clientName: 'X', productInterest: 'Y', status: 'NEW' } })).json().data.id;
+    const up = form({}, [{ name: 'a.png', data: PNG }, { name: 'b.png', data: PNG }, { name: 'c.png', data: PNG }]);
+    const files = (await app.inject({ method: 'POST', url: `/api/leads/${id}/attachments`, ...up, headers: { ...up.headers, ...h(ut) } })).json().data;
+    expect(files[0].uploadedBy).toBeTruthy();
+    const del = (fid: string, t: string) => app.inject({ method: 'DELETE', url: `/api/leads/${id}/attachments/${fid}`, headers: h(t) });
+    expect((await del(files[0].id, ct)).statusCode).toBe(404); // China can't see an unassigned lead
+    expect((await del(files[0].id, ot)).statusCode).toBeLessThan(300); // any user who can see it
+    expect((await del(files[1].id, at)).statusCode).toBeLessThan(300);
+    expect((await del(files[2].id, st)).statusCode).toBeLessThan(300);
+    expect((await del(files[2].id, st)).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/api/leads/${id}/attachments`, headers: h(ut) })).json().data).toEqual([]);
+  });
+});

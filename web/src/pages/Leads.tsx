@@ -378,7 +378,11 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
 
 /** Enquiry photos/documents. Files are fetched with the staff token and shown via blob: URLs, never public links. */
 export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: boolean }) {
-  const { api } = useApp();
+  const { api, session } = useApp();
+  // Delete: uploader, India admin or super admin (the server checks the same).
+  const canDel = (_a: Attachment) => !!session; // any signed-in user who can see the lead
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.leadId === leadId && d?.type === 'lead') setTick((n) => n + 1); }; addEventListener('se:data', h); return () => removeEventListener('se:data', h); }, [leadId]);
   const { t } = useTranslation();
   const [list, setList] = useState<Attachment[] | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -405,7 +409,7 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
   useEffect(() => () => Object.values(videos).forEach((u) => u.startsWith('blob:') && URL.revokeObjectURL(u)), [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     let live = true; const made: string[] = [];
-    setList(null); setThumbs({});
+    if (!tick) setList(null); setThumbs({});
     api.attachments(leadId).then(async (as) => {
       if (!live) return; setList(as);
       for (const a of as.filter((x) => /^image\/(jpeg|png|webp)$/.test(x.mime))) {
@@ -415,7 +419,7 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
       }
     }).catch(() => live && setList([]));
     return () => { live = false; made.forEach((u) => URL.revokeObjectURL(u)); };
-  }, [api, leadId]);
+  }, [api, leadId, tick]);
   const open = async (a: Attachment, dl: boolean) => {
     const u = thumbs[a.id] ?? await api.attachmentUrl(leadId, a);
     if (!u) return;
@@ -445,7 +449,7 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
             <div className="flex items-center gap-2 p-2">
               <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium text-ink-800 dark:text-ink-100">{a.name}</div><div className="text-[11px] text-ink-400">{fmtSize(a.size)}</div></div>
               <button onClick={() => open(a, true)} aria-label={`${t('leads.download')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"><Download size={15} /></button>
-              {canEdit && <button onClick={() => void del(a)} aria-label={`${t('common.remove')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
+              {canDel(a) && <button data-testid="attachment-delete" onClick={() => void del(a)} aria-label={`${t('common.remove')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
             </div>
           </li>
         ))}

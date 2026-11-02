@@ -139,6 +139,18 @@ class QuoteFilesStrip extends StatefulWidget {
 
 class _QuoteFilesStripState extends State<QuoteFilesStrip> {
   final _bytes = <String, Uint8List>{};
+  final _gone = <String>{};
+
+  Future<void> _delete(LeadAttachment a) async {
+    final l = context.l10n;
+    final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(title: Text(l.deleteFileQ(a.name)), actions: [
+      TextButton(onPressed: () => Navigator.pop(d, false), child: Text(l.cancel)),
+      FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(l.delete)),
+    ]));
+    if (ok != true || !mounted) return;
+    try { await context.read<Session>().repo.deleteQuoteFile(widget.quote.id, a.id); if (mounted) setState(() => _gone.add(a.id)); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+  }
   @override
   void initState() {
     super.initState();
@@ -170,18 +182,25 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Wrap(spacing: 6, runSpacing: 6, children: [
-      for (final a in widget.quote.files)
+      for (final a in widget.quote.files.where((x) => !_gone.contains(x.id)))
         InkWell(
+          key: Key('qfile-${a.id}'),
           onTap: () => _open(a),
+          onLongPress: () => _delete(a),
           child: Container(
             width: 84, height: 84, clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: t.colorScheme.surfaceContainerHighest),
-            child: _bytes[a.id] != null
+            child: Stack(fit: StackFit.expand, children: [
+              _bytes[a.id] != null
                 ? Image.memory(_bytes[a.id]!, fit: BoxFit.cover)
                 : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(a.isVideo ? Icons.play_circle_outline : a.mime.contains('pdf') ? Icons.picture_as_pdf_outlined : a.isImage ? Icons.image_outlined : Icons.description_outlined),
                     Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.labelSmall)),
                   ]),
+              Positioned(top: 2, right: 2, child: GestureDetector(key: Key('qfile-del-${a.id}'), onTap: () => _delete(a),
+                  child: Container(padding: const EdgeInsets.all(3), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.delete_outline, size: 16, color: Colors.white)))),
+            ]),
           ),
         ),
     ]);
@@ -253,6 +272,12 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
   }
 
   Future<void> _removeExisting(LeadAttachment a) async {
+    final l = context.l10n;
+    final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(title: Text(l.deleteFileQ(a.name)), actions: [
+      TextButton(onPressed: () => Navigator.pop(d, false), child: Text(l.cancel)),
+      FilledButton(key: const Key('qf-del-ok'), onPressed: () => Navigator.pop(d, true), child: Text(l.delete)),
+    ]));
+    if (ok != true || !mounted) return;
     try { await context.read<Session>().repo.deleteQuoteFile(widget.quote!.id, a.id); setState(() => _existing = _existing.where((x) => x.id != a.id).toList()); }
     catch (e) { setState(() => _err = '$e'); }
   }
@@ -315,7 +340,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
         Text(l.lqMedia, style: t.textTheme.titleSmall),
         const SizedBox(height: 6),
         for (final a in _existing) ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.attach_file), title: Text(a.name), subtitle: Text(fileSize(a.size)),
-            trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => _removeExisting(a))),
+            trailing: IconButton(key: Key('qf-del-${a.id}'), tooltip: context.l10n.delete, icon: const Icon(Icons.delete_outline), onPressed: () => _removeExisting(a))),
         for (final p in _paths) ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.upload_file), title: Text(p.split('/').last),
             trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _paths.remove(p)))),
         Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(key: const Key('qf-media'), onPressed: () async {

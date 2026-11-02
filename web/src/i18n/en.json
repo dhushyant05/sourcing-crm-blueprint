@@ -782,6 +782,7 @@
       "CREATED": "Lead created",
       "SUMMARY": "Details updated",
       "MEDIA_ADDED": "Files added",
+      "MEDIA_REMOVED": "Files removed",
       "ASSIGNED": "Assigned to {{to}}",
       "REASSIGNED": "Reassigned to {{to}}",
       "QUEUED": "Sent to the {{office}} queue",

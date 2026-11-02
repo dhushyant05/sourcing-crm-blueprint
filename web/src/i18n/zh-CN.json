@@ -782,6 +782,7 @@
       "CREATED": "创建线索",
       "SUMMARY": "更新详情",
       "MEDIA_ADDED": "添加文件",
+      "MEDIA_REMOVED": "删除文件",
       "ASSIGNED": "分配给 {{to}}",
       "REASSIGNED": "改派给 {{to}}",
       "QUEUED": "进入{{office}}队列",

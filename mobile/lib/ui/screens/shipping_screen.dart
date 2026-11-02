@@ -1,3 +1,4 @@
+import '../widgets/seg_tabs.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/codes.dart';
@@ -45,9 +46,8 @@ class _ShippingScreenState extends State<ShippingScreen> {
             final zh = Localizations.localeOf(context).languageCode == 'zh';
             bool done(ShippingOrder o) => o.shipmentStatus == 'DELIVERED';
             final nC = all.where(done).length;
-            final tabs = Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: SegmentedButton<bool>(key: const Key('ship-tabs'),
-              segments: [ButtonSegment(value: false, label: Text('${zh ? '进行中' : 'Active'} (${all.length - nC})')), ButtonSegment(value: true, label: Text('${zh ? '已完成 / 关闭' : 'Closed / Completed'} ($nC)'))],
-              selected: {_closed}, onSelectionChanged: (v) => setState(() => _closed = v.first)));
+            final tabs = Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: SegTabs<bool>(key: const Key('ship-tabs'), value: _closed, onChanged: (v) => setState(() => _closed = v),
+              items: [(false, zh ? '进行中' : 'Active', (all.length - nC)), (true, zh ? '已完成' : 'Closed', nC)]));
             final list = all.where((o) => done(o) == _closed).where((o) => _q.isEmpty || [o.leadRef, o.trackingNumber, o.name].whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
             final search = Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

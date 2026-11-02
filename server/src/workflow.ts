@@ -9,7 +9,7 @@ import type { Office } from './assign.js';
 
 export type Vis = 'ALL' | 'INDIA' | 'CHINA';
 export type EventKind =
-  | 'CREATED' | 'SUMMARY' | 'MEDIA_ADDED' | 'ASSIGNED' | 'REASSIGNED' | 'QUEUED' | 'RETURNED' | 'STATUS'
+  | 'CREATED' | 'SUMMARY' | 'MEDIA_ADDED' | 'MEDIA_REMOVED' | 'ASSIGNED' | 'REASSIGNED' | 'QUEUED' | 'RETURNED' | 'STATUS'
   | 'QUOTE_ADDED' | 'QUOTE_EDITED' | 'CQ_PREPARED' | 'CQ_SENT' | 'CQ_ACCEPTED' | 'CQ_REJECTED'
   | 'ORDER_CREATED' | 'ORDER_UPDATE' | 'SHIPPED' | 'SHIPMENT_UPDATE' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'REOPENED' | 'COPIED_TO' | 'CREATED_FROM' | 'CLOSED_PERMANENT' | 'FOLLOW_UP_SET' | 'FOLLOW_UP_DUE' | 'PRIORITY' | 'SLA_WARN' | 'SLA_BREACH' | 'COMPLETED';
 export interface LeadEvent { id: string; leadId: string; at: string; kind: EventKind; actorId: string | null; actorName: string | null; actorOffice: Office | 'ADMIN' | null; data: Record<string, unknown>; vis: Vis }

@@ -109,15 +109,16 @@ class Lead {
 
 /// A photo/document a client attached to a website enquiry. Bytes are fetched with the staff token.
 class LeadAttachment {
-  LeadAttachment({required this.id, required this.name, required this.mime, required this.size, this.createdAt});
+  LeadAttachment({required this.id, required this.name, required this.mime, required this.size, this.createdAt, this.uploadedBy});
   final String id, name, mime;
+  final String? uploadedBy;
   final int size;
   final DateTime? createdAt;
   bool get isImage => RegExp(r'^image/(jpeg|png|webp)$').hasMatch(mime);
   bool get isVideo => mime.startsWith('video/') || RegExp(r'\.(mp4|m4v|mov|3gp|webm|mkv)$', caseSensitive: false).hasMatch(name);
   factory LeadAttachment.fromJson(Map<String, dynamic> j) => LeadAttachment(
         id: j['id'] as String, name: (j['name'] as String?) ?? 'file', mime: (j['mime'] as String?) ?? 'application/octet-stream',
-        size: (j['size'] as num?)?.toInt() ?? 0, createdAt: _date(j['createdAt']));
+        size: (j['size'] as num?)?.toInt() ?? 0, createdAt: _date(j['createdAt']), uploadedBy: j['uploadedBy'] as String?);
 }
 
 class SourcingRequest {

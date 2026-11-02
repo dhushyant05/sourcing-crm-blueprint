@@ -112,6 +112,9 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
           ? Icons.table_chart_outlined
           : a.isVideo ? Icons.play_circle_outline : a.mime.startsWith('image/') ? Icons.image_outlined : Icons.description_outlined;
 
+  // Every signed-in user who can see the lead may delete its media (server enforces visibility).
+  bool _canDel(LeadAttachment a) => true;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -139,12 +142,20 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
                 margin: EdgeInsets.zero, clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () => _open(a),
-                  onLongPress: widget.canEdit ? () => _delete(a) : null,
+                  onLongPress: _canDel(a) ? () => _delete(a) : null,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(
-                      child: _bytes[a.id] != null && a.isImage
-                          ? Image.memory(_bytes[a.id]!, fit: BoxFit.cover)
-                          : Container(color: t.colorScheme.surfaceContainerHighest, child: Icon(_icon(a), size: 40, color: t.colorScheme.primary)),
+                      child: Stack(fit: StackFit.expand, children: [
+                        _bytes[a.id] != null && a.isImage
+                            ? Image.memory(_bytes[a.id]!, fit: BoxFit.cover)
+                            : Container(color: t.colorScheme.surfaceContainerHighest, child: Icon(_icon(a), size: 40, color: t.colorScheme.primary)),
+                        if (_canDel(a))
+                          Positioned(top: 4, right: 4, child: Material(
+                            color: Colors.black54, shape: const CircleBorder(),
+                            child: IconButton(key: Key('att-del-${a.id}'), tooltip: context.l10n.delete, visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.delete_outline, color: Colors.white, size: 20), onPressed: () => _delete(a)),
+                          )),
+                      ]),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),

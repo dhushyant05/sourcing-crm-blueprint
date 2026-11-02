@@ -13,7 +13,7 @@ export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 /** Staff may attach more files to a lead than the public form. */
 export const MAX_STAFF_FILES = 10;
 export const isVideo = (mime: string) => mime.startsWith('video/');
-export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string }
+export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null }
 
 const EXT_MIME: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
@@ -113,13 +113,13 @@ export class UploadStore {
     return { name, path, size, mime };
   }
   /** Moves staged files into the lead's folder and records them in the manifest. */
-  commit(leadId: string, files: Staged[]): Attachment[] {
+  commit(leadId: string, files: Staged[], by: string | null = null): Attachment[] {
     const d = this.leadDir(leadId); mkdirSync(d, { recursive: true });
     const list = this.list(leadId);
     for (const f of files) {
       const id = randomBytes(9).toString('base64url');
       renameSync(f.path, join(d, id));
-      list.push({ id, name: safeName(f.name), mime: f.mime, size: f.size, createdAt: new Date().toISOString() });
+      list.push({ id, name: safeName(f.name), mime: f.mime, size: f.size, createdAt: new Date().toISOString(), uploadedBy: by });
     }
     writeFileSync(join(d, 'manifest.json'), JSON.stringify(list, null, 1));
     return list;

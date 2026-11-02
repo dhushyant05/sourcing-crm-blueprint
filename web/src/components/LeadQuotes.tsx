@@ -19,6 +19,8 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
   const [form, setForm] = useState<LeadQuote | 'new' | null>(null);
   const load = () => api.quotes(leadId).then(setList).catch((e) => { setList([]); setErr((e as Error).message); });
   useEffect(() => { setList(null); setForm(null); setErr(null); void load(); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Live: another user added/removed a quote or quote file on this lead.
+  useEffect(() => { const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.leadId === leadId && d?.type === 'quote') void load(); }; addEventListener('se:data', h); return () => removeEventListener('se:data', h); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
   const canEdit = (q: LeadQuote) => !!q.canEdit;
   const replace = (q: LeadQuote) => setList((l) => l && (l.some((x) => x.id === q.id) ? l.map((x) => (x.id === q.id ? q : x)) : [...l, q]));
   const del = async (q: LeadQuote) => {
@@ -122,7 +124,8 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
 }
 
 function QuoteFiles({ quote, canEdit, onChange }: { quote: LeadQuote; canEdit: boolean; onChange: (q: LeadQuote) => void }) {
-  const { api } = useApp(); const { t } = useTranslation();
+  const { api, session } = useApp(); const { t } = useTranslation();
+  const canDel = (_a: Attachment) => !!session;
   const [thumbs, setThumbs] = useState<Record<string, string>>({}), [videos, setVideos] = useState<Record<string, string>>({});
   const [pct, setPct] = useState<number | null>(null), [err, setErr] = useState<string | null>(null);
   const files = quote.files ?? [];
@@ -151,7 +154,7 @@ function QuoteFiles({ quote, canEdit, onChange }: { quote: LeadQuote; canEdit: b
           : <button className="block w-full" onClick={() => void open(a, false)}>{thumbs[a.id] ? <img src={thumbs[a.id]} alt={a.name} className="h-20 w-full object-cover" /> : <span className="grid h-20 place-items-center bg-ink-50 dark:bg-ink-800"><FileIcon name={a.name} className="h-8 w-8" /></span>}</button>}
         <div className="flex items-center gap-1 px-1.5 py-1"><span className="min-w-0 flex-1 truncate text-[10px] text-ink-600 dark:text-ink-300">{a.name}</span>
           <button aria-label={`${t('leads.download')} ${a.name}`} onClick={() => void open(a, true)} className="text-ink-400"><Download size={12} /></button>
-          {canEdit && <button aria-label={`${t('common.remove')} ${a.name}`} onClick={() => void del(a)} className="text-ink-400 hover:text-rose-600"><Trash2 size={12} /></button>}</div>
+          {canDel(a) && <button data-testid="quote-file-delete" aria-label={`${t('common.remove')} ${a.name}`} onClick={() => void del(a)} className="text-ink-400 hover:text-rose-600"><Trash2 size={12} /></button>}</div>
       </li>))}</ul>}
     {canEdit && <div className="mt-2"><FilePicker onPick={(fs) => void upload(fs)} onError={setErr} /></div>}
     {pct != null && <p className="text-xs text-ink-500">{t('leads.uploading', { pct })}</p>}

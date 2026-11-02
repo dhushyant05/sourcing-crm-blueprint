@@ -405,7 +405,6 @@ export async function buildApp(o: AppOptions) {
       'POST /api/leads/:id/quotes': () => ['quotes.create'],
       'DELETE /api/quotes/:qid': () => ['quotes.create'],
       'POST /api/quotes/:qid/files': () => ['quotes.create'],
-      'DELETE /api/quotes/:qid/files/:fid': () => ['quotes.create'],
       'PATCH /api/quotes/:qid': (u) => (sides(u.role).china ? ['quotes.create'] : ['quotes.customer', 'prices.inr']),
       'PUT /api/quotes/:qid/customer': () => ['quotes.customer', 'prices.inr'],
       'POST /api/quotes/:qid/pdf': () => ['quotes.customer', 'prices.inr'],
@@ -459,7 +458,7 @@ export async function buildApp(o: AppOptions) {
       else if (path.startsWith('/api/suppliers')) type = 'supplier';
       else if (path.startsWith('/api/customers')) type = 'customer';
       else return;
-      await liveData({ type, id, leadId, ...(req.method === 'DELETE' && type === 'lead' ? { deleted: true } : {}), at: Date.now() });
+      await liveData({ type, id, leadId, ...(req.method === 'DELETE' && /^\/api\/(?:records\/leads|leads)\/[^/]+$/.test(path) ? { deleted: true } : {}), at: Date.now() });
     });
     api.get('/api/me', async (req) => me(req.user!));
     // Per-user UI language (devices also keep their own choice).
@@ -520,16 +519,18 @@ export async function buildApp(o: AppOptions) {
       const m = await readMultipart(req, MAX_STAFF_FILES);
       if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
       if (uploads.list(id).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per lead', code: 'count' }); }
-      const list = uploads.commit(id, m.files);
+      const list = uploads.commit(id, m.files, req.user!.id);
       await syncCount(id, list);
       await ev(id, 'MEDIA_ADDED', req.user!, { count: m.files.length });
       return reply.code(201).send({ data: list });
     });
     api.delete<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
-      const id = await attWrite(req);
-      const rest = uploads.remove(id, req.params.fid);
-      if (!rest) return reply.code(404).send({ error: 'Not found' });
+      // Any signed-in user who can see this lead may delete its media (attLead 404s otherwise).
+      const id = await attLead(req), u = req.user!;
+      const meta = uploads.list(id).find((f) => f.id === req.params.fid); if (!meta) return reply.code(404).send({ error: 'Not found' });
+      const rest = uploads.remove(id, req.params.fid)!;
       await syncCount(id, rest);
+      await ev(id, 'MEDIA_REMOVED', u, { name: meta.name });
       return { data: rest };
     });
 
@@ -611,7 +612,7 @@ export async function buildApp(o: AppOptions) {
       const m = await readMultipart(req, MAX_STAFF_FILES);
       if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
       if (uploads.list(qKey(q.id)).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per quote', code: 'count' }); }
-      await mediaSync(qKey(q.id), uploads.commit(qKey(q.id), m.files));
+      await mediaSync(qKey(q.id), uploads.commit(qKey(q.id), m.files, req.user!.id));
       const list = await quotes.list(q.leadId);
       return reply.code(201).send({ data: await viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(q.leadId)) });
     });
@@ -626,9 +627,10 @@ export async function buildApp(o: AppOptions) {
     });
     api.delete<{ Params: { qid: string; fid: string } }>('/api/quotes/:qid/files/:fid', async (req, reply) => {
       const q = await quoteOf(req);
-      if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can remove files');
-      const rest = uploads.remove(qKey(q.id), req.params.fid); if (!rest) return reply.code(404).send({ error: 'Not found' });
+      const u = req.user!, meta = uploads.list(qKey(q.id)).find((f) => f.id === req.params.fid); if (!meta) return reply.code(404).send({ error: 'Not found' });
+      const rest = uploads.remove(qKey(q.id), req.params.fid)!;
       await mediaSync(qKey(q.id), rest);
+      await ev(q.leadId, 'MEDIA_REMOVED', u, { quote: true });
       return reply.code(204).send();
     });
     // ---- All quotes across leads (role-filtered) ----

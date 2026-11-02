@@ -1,3 +1,4 @@
+import '../widgets/seg_tabs.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -35,8 +36,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(l.orTitle)),
       body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: [
-        SegmentedButton<bool>(key: const Key('orders-tabs'), segments: [ButtonSegment(value: false, label: Text('${zh ? '进行中' : 'Active'} ($nO)')), ButtonSegment(value: true, label: Text('${zh ? '已完成 / 关闭' : 'Closed / Completed'} ($nC)'))],
-          selected: {_closed}, onSelectionChanged: (v) => setState(() => _closed = v.first)),
+        SegTabs<bool>(key: const Key('orders-tabs'), value: _closed, onChanged: (v) => setState(() => _closed = v),
+              items: [(false, zh ? '进行中' : 'Active', nO), (true, zh ? '已完成' : 'Closed', nC)]),
         const SizedBox(height: 8),
         if (_err != null) Text(_err!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
         if (list == null) const LinearProgressIndicator()
