@@ -358,6 +358,20 @@ class SourceEasyRepository {
         'shipmentStatus': s['status'], 'leadId': s['leadId'], 'leadRef': s['leadRef'], 'closed': s['closed'],
       };
 
+  /// Raw shipments (same role-filtered payload as the web Shipping page), cached for offline.
+  Future<List<Map<String, dynamic>>> shipments() async {
+    try {
+      final rows = (((await api.send('GET', '/api/shipments') as Map)['data'] as List?) ?? const []).cast<Map<String, dynamic>>();
+      await store.putCache('shipments', rows);
+      return rows;
+    } on OfflineException {
+      return ((await store.getCache('shipments') as List?) ?? const []).cast<Map<String, dynamic>>();
+    }
+  }
+
+  Future<Map<String, dynamic>> patchShipment(String id, Map<String, dynamic> body) async =>
+      ((await api.send('PATCH', '/api/shipments/${Uri.encodeComponent(id)}', body: body) as Map)['data'] as Map).cast<String, dynamic>();
+
   Future<List<ShippingOrder>> shippingOrders({String? leadId}) async {
     List<Map<String, dynamic>> rows;
     try {

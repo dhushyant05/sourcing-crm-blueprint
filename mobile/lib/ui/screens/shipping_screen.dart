@@ -1,20 +1,25 @@
-import '../widgets/live_refresh.dart';
-import '../widgets/seg_tabs.dart';
 import 'package:flutter/material.dart';
-
-import '../../l10n/codes.dart';
-
-import '../../l10n/l10n.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/models/models.dart';
+import '../../l10n/web_strings.dart';
 import '../../services/session.dart';
-import '../widgets/language_switch.dart';
-import '../widgets/common.dart';
+import '../widgets/live_refresh.dart';
+import '../widgets/seg_tabs.dart';
+import 'lead_detail_screen.dart';
 
-/// Steps 8-9: China enters forwarder/tracking updates, India reads them.
+/// Shipping — same as the web Shipping page: one shipment per order, Active/Closed tabs, stage filter chips with counts,
+/// search, a progress bar per shipment, China part (booking/transit details, Mark shipped) and India part (customs/delivery,
+/// unlocked once shipped). Fields and edit rights follow the role (server enforces the same rules and strips private fields).
+const shipStages = ['PENDING', 'BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+const chinaShip = ['PENDING', 'BOOKED'], indiaShip = ['IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+const _modes = ['', 'AIR', 'SEA', 'EXPRESS', 'ROAD'], _terms = ['', 'EXW', 'FOB', 'CIF', 'CFR', 'DDP', 'DAP', 'DOOR'];
+
+String _d(Object? v) {
+  final t = v == null ? null : DateTime.tryParse('$v');
+  return t == null ? '—' : DateFormat('d MMM yyyy').format(t.toLocal());
+}
+
 class ShippingScreen extends StatefulWidget {
   const ShippingScreen({super.key, this.leadId});
   final String? leadId;
@@ -28,227 +33,210 @@ class _ShippingScreenState extends State<ShippingScreen> with LiveRefresh {
   @override
   String? get liveLeadId => widget.leadId;
   @override
-  void liveRefresh() => _reload();
+  void liveRefresh() => _load();
+
+  List<Map<String, dynamic>>? _all;
+  String? _err;
+  bool _closed = false;
+  String _filter = '', _q = '';
+
+  @override
+  void initState() { super.initState(); _load(); startLive(); }
   @override
   void dispose() { stopLive(); super.dispose(); }
-  late Future<List<ShippingOrder>> _f;
-  String _q = '';
-  bool _closed = false;
-  @override
-  void initState() {
-    super.initState();
-    _f = context.read<Session>().repo.shippingOrders(leadId: widget.leadId);
-    startLive();
+
+  Future<void> _load() async {
+    try {
+      final r = await context.read<Session>().repo.shipments();
+      if (mounted) setState(() { _all = r.where((s) => widget.leadId == null || s['leadId'] == widget.leadId).toList(); _err = null; });
+    } catch (e) { if (mounted) setState(() { _all ??= []; _err = '$e'; }); }
   }
 
-  void _reload() => setState(() => _f = context.read<Session>().repo.shippingOrders(leadId: widget.leadId));
+  void _replace(Map<String, dynamic> n) => setState(() => _all = _all?.map((x) => x['id'] == n['id'] ? n : x).toList());
 
   @override
   Widget build(BuildContext context) {
+    final all = _all, pool = all?.where((s) => (s['closed'] == true) == _closed).toList();
+    final nC = all?.where((s) => s['closed'] == true).length ?? 0;
+    final rows = pool?.where((s) => (_filter.isEmpty || s['status'] == _filter) && (_q.isEmpty ||
+        ['ref', 'leadRef', 'product', 'customer', 'supplier', 'tracking', 'container'].map((k) => '${s[k] ?? ''}').join(' ').toLowerCase().contains(_q))).toList();
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.shippingTracker), actions: const [LanguageSwitch()]),
-      body: RefreshIndicator(
-        onRefresh: () async => _reload(),
-        child: AsyncView<List<ShippingOrder>>(
-          future: _f,
-          onRetry: _reload,
-          builder: (c, all) {
-            final zh = Localizations.localeOf(context).languageCode == 'zh';
-            bool done(ShippingOrder o) => o.shipmentStatus == 'DELIVERED';
-            final nC = all.where(done).length;
-            final tabs = Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: SegTabs<bool>(key: const Key('ship-tabs'), value: _closed, onChanged: (v) => setState(() => _closed = v),
-              items: [(false, zh ? '进行中' : 'Active', (all.length - nC)), (true, zh ? '已完成' : 'Closed', nC)]));
-            final list = all.where((o) => done(o) == _closed).where((o) => _q.isEmpty || [o.leadRef, o.trackingNumber, o.name].whereType<String>().any((v) => v.toLowerCase().contains(_q))).toList();
-            final search = Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: TextField(
-                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: context.l10n.searchRef, isDense: true, border: const OutlineInputBorder()),
-                onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
-              ),
-            );
-            return all.isEmpty
-              ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noShipmentsYet))])
-              : ListView(
-                  children: [tabs, search, ...list
-                      .map((o) => Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            child: ListTile(
-                              leading: const Icon(Icons.directions_boat_outlined),
-                              title: Text(o.trackingNumber ?? o.name),
-                              subtitle: Text('${o.leadRef != null ? '${o.leadRef} · ' : ''}${o.forwarder ?? context.l10n.forwarderTbd} · ${context.l10n.eta} ${o.eta != null ? dateFmt.format(o.eta!) : '—'}'),
-                              trailing: StatusChip(o.shipmentStatus ?? 'BOOKED'),
-                              onTap: () async {
-                                await Navigator.push(c, MaterialPageRoute(builder: (_) => ShipmentDetailScreen(order: o)));
-                                _reload();
-                              },
-                            ),
-                          ))
-                      ],
-                );
-          },
-        ),
-      ),
+      appBar: AppBar(title: Text(tw(context, 'shipping.title'))),
+      body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: [
+        Text(tw(context, 'shipping.subtitle'), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+        const SizedBox(height: 8),
+        SegTabs<bool>(key: const Key('ship-tabs'), value: _closed, onChanged: (v) => setState(() => _closed = v),
+            items: [(false, tw(context, 'closedOrder.active'), (all?.length ?? 0) - nC), (true, tw(context, 'closedOrder.closed'), nC)]),
+        const SizedBox(height: 8),
+        TextField(key: const Key('ship-search'), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), isDense: true, filled: true,
+            hintText: 'SE / ${tw(context, 'shipping.tracking')} / ${tw(context, 'orders.customer')}', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+          onChanged: (v) => setState(() => _q = v.trim().toLowerCase())),
+        const SizedBox(height: 8),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+          for (final x in ['', ...shipStages]) Padding(padding: const EdgeInsets.only(right: 6), child: ChoiceChip(
+            key: Key('ship-f-${x.isEmpty ? 'all' : x}'), selected: _filter == x, onSelected: (_) => setState(() => _filter = x),
+            label: Text('${x.isEmpty ? tw(context, 'ship.all') : tw(context, 'ship.st.$x')}${pool != null ? ' (${pool.where((s) => x.isEmpty || s['status'] == x).length})' : ''}'))),
+        ])),
+        const SizedBox(height: 8),
+        if (_err != null) Text(_err!, style: TextStyle(color: cs.error)),
+        if (rows == null) const LinearProgressIndicator()
+        else if (rows.isEmpty) Padding(padding: const EdgeInsets.all(32), child: Column(children: [
+          Icon(Icons.local_shipping_outlined, size: 40, color: cs.outline), const SizedBox(height: 8),
+          Text(tw(context, 'shipping.none'), style: Theme.of(context).textTheme.titleMedium),
+          Text(tw(context, 'shipping.noneHint'), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall)]))
+        else for (final s in rows) ShipCard(key: Key('ship-${s['id']}-${s['updatedAt']}'), s: s, onChanged: _replace),
+      ])),
     );
   }
 }
 
-const shipmentSteps = ['BOOKED', 'IN_TRANSIT', 'AT_PORT', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+class ShipCard extends StatefulWidget {
+  const ShipCard({super.key, required this.s, required this.onChanged});
+  final Map<String, dynamic> s;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+  @override
+  State<ShipCard> createState() => _ShipCardState();
+}
 
-class ShipmentDetailScreen extends StatelessWidget {
-  const ShipmentDetailScreen({super.key, required this.order});
-  final ShippingOrder order;
+class _ShipCardState extends State<ShipCard> {
+  static const _ckeys = ['mode', 'incoterm', 'port', 'transit', 'carrier', 'tracking', 'container', 'etd', 'eta'];
+  late final Map<String, String> f = {
+    for (final k in ['status', ..._ckeys, 'customsNote', 'deliveredAt']) k: '${widget.s[k] ?? ''}'.split('T').first,
+  }..['status'] = '${widget.s['status'] ?? 'PENDING'}';
+  late final Map<String, TextEditingController> _c = {for (final k in ['port', 'transit', 'carrier', 'tracking', 'container', 'customsNote']) k: TextEditingController(text: f[k])};
+  bool busy = false;
+  String? msg;
+
+  @override
+  void dispose() { for (final c in _c.values) { c.dispose(); } super.dispose(); }
+
+  String _st(String v) => tw(context, 'ship.st.$v');
+  String _v(String k) => _c[k]?.text.trim() ?? f[k] ?? '';
+
+  Future<void> _save(List<String> keys, [String? status]) async {
+    setState(() { busy = true; msg = null; });
+    try {
+      final b = <String, dynamic>{for (final k in keys) k: _v(k).isEmpty ? null : _v(k), 'status': ?status};
+      final n = await context.read<Session>().repo.patchShipment('${widget.s['id']}', b);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tw(context, 'orders.saved'))));
+      widget.onChanged(n);
+    } catch (e) { if (mounted) setState(() => msg = '$e'); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+
+  Widget _sel(String k, List<String> opts, String label, String Function(String) fmt) => DropdownButtonFormField<String>(
+        key: Key('s-$k'), initialValue: opts.contains(f[k]) ? f[k] : opts.first, isExpanded: true,
+        decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
+        items: [for (final v in opts) DropdownMenuItem(value: v, child: Text(v.isEmpty ? '—' : fmt(v), overflow: TextOverflow.ellipsis))],
+        onChanged: (v) => setState(() => f[k] = v ?? ''));
+  Widget _inp(String k, String label) => TextField(key: Key('s-$k'), controller: _c[k], decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()), onChanged: (_) => setState(() {}));
+  Widget _date(String k, String label) => InkWell(key: Key('s-$k'), onTap: () async {
+        final cur = DateTime.tryParse(f[k] ?? '');
+        final d = await showDatePicker(context: context, initialDate: cur ?? DateTime.now(), firstDate: DateTime(2023), lastDate: DateTime(2035));
+        if (d != null) setState(() => f[k] = DateFormat('yyyy-MM-dd').format(d));
+      }, child: InputDecorator(decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder(),
+          suffixIcon: (f[k] ?? '').isEmpty ? const Icon(Icons.event, size: 18) : IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => f[k] = ''))),
+        child: Text((f[k] ?? '').isEmpty ? '—' : _d(f[k]))));
+  Widget _grid(List<Widget> xs) => LayoutBuilder(builder: (_, c) {
+        final w = (c.maxWidth - 8) / 2;
+        return Wrap(spacing: 8, runSpacing: 8, children: [for (final x in xs) SizedBox(width: w, child: x)]);
+      });
+  Widget _part(String title, List<Widget> kids) => Container(margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title.toUpperCase(), style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline, letterSpacing: .6)),
+        const SizedBox(height: 8), ...kids]));
 
   @override
   Widget build(BuildContext context) {
-    final p = context.watch<Session>().perms;
-    final o = order;
-    final step = shipmentSteps.indexOf(o.shipmentStatus ?? 'BOOKED');
-    final hasPos = o.latitude != null && o.longitude != null;
-    return Scaffold(
-      appBar: AppBar(title: Text([o.leadRef, o.trackingNumber ?? context.l10n.shipment].whereType<String>().join(' · ')), actions: [
-        if (p.canEditShipping)
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () async {
-              final changed = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => ShipmentEditScreen(order: o)));
-              if (changed == true && context.mounted) Navigator.pop(context);
-            },
-          ),
+    final s = widget.s, ses = context.watch<Session>(), role = ses.role.name, perms = ses.perms;
+    final sa = role == 'superAdmin', china = role.startsWith('china') || sa, india = role.startsWith('india') || sa;
+    final t = Theme.of(context), cs = t.colorScheme, status = '${s['status'] ?? 'PENDING'}';
+    final cur = shipStages.indexOf(status), shipped = cur >= shipStages.indexOf('IN_TRANSIT'), closed = s['closed'] == true;
+    final canShip = (_v('tracking').isNotEmpty || _v('container').isNotEmpty) && (f['etd'] ?? '').isNotEmpty;
+    final canEdit = perms.can('orders.production');
+    String o(String k) => '${s[k] ?? ''}'.isEmpty ? '—' : '${s[k]}';
+    Widget kv(String k, String v) => Text.rich(TextSpan(children: [TextSpan(text: '$k: '), TextSpan(text: v, style: const TextStyle(fontWeight: FontWeight.w600))]), style: t.textTheme.bodySmall);
+    final qty = s['qty'];
+    return Card(key: const Key('ship-card'), margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        InkWell(key: const Key('ship-open'), onTap: s['leadId'] == null ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => LeadDetailScreen(leadId: '${s['leadId']}'))),
+          child: Text(o('ref'), style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700, color: cs.primary, decoration: TextDecoration.underline))),
+        if (s['leadRef'] != null) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)), child: Text('${s['leadRef']}', style: t.textTheme.labelSmall)),
+        Text(o('product'), style: const TextStyle(fontWeight: FontWeight.w600)),
+        if (qty != null) Text('× ${NumberFormat.decimalPattern('en_IN').format(qty)}', style: t.textTheme.bodySmall),
+        Container(key: const Key('ship-status'), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(20)),
+          child: Text(_st(status), style: t.textTheme.labelSmall?.copyWith(color: cs.onPrimaryContainer))),
+        if (closed) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.green.withValues(alpha: .15), borderRadius: BorderRadius.circular(20)), child: Text('✓ ${tw(context, 'status.COMPLETED')}', style: t.textTheme.labelSmall)),
+        if (closed && s['paymentPending'] == true) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.amber.withValues(alpha: .2), borderRadius: BorderRadius.circular(20)), child: Text(tw(context, 'closedOrder.payPending'), style: t.textTheme.labelSmall)),
       ]),
-      body: ListView(children: [
-        SizedBox(
-          height: 220,
-          child: FlutterMap(
-            options: MapOptions(
-              initialCenter: hasPos ? LatLng(o.latitude!, o.longitude!) : const LatLng(18, 95), // China–India corridor
-              initialZoom: hasPos ? 5 : 3,
-            ),
-            children: [
-              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'in.sourceeasy.source_easy'),
-              if (hasPos)
-                MarkerLayer(markers: [
-                  Marker(point: LatLng(o.latitude!, o.longitude!), child: const Icon(Icons.location_on, color: Colors.red, size: 36)),
-                ]),
-              const RichAttributionWidget(attributions: [TextSourceAttribution('OpenStreetMap contributors')]),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Stepper(
-              physics: const NeverScrollableScrollPhysics(),
-              currentStep: step < 0 ? 0 : step,
-              controlsBuilder: (_, _) => const SizedBox.shrink(),
-              steps: shipmentSteps
-                  .map((s) => Step(title: Text(codeLabel(context, s)), content: const SizedBox.shrink(),
-                      isActive: shipmentSteps.indexOf(s) <= step,
-                      state: shipmentSteps.indexOf(s) < step ? StepState.complete : StepState.indexed))
-                  .toList(),
-            ),
-            InfoRow(context.l10n.forwarder, o.forwarder),
-            InfoRow(context.l10n.trackingNo, o.trackingNumber),
-            InfoRow(context.l10n.container, codeLabel(context, o.containerType)),
-            InfoRow(context.l10n.etd, o.etd != null ? dateFmt.format(o.etd!) : null),
-            InfoRow(context.l10n.eta, o.eta != null ? dateFmt.format(o.eta!) : null),
-            InfoRow(context.l10n.customs, codeLabel(context, o.customsStatus)),
-            InfoRow(context.l10n.location, o.currentLocation),
-          ]),
-        ),
+      Padding(padding: const EdgeInsets.only(top: 2), child: Text(tw(context, 'shipping.updated', {'d': _d(s['updatedAt'])}), style: t.textTheme.labelSmall?.copyWith(color: cs.outline))),
+      const SizedBox(height: 10),
+      Semantics(label: tw(context, 'shipping.progress'), child: Row(key: const Key('ship-progress'), children: [
+        for (var i = 1; i < shipStages.length; i++) Expanded(child: Tooltip(message: _st(shipStages[i]), child: Container(height: 6, margin: const EdgeInsets.symmetric(horizontal: 1.5),
+            decoration: BoxDecoration(color: i <= cur ? cs.primary : cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(3))))),
+      ])),
+      const SizedBox(height: 10),
+      Wrap(spacing: 14, runSpacing: 4, children: [
+        if (s.containsKey('customer')) kv(tw(context, 'orders.customer'), '${o('customer')}${s['deliveryCity'] != null ? ' · ${s['deliveryCity']}' : ''}'),
+        if (s.containsKey('supplier')) kv(tw(context, 'orders.supplier'), o('supplier')),
+        kv(tw(context, 'ship.mode'), '${s['mode'] != null ? tw(context, 'ship.m.${s['mode']}') : '—'} · ${o('incoterm')}'),
+        kv(tw(context, 'ship.port'), '${o('port')} · ${tw(context, 'ship.transit')}: ${o('transit')}'),
+        kv(tw(context, 'shipping.carrier'), o('carrier')),
+        kv(tw(context, 'shipping.tracking'), '${o('tracking')}${s['container'] != null ? ' · ${s['container']}' : ''}'),
+        kv('ETD', '${_d(s['etd'])} · ETA ${_d(s['eta'])}'),
+        if (s['deliveredAt'] != null) kv(tw(context, 'ship.deliveredAt'), _d(s['deliveredAt'])),
+        if ('${s['customsNote'] ?? ''}'.isNotEmpty) kv(tw(context, 'ship.customsNote'), '${s['customsNote']}'),
       ]),
-    );
-  }
-}
-
-class ShipmentEditScreen extends StatefulWidget {
-  const ShipmentEditScreen({super.key, required this.order});
-  final ShippingOrder order;
-  @override
-  State<ShipmentEditScreen> createState() => _ShipmentEditScreenState();
-}
-
-class _ShipmentEditScreenState extends State<ShipmentEditScreen> {
-  late final _fwd = TextEditingController(text: widget.order.forwarder);
-  late final _trk = TextEditingController(text: widget.order.trackingNumber);
-  late final _loc = TextEditingController(text: widget.order.currentLocation);
-  late final _lat = TextEditingController(text: widget.order.latitude?.toString());
-  late final _lng = TextEditingController(text: widget.order.longitude?.toString());
-  late String _status = widget.order.shipmentStatus ?? 'BOOKED';
-  late String _customs = widget.order.customsStatus ?? 'NOT_STARTED';
-  late String? _container = widget.order.containerType;
-  late DateTime? _etd = widget.order.etd, _eta = widget.order.eta;
-
-  String? _d(DateTime? d) => d?.toIso8601String().substring(0, 10);
-
-  Future<void> _save() async {
-    final s = context.read<Session>();
-    final r = await s.repo.updateShipping(widget.order.id, {
-      'forwarder': _fwd.text.trim(),
-      'trackingNumber': _trk.text.trim(),
-      'currentLocation': _loc.text.trim(),
-      'latitude': double.tryParse(_lat.text),
-      'longitude': double.tryParse(_lng.text),
-      'shipmentStatus': _status,
-      'customsStatus': _customs,
-      'containerType': ?_container,
-      'etd': _d(_etd),
-      'eta': _d(_eta),
-    });
-    if (_status == 'DELIVERED' && widget.order.leadId != null) {
-      await s.repo.updateLead(widget.order.leadId!, {'status': 'DELIVERED'});
-    }
-    await s.refreshPending();
-    if (!mounted) return;
-    showWriteResult(context, r, context.l10n.shipment);
-    Navigator.pop(context, true);
-  }
-
-  Widget _date(String label, DateTime? v, ValueChanged<DateTime> set) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(context.l10n.dateField(label, v != null ? dateFmt.format(v) : '—')),
-        trailing: const Icon(Icons.event),
-        onTap: () async {
-          final d = await showDatePicker(context: context, initialDate: v ?? DateTime.now(),
-              firstDate: DateTime(2024), lastDate: DateTime(2030));
-          if (d != null) setState(() => set(d));
-        },
-      );
-
-  Widget _select(String label, String? value, List<String> opts, ValueChanged<String> set) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: DropdownButtonFormField<String>(
-          initialValue: value,
-          decoration: InputDecoration(labelText: label),
-          items: opts.map((o) => DropdownMenuItem(value: o, child: Text(codeLabel(context, o)))).toList(),
-          onChanged: (v) => setState(() => set(v!)),
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    const gap = SizedBox(height: 12);
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.updateShipment)),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _fwd, decoration: InputDecoration(labelText: context.l10n.forwarder)),
-        gap,
-        TextField(controller: _trk, decoration: InputDecoration(labelText: context.l10n.trackingNumber)),
-        gap,
-        _select('Status', _status, shipmentSteps, (v) => _status = v),
-        _select('Customs', _customs, const ['NOT_STARTED', 'FILED', 'HELD', 'CLEARED'], (v) => _customs = v),
-        _select('Container', _container, const ['LCL', 'FCL_20', 'FCL_40', 'FCL_40HC', 'AIR', 'COURIER'], (v) => _container = v),
-        _date(context.l10n.etd, _etd, (d) => _etd = d),
-        _date(context.l10n.eta, _eta, (d) => _eta = d),
-        TextField(controller: _loc, decoration: InputDecoration(labelText: context.l10n.currentLocation)),
-        gap,
-        Row(children: [
-          Expanded(child: TextField(controller: _lat, keyboardType: TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: context.l10n.latitude))),
-          const SizedBox(width: 12),
-          Expanded(child: TextField(controller: _lng, keyboardType: TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: context.l10n.longitude))),
+      if (closed) Container(key: const Key('s-closed'), margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.green.withValues(alpha: .08), borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('🔒 ${tw(context, 'closedOrder.locked')}', style: t.textTheme.bodySmall),
+          if (s['paymentPending'] == true) Text(tw(context, 'closedOrder.payHint'), style: t.textTheme.bodySmall?.copyWith(color: Colors.amber.shade800)),
+          Align(alignment: Alignment.centerRight, child: sa
+            ? OutlinedButton.icon(key: const Key('s-closed-reopen'), icon: const Icon(Icons.replay, size: 16), label: Text(tw(context, 'closedOrder.reopen')), onPressed: busy ? null : () async {
+                final m = ScaffoldMessenger.of(context), repo = context.read<Session>().repo;
+                final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(content: Text(tw(context, 'closedOrder.reopenConfirm')),
+                    actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: Text(MaterialLocalizations.of(c).cancelButtonLabel)), FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tw(context, 'closedOrder.reopen')))]));
+                if (ok != true) return;
+                try { await repo.reopenLead('${s['leadId']}', 'INDIA'); final r = await repo.shipments(); final n = r.where((x) => x['id'] == s['id']); if (n.isNotEmpty) widget.onChanged(n.first); }
+                catch (e) { m.showSnackBar(SnackBar(content: Text('$e'))); }
+              })
+            : Text(tw(context, 'lost.onlySa'), style: t.textTheme.labelSmall)),
+        ])),
+      if (!closed && china && canEdit) _part(tw(context, 'ship.chinaPart'), [
+        _grid([
+          if (!shipped) _sel('status', chinaShip, tw(context, 'shipping.stage'), _st),
+          _sel('mode', _modes, tw(context, 'ship.mode'), (v) => tw(context, 'ship.m.$v')),
+          _sel('incoterm', _terms, tw(context, 'ship.incoterm'), (v) => v),
+          _inp('port', tw(context, 'ship.port')), _inp('transit', tw(context, 'ship.transit')),
+          _inp('carrier', tw(context, 'shipping.carrier')), _inp('tracking', tw(context, 'shipping.tracking')),
+          _inp('container', tw(context, 'orders.container')), _date('etd', 'ETD'), _date('eta', 'ETA'),
         ]),
-        const SizedBox(height: 24),
-        FilledButton.icon(onPressed: _save, icon: Icon(Icons.save), label: Text(context.l10n.saveUpdate)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          OutlinedButton(key: const Key('s-save-china'), onPressed: busy ? null : () => _save(_ckeys, !shipped && chinaShip.contains(f['status']) && f['status'] != status ? f['status'] : null), child: Text(tw(context, 'orders.save'))),
+          if (!shipped) FilledButton.icon(key: const Key('s-mark-shipped'), icon: const Icon(Icons.local_shipping, size: 18), onPressed: busy || !canShip ? null : () => _save(_ckeys, 'IN_TRANSIT'), label: Text(tw(context, 'ship.markShipped'))),
+          if (!shipped && !canShip) Text(tw(context, 'ship.needForShip'), style: t.textTheme.bodySmall?.copyWith(color: Colors.amber.shade800)),
+          if (shipped) Text('✓ ${tw(context, 'ship.shippedNote')}', key: const Key('s-shipped'), style: t.textTheme.bodySmall?.copyWith(color: Colors.green.shade700)),
+        ]),
       ]),
-    );
+      if (!closed && india && canEdit) _part(tw(context, 'ship.indiaPart'), !shipped
+        ? [Text('🔒 ${tw(context, 'ship.indiaLocked')}', key: const Key('s-india-locked'), style: t.textTheme.bodySmall)]
+        : [
+            _grid([
+              _sel('status', indiaShip.contains(f['status']) ? indiaShip : [f['status']!, ...indiaShip], tw(context, 'shipping.stage'), _st),
+              _date('deliveredAt', tw(context, 'ship.deliveredAt')),
+            ]),
+            const SizedBox(height: 8),
+            _inp('customsNote', tw(context, 'ship.customsNote')),
+            const SizedBox(height: 8),
+            FilledButton(key: const Key('s-save-india'), onPressed: busy ? null : () => _save(['customsNote', 'deliveredAt'], indiaShip.contains(f['status']) && f['status'] != status ? f['status'] : null), child: Text(tw(context, 'orders.save'))),
+          ]),
+      if (busy) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+      if (msg != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(msg!, style: t.textTheme.bodySmall?.copyWith(color: cs.error))),
+    ])));
   }
 }
