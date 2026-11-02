@@ -18,6 +18,8 @@ class SourceEasyApp extends StatelessWidget {
 
   /// Matches the web dashboard: Source Easy logo blue brand accent, slate neutrals, Inter,
   /// 12-16px radii and soft, low-elevation surfaces.
+  /// Root navigator: on sign-out every pushed screen (More → Settings…) is popped so the login screen is visible.
+  static final navKey = GlobalKey<NavigatorState>();
   static const brand = Color(0xFF2A9FD6); // logo blue (gradient to #6CC04A green)
 
   static ThemeData theme(Brightness b) {
@@ -92,6 +94,7 @@ class SourceEasyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Session.onSignedOut ??= () => navKey.currentState?.popUntil((r) => r.isFirst);
     final locale = context.watch<Session>().locale;
     return MaterialApp(
       title: 'Source Easy',
@@ -103,6 +106,7 @@ class SourceEasyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      navigatorKey: navKey,
       debugShowCheckedModeBanner: false,
       theme: theme(Brightness.light),
       darkTheme: theme(Brightness.dark),

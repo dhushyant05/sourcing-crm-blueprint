@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
@@ -51,7 +52,12 @@ class SettingsScreen extends StatelessWidget {
             subtitle: Text(context.l10n.openTheBackupBrowserOnThe),
           ),
         const Divider(),
-        ListTile(leading: Icon(Icons.logout), title: Text(context.l10n.signOut), onTap: s.signOut),
+        ListTile(key: const Key('sign-out'), leading: Icon(Icons.logout), title: Text(context.l10n.signOut), onTap: () {
+          // Instant: leave Settings, drop the session (UI switches to login now); storage wipe + SSE teardown finish in the background.
+          final ses = context.read<Session>();
+          Navigator.of(context).popUntil((r) => r.isFirst);
+          unawaited(ses.signOut());
+        }),
         FutureBuilder<PackageInfo>(
           future: PackageInfo.fromPlatform(),
           builder: (c, snap) => ListTile(

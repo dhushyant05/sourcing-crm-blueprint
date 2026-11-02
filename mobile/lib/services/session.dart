@@ -197,14 +197,21 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Always ends the local session: in-memory state is dropped first (so the UI
+  /// switches to login immediately), then stored credentials are wiped
+  /// best-effort — a storage error can never leave the user signed in.
+  /// Set by the app: clears the navigation stack so the login screen shows (also for automatic sign-outs).
+  static VoidCallback? onSignedOut;
+
   Future<void> signOut() async {
     granted = null; userId = null; avatarUrl = null;
-    for (final k in ['token', 'email', 'name', 'role', 'perms', 'userId']) {
-      await _secure.delete(key: k);
-    }
     _repo = null;
     _api = null;
     notifyListeners();
+    onSignedOut?.call();
+    for (final k in ['token', 'email', 'name', 'role', 'perms', 'userId']) {
+      try { await _secure.delete(key: k); } catch (_) {}
+    }
   }
 
   @override
