@@ -686,6 +686,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateCheckFailed => '无法检查更新，请检查网络后重试。';
 
   @override
+  String updateInstallFailed(String error) {
+    return '安装失败：$error';
+  }
+
+  @override
+  String get updateBrowser => '在浏览器中下载';
+
+  @override
   String get updateDownloadFailed => '下载失败，请重试。';
 
   @override

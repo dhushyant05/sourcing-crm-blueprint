@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/version_label.dart';
 
 import '../../l10n/l10n.dart';
 import 'package:provider/provider.dart';
@@ -43,6 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(actions: const [LanguageSwitch()]),
+      bottomNavigationBar: const SafeArea(child: VersionLabel()),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

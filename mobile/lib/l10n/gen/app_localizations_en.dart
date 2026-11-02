@@ -694,6 +694,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t check for updates. Check your connection and try again.';
 
   @override
+  String updateInstallFailed(String error) {
+    return 'Install failed: $error';
+  }
+
+  @override
+  String get updateBrowser => 'Download in browser';
+
+  @override
   String get updateDownloadFailed => 'Download failed. Please try again.';
 
   @override

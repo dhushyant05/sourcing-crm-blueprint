@@ -214,6 +214,8 @@
   "updateChecking": "正在检查更新…",
   "updateNone": "已是最新版本。",
   "updateCheckFailed": "无法检查更新，请检查网络后重试。",
+  "updateInstallFailed": "安装失败：{error}",
+  "updateBrowser": "在浏览器中下载",
   "updateDownloadFailed": "下载失败，请重试。",
   "updateChecksumFailed": "下载的文件已损坏（校验不匹配），请重试。",
   "updateInstalled": "已安装版本 {version}（构建 {build}）",

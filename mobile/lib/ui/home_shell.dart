@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'widgets/version_label.dart';
 
 import '../l10n/l10n.dart';
 import 'package:provider/provider.dart';
@@ -68,7 +69,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
         Expanded(child: IndexedStack(index: idx, children: pages)),
       ]),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [NavigationBar(
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: idx,
         onDestinationSelected: (i) => setState(() => _i = i),
@@ -83,7 +84,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               label: context.l10n.notifications),
           NavigationDestination(icon: const Icon(Icons.more_horiz), label: context.l10n.more),
         ],
-      ),
+      ), Container(width: double.infinity, color: Theme.of(context).colorScheme.surfaceContainer, child: const SafeArea(top: false, child: VersionLabel()))]),
     ); }));
   }
 }

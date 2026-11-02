@@ -1382,6 +1382,18 @@ abstract class AppLocalizations {
   /// **'Couldn\'t check for updates. Check your connection and try again.'**
   String get updateCheckFailed;
 
+  /// No description provided for @updateInstallFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Install failed: {error}'**
+  String updateInstallFailed(String error);
+
+  /// No description provided for @updateBrowser.
+  ///
+  /// In en, this message translates to:
+  /// **'Download in browser'**
+  String get updateBrowser;
+
   /// No description provided for @updateDownloadFailed.
   ///
   /// In en, this message translates to:

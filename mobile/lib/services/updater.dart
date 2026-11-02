@@ -10,6 +10,8 @@ import 'package:path_provider/path_provider.dart';
 /// Where the website publishes the APK manifest (written by infra/app-servers/publish-apk.sh).
 const updateManifestUrl = String.fromEnvironment('UPDATE_URL', defaultValue: 'https://sourceeasy.in/download/version.json');
 
+const browserApkUrl = 'https://sourceeasy.in/download/source-easy.apk';
+
 /// Parsed /download/version.json.
 class UpdateInfo {
   UpdateInfo({required this.version, required this.build, required this.apkUrl, this.sha256, this.size, this.minBuild, this.notes = const {}});
@@ -108,6 +110,10 @@ class Updater {
       await sink.close();
       hasher.close();
     }
+    if (info.size != null && got != info.size) {
+      file.deleteSync();
+      throw UpdateCheckException('size');
+    }
     final hex = digest.events.single.toString();
     if (info.sha256 != null && hex != info.sha256) {
       file.deleteSync();
@@ -119,6 +125,11 @@ class Updater {
   Future<bool> canInstall() async => await _ch.invokeMethod<bool>('canInstall') ?? false;
   Future<void> openInstallSettings() => _ch.invokeMethod('openInstallSettings');
   Future<void> install(File apk) => _ch.invokeMethod('install', {'path': apk.path});
+  Future<void> openInBrowser() => _ch.invokeMethod('openUrl', {'url': browserApkUrl});
+  /// Installer failures reported asynchronously by the native PackageInstaller session.
+  static void onInstallFailed(void Function(String message) f) => _ch.setMethodCallHandler((c) async {
+        if (c.method == 'installFailed') f('${(c.arguments as Map?)?['message'] ?? 'unknown'}');
+      });
 }
 
 /// Minimal sink for chunked hashing (avoids pulling package:convert just for this).

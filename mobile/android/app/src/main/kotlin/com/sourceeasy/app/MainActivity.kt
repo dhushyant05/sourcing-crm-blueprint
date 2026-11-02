@@ -19,6 +19,46 @@ import androidx.core.app.NotificationManagerCompat
 
 /** OTA install bridge: unknown-sources permission check/settings and launching the package installer via FileProvider. */
 class MainActivity : FlutterActivity() {
+    private var installer: MethodChannel? = null
+    private val ACTION_INSTALL_STATUS = "com.sourceeasy.app.INSTALL_STATUS"
+
+    /** PackageInstaller session: streams the APK into the installer (no file URI sharing, works on MIUI/ColorOS). */
+    private fun installWithSession(f: File) {
+        val pi = packageManager.packageInstaller
+        val params = android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(android.content.pm.PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        val id = pi.createSession(params)
+        pi.openSession(id).use { session ->
+            f.inputStream().use { input -> session.openWrite("app.apk", 0, f.length()).use { out -> input.copyTo(out); session.fsync(out) } }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+            val status = PendingIntent.getBroadcast(this, id, Intent(ACTION_INSTALL_STATUS).setPackage(packageName), flags)
+            session.commit(status.intentSender)
+        }
+    }
+
+    private val statusReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context, i: Intent) {
+            when (val st = i.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -999)) {
+                android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                    @Suppress("DEPRECATION") val confirm = i.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                    if (confirm != null) startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                android.content.pm.PackageInstaller.STATUS_SUCCESS -> {}
+                else -> installer?.invokeMethod("installFailed", mapOf("status" to st,
+                    "message" to (i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "status $st")))
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        val filter = android.content.IntentFilter(ACTION_INSTALL_STATUS)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(statusReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(statusReceiver, filter)
+    }
+
+    override fun onDestroy() { try { unregisterReceiver(statusReceiver) } catch (_: Exception) {}; super.onDestroy() }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sourceeasy/notify").setMethodCallHandler { call, result ->
@@ -58,7 +98,8 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sourceeasy/installer").setMethodCallHandler { call, result ->
+        installer = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sourceeasy/installer")
+        installer!!.setMethodCallHandler { call, result ->
             when (call.method) {
                 "canInstall" -> result.success(
                     Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
@@ -68,15 +109,28 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
-                "install" -> try {
+                "install" -> {
                     val f = File(call.argument<String>("path")!!)
-                    val uri = FileProvider.getUriForFile(this, "$packageName.updates", f)
-                    startActivity(Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(uri, "application/vnd.android.package-archive")
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
+                    if (!f.exists() || f.length() == 0L) { result.error("install_failed", "Downloaded file is missing", null); return@setMethodCallHandler }
+                    try {
+                        installWithSession(f)
+                        result.success("session")
+                    } catch (e: Exception) {
+                        // Fallback: hand the file to the system installer via FileProvider.
+                        try {
+                            val uri = FileProvider.getUriForFile(this, "$packageName.updates", f)
+                            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                            })
+                            result.success("view")
+                        } catch (e2: Exception) { result.error("install_failed", "${e.message}; ${e2.message}", null) }
+                    }
+                }
+                "openUrl" -> try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
-                } catch (e: Exception) { result.error("install_failed", e.message, null) }
+                } catch (e: Exception) { result.error("open_failed", e.message, null) }
                 else -> result.notImplemented()
             }
         }

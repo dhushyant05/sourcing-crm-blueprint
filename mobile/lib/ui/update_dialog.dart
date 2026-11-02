@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
 import '../services/updater.dart';
@@ -92,8 +93,43 @@ class UpdateDialog extends StatefulWidget {
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
 
-class _UpdateDialogState extends State<UpdateDialog> {
+class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver {
   _Stage _stage = _Stage.ready;
+  bool _sentToSettings = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    Updater.onInstallFailed((m) => _installError(m));
+  }
+
+  @override
+  void dispose() { WidgetsBinding.instance.removeObserver(this); super.dispose(); }
+
+  /// Back from "Install unknown apps" settings: continue the install automatically.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed && _sentToSettings && _stage == _Stage.needPermission && _apk != null) {
+      _sentToSettings = false;
+      _install();
+    }
+  }
+
+  Future<void> _openSettings() async {
+    _sentToSettings = true;
+    try { await widget.updater.openInstallSettings(); } catch (e) { _installError('$e'); }
+  }
+
+  void _installError(String m) {
+    if (!mounted) return;
+    final l = context.l10n;
+    _fail(l.updateInstallFailed(m));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text(l.updateInstallFailed(m)), duration: const Duration(seconds: 10),
+      action: SnackBarAction(label: l.updateBrowser, onPressed: () => widget.updater.openInBrowser()),
+    ));
+  }
   double? _progress;
   File? _apk;
   String? _error;
@@ -105,21 +141,29 @@ class _UpdateDialogState extends State<UpdateDialog> {
       _apk ??= await widget.updater.download(widget.info, onProgress: (p) { if (mounted) setState(() => _progress = p); });
       await _install();
     } on UpdateCheckException catch (e) {
-      _fail(e.message == 'checksum' ? l.updateChecksumFailed : l.updateDownloadFailed);
-    } catch (_) {
-      _fail(l.updateDownloadFailed);
+      _fail(e.message == 'checksum' || e.message == 'size' ? l.updateChecksumFailed : l.updateDownloadFailed);
+    } catch (e) {
+      _fail('${l.updateDownloadFailed} ($e)');
     }
   }
 
   Future<void> _install() async {
-    if (!await widget.updater.canInstall()) {
-      if (mounted) setState(() => _stage = _Stage.needPermission);
-      return;
+    try {
+      if (_apk == null || !_apk!.existsSync()) { _apk = null; await _start(); return; }
+      if (!await widget.updater.canInstall()) {
+        if (mounted) setState(() => _stage = _Stage.needPermission);
+        return;
+      }
+      await widget.updater.install(_apk!);
+      if (!mounted) return;
+      setState(() => _stage = _Stage.installing); // keep the dialog open so a failure can be shown
+    } on PlatformException catch (e) {
+      _installError(e.message ?? e.code);
+    } on MissingPluginException catch (e) {
+      _installError('$e');
+    } catch (e) {
+      _installError('$e');
     }
-    await widget.updater.install(_apk!);
-    if (!mounted) return;
-    setState(() => _stage = _Stage.installing);
-    if (!widget.forced) Navigator.of(context).pop();
   }
 
   void _fail(String msg) { if (mounted) setState(() { _stage = _Stage.failed; _error = msg; }); }
@@ -160,9 +204,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
         ]),
       ),
       actions: [
+        if (_stage == _Stage.failed || _stage == _Stage.installing)
+          TextButton(onPressed: () => widget.updater.openInBrowser(), child: Text(l.updateBrowser)),
         if (!widget.forced && _stage != _Stage.downloading) TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(l.updateLater)),
         if (_stage == _Stage.needPermission) ...[
-          TextButton(onPressed: widget.updater.openInstallSettings, child: Text(l.updateOpenSettings)),
+          TextButton(onPressed: _openSettings, child: Text(l.updateOpenSettings)),
           FilledButton(onPressed: _install, child: Text(l.updateInstall)),
         ] else if (_stage == _Stage.installing)
           FilledButton(onPressed: _install, child: Text(l.updateInstall))
