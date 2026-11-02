@@ -2425,6 +2425,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'website leads have no India owner yet'**
   String get ownerDash;
+
+  /// No description provided for @customers.
+  ///
+  /// In en, this message translates to:
+  /// **'Customers'**
+  String get customers;
+
+  /// No description provided for @search.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get search;
+
+  /// No description provided for @custNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No customers yet'**
+  String get custNone;
+
+  /// No description provided for @custStats.
+  ///
+  /// In en, this message translates to:
+  /// **'{leads} leads · {quotes} quotes · {orders} orders'**
+  String custStats(int leads, int quotes, int orders);
+
+  /// No description provided for @custPending.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} payment pending'**
+  String custPending(int n);
+
+  /// No description provided for @custTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Order value'**
+  String get custTotal;
+
+  /// No description provided for @custPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get custPaid;
+
+  /// No description provided for @custDue.
+  ///
+  /// In en, this message translates to:
+  /// **'Due'**
+  String get custDue;
+
+  /// No description provided for @custCompany.
+  ///
+  /// In en, this message translates to:
+  /// **'Company'**
+  String get custCompany;
+
+  /// No description provided for @custCity.
+  ///
+  /// In en, this message translates to:
+  /// **'City'**
+  String get custCity;
+
+  /// No description provided for @custState.
+  ///
+  /// In en, this message translates to:
+  /// **'State'**
+  String get custState;
+
+  /// No description provided for @custCountry.
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get custCountry;
+
+  /// No description provided for @custGst.
+  ///
+  /// In en, this message translates to:
+  /// **'GST (optional)'**
+  String get custGst;
+
+  /// No description provided for @custAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get custAddress;
+
+  /// No description provided for @custNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get custNotes;
+
+  /// No description provided for @custTags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags (comma separated)'**
+  String get custTags;
+
+  /// No description provided for @custName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get custName;
+
+  /// No description provided for @custNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name or company'**
+  String get custNameRequired;
+
+  /// No description provided for @custAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add customer'**
+  String get custAdd;
+
+  /// No description provided for @custEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit customer'**
+  String get custEdit;
+
+  /// No description provided for @custPick.
+  ///
+  /// In en, this message translates to:
+  /// **'Existing customer'**
+  String get custPick;
+
+  /// No description provided for @custPickNew.
+  ///
+  /// In en, this message translates to:
+  /// **'— New customer (auto-match) —'**
+  String get custPickNew;
 }
 
 class _AppLocalizationsDelegate

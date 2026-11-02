@@ -13,6 +13,7 @@ import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, PLURAL_TO_OBJECT, 
 import type { Db } from './db.js';
 import type { Bus } from './bus.js';
 import { LeadStore } from './leads.js';
+import { CustomerStore, BadCustomer, NO_STATS } from './customers.js';
 import type { UserStore, User } from './users.js';
 import { QuoteStore, QUOTE_STATUSES, cqTotals, type Quote } from './quotes.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
@@ -64,6 +65,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const quotes = new QuoteStore(o.db);
+  const customers = new CustomerStore(o.db);
   const orders = new OrderStore(o.db);
   const ships = new ShipmentStore(o.db);
   const rejects = new RejectStore(o.db);
@@ -415,6 +417,13 @@ export async function buildApp(o: AppOptions) {
         if (k.some((x) => PAY.includes(x))) r.push('orders.payment'); if (k.some((x) => INR.includes(x))) r.push('prices.inr');
         if (k.some((x) => !PAY.includes(x))) r.push('orders.production'); return r; },
       'PATCH /api/shipments/:id': () => ['orders.production'],
+      'GET /api/customers': () => ['customers.view'],
+      'GET /api/customers/:id': () => ['customers.view'],
+      'POST /api/customers': () => ['customers.edit'],
+      'PATCH /api/customers/:id': () => ['customers.edit'],
+      'POST /api/customers/:id/merge': () => ['customers.edit'],
+      'DELETE /api/customers/:id': () => ['customers.edit'],
+      'POST /api/leads/:id/customer': () => ['customers.edit'],
       'GET /api/suppliers': () => ['suppliers.view'],
       'GET /api/suppliers/:id': () => ['suppliers.view'],
       'POST /api/suppliers': () => ['suppliers.edit'],
@@ -448,6 +457,7 @@ export async function buildApp(o: AppOptions) {
       else if ((m = path.match(/^\/api\/orders\/([^/]+)/))) { type = 'order'; id = m[1]; leadId = (await orders.get(m[1]))?.leadId ?? null; }
       else if ((m = path.match(/^\/api\/shipments\/([^/]+)/))) { type = 'shipment'; id = m[1]; leadId = (await ships.get(m[1]))?.leadId ?? null; }
       else if (path.startsWith('/api/suppliers')) type = 'supplier';
+      else if (path.startsWith('/api/customers')) type = 'customer';
       else return;
       await liveData({ type, id, leadId, ...(req.method === 'DELETE' && type === 'lead' ? { deleted: true } : {}), at: Date.now() });
     });
@@ -1000,6 +1010,69 @@ export async function buildApp(o: AppOptions) {
       await quotes.deleteSupplier(req.params.id); return reply.code(204).send();
     });
 
+    // ---- Customer directory (India + super admin; customers.view / customers.edit). China never sees customers. ----
+    const custOnly = (role: Role) => { if (!sides(role).india) throw new Forbidden('Only the India office can see customers'); };
+    let syncing: Promise<number> | null = null;
+    const custSync = () => (syncing ??= customers.sync().finally(() => { syncing = null; }));
+    void custSync().catch((e) => app.log.error(e)); // back-fill existing leads on boot
+    api.get<{ Querystring: { q?: string } }>('/api/customers', async (req) => {
+      custOnly(req.user!.role); await custSync();
+      const term = String(req.query?.q ?? '').trim().toLowerCase(), st = await customers.stats(), names = userNames();
+      const list = (await customers.list()).filter((x) => !term || [x.name, x.company, x.phone, x.whatsapp, x.email, x.city, x.state, x.gst, x.notes, ...x.tags].some((v) => v && v.toLowerCase().includes(term)));
+      return { data: list.map((x) => ({ ...x, createdByName: (x.createdBy && names.get(x.createdBy)) || null, ...(st.get(x.id) ?? NO_STATS)
+        , ...(can(req.user!, 'prices.inr') ? {} : { orderTotal: null, paid: null, due: null }) })) };
+    });
+    api.get<{ Params: { id: string } }>('/api/customers/:id', async (req, reply) => {
+      const u = req.user!; custOnly(u.role);
+      const c = await customers.get(req.params.id); if (!c) return reply.code(404).send({ error: 'Not found' });
+      const names = userNames(), st = (await customers.stats(c.id)).get(c.id) ?? NO_STATS, inr = can(u, 'prices.inr');
+      const leadRows = await o.db.all('SELECT id FROM leads WHERE customer_id = ? ORDER BY created_at DESC', c.id);
+      const leads: Rec[] = [], quoteRows: Rec[] = [], orderRows: Rec[] = [], shipRows: Rec[] = [];
+      for (const { id } of leadRows) {
+        const l = await leadDb.get(id); if (!l) continue;
+        const a = await assign.get(id), m = await wf.meta(id);
+        leads.push({ id, leadRef: l.leadRef, product: l.productInterest, quantity: l.quantity, unit: l.unit, status: m?.closedAt ? 'CLOSED' : l.status, createdAt: l.createdAt,
+          ownerName: (a?.assignedTo && names.get(a.assignedTo)) || (a?.raisedBy && names.get(a.raisedBy)) || null });
+        for (const q of await quotes.list(id)) if (q.cq) quoteRows.push({ id: q.id, leadId: id, leadRef: l.leadRef, product: q.product, status: q.status, updatedAt: q.updatedAt,
+          ...(inr ? { qty: q.cq.qty, unitPrice: q.cq.unitPrice, currency: 'INR', total: cqTotals(q.cq).total } : {}) });
+        for (const x of await orders.byLead(id)) {
+          orderRows.push({ id: x.id, leadId: id, leadRef: l.leadRef, product: x.product, qty: x.qty, paymentStatus: x.paymentStatus, production: x.production, indiaStatus: x.indiaStatus, createdAt: x.createdAt,
+            ...(inr ? { agreedPrice: x.agreedPrice, advance: x.advance, total: x.qty * x.agreedPrice } : {}) });
+          const sh = await ships.byOrder(x.id); if (sh) shipRows.push({ id: sh.id, leadId: id, leadRef: l.leadRef, ref: sh.ref, status: sh.status, mode: sh.mode, etd: sh.etd, eta: sh.eta, deliveredAt: sh.deliveredAt });
+        }
+      }
+      return { data: { ...c, createdByName: (c.createdBy && names.get(c.createdBy)) || null, ...st, ...(inr ? {} : { orderTotal: null, paid: null, due: null }),
+        leads, quotes: quoteRows, orders: orderRows, shipments: shipRows } };
+    });
+    const custErr = (e: unknown) => { if (e instanceof BadCustomer) throw bad(e.message); throw e; };
+    api.post<{ Body: Record<string, unknown> }>('/api/customers', async (req, reply) => { custOnly(req.user!.role);
+      return reply.code(201).send({ data: await customers.add(req.body ?? {}, req.user!.id).catch(custErr) }); });
+    api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/customers/:id', async (req, reply) => {
+      custOnly(req.user!.role);
+      const c = await customers.update(req.params.id, req.body ?? {}).catch(custErr);
+      return c ? { data: c } : reply.code(404).send({ error: 'Not found' });
+    });
+    api.post<{ Params: { id: string }; Body: { from?: string[] } }>('/api/customers/:id/merge', async (req, reply) => {
+      custOnly(req.user!.role);
+      const from = Array.isArray(req.body?.from) ? req.body!.from.map(String) : [];
+      if (!from.length) throw bad('Pick customers to merge');
+      const c = await customers.merge(req.params.id, from).catch(custErr);
+      return c ? { data: c } : reply.code(404).send({ error: 'Not found' });
+    });
+    api.delete<{ Params: { id: string } }>('/api/customers/:id', async (req, reply) => {
+      const role = req.user!.role; custOnly(role);
+      if (role !== 'SUPER_ADMIN' && role !== 'INDIA_ADMIN') throw new Forbidden('Only an India admin can delete customers');
+      if (await customers.leadCount(req.params.id)) throw bad('This customer has leads, merge it into another customer instead', 409);
+      return (await customers.remove(req.params.id)) ? reply.code(204).send() : reply.code(404).send({ error: 'Not found' });
+    });
+    /** Re-link a lead to another customer (India side). */
+    api.post<{ Params: { id: string }; Body: { customerId?: string } }>('/api/leads/:id/customer', async (req, reply) => {
+      custOnly(req.user!.role);
+      const lead = await leadDb.get(req.params.id); if (!lead) return reply.code(404).send({ error: 'Not found' });
+      const c = await customers.get(String(req.body?.customerId ?? '')); if (!c) throw bad('Unknown customer');
+      await customers.link(req.params.id, c.id); return { data: { leadId: req.params.id, customerId: c.id } };
+    });
+
     // ---- Generic filtered records API (used by mobile and web) ----
     const objOf = (plural: string): ObjectName => {
       // Only leads live in this API now (Source Easy's own database); the old Twenty objects are gone.
@@ -1041,12 +1114,23 @@ export async function buildApp(o: AppOptions) {
     api.post<{ Params: { plural: string }; Body: Rec }>('/api/records/:plural', async (req, reply) => {
       const obj = objOf(req.params.plural);
       const body = { ...(req.body ?? {}) }, to = obj === 'lead' ? takeAssignee(body) : undefined;
+      // Picking an existing customer (India side): fills empty contact fields from the customer, then links the lead.
+      const pickedId = obj === 'lead' && typeof body.customerId === 'string' ? body.customerId : null; delete body.customerId;
+      const picked = pickedId && sides(req.user!.role).india && can(req.user!, 'customers.view') ? await customers.get(pickedId) : null;
+      if (picked) {
+        body.clientName ||= picked.company ?? picked.name; body.contactName ||= picked.name;
+        if (!(body.contactPhone as Rec)?.primaryPhoneNumber && typeof body.contactPhone !== 'string' && picked.phone) body.contactPhone = { primaryPhoneNumber: picked.phone };
+        if (!(body.contactEmail as Rec)?.primaryEmail && typeof body.contactEmail !== 'string' && picked.email) body.contactEmail = { primaryEmail: picked.email };
+        body.deliveryCity ||= picked.city;
+      }
       const data = { ...writeCheck(req.user!.role, obj, 'create', body) };
       // The reference is always assigned here (incl. offline mobile leads when they sync), never by the client.
       if (obj === 'lead') { data.assignedOffice ??= CHINA_LEAD_STATUSES.includes(String(data.status)) ? 'CHINA' : 'INDIA'; data.office ??= 'INDIA'; }
       const leadRef = await nextRef();
       data.leadRef = leadRef;
       const r = await leadDb.create(data);
+      if (picked) await customers.link(String(r.id), picked.id);
+      void custSync().catch(() => undefined);
       {
         const actor = req.user!, office: Office = data.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA';
         await assign.set(String(r.id), { raisedBy: officeOf(actor.role) === 'CHINA' ? null : actor.id });

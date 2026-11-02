@@ -1,3 +1,4 @@
+import 'screens/customers_screen.dart';
 import 'package:flutter/material.dart';
 import 'widgets/version_label.dart';
 
@@ -98,6 +99,7 @@ class MoreScreen extends StatelessWidget {
     Widget tile(IconData i, String t, Widget page) => ListTile(leading: Icon(i), title: Text(t), trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)));
     return Scaffold(appBar: AppBar(title: Text(l.more)), body: ListView(children: [
+      if (context.read<Session>().perms.canSeeCustomers) tile(Icons.contacts_outlined, l.customers, const CustomersScreen()),
       tile(Icons.local_shipping_outlined, l.shipping, const ShippingScreen()),
       tile(Icons.chat_bubble_outline, l.chat, const ChatListScreen()),
       tile(Icons.settings_outlined, l.settings, const SettingsScreen()),

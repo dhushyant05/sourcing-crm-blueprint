@@ -7,6 +7,7 @@ import { Quotations } from './pages/Quotations';
 import { Orders } from './pages/Orders';
 import { Shipping } from './pages/Shipping';
 import { Suppliers } from './pages/Suppliers';
+import { Customers } from './pages/Customers';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Team } from './pages/Team';
@@ -14,7 +15,7 @@ import { Landing } from './pages/Landing';
 import { DownloadPage } from './pages/Download';
 import type { Lead } from './lib/types';
 
-const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'suppliers', 'users', 'settings'];
+const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'users', 'settings'];
 const fromHash = (): Route => (routes.find((r) => location.hash === `#/${r}`) ?? 'dashboard');
 
 function Shell() {
@@ -32,6 +33,7 @@ function Shell() {
       {route === 'quotations' && perms.can('quotes.view') && <Quotations search={search} openLead={setLead} />}
       {route === 'orders' && <Orders search={search} openLead={setLead} />}
       {route === 'shipping' && <Shipping search={search} openLead={setLead} />}
+      {route === 'customers' && perms.customers && perms.can('customers.view') && <Customers search={search} openLead={(id) => { void api.lead(id).then((l) => l && setLead(l)); }} />}
       {route === 'suppliers' && perms.suppliers && perms.can('suppliers.view') && <Suppliers search={search} />}
       {route === 'users' && perms.manageUsers && <Team />}
       {route === 'settings' && <Settings />}

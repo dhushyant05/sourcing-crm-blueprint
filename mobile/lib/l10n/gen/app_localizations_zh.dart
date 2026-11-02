@@ -1246,4 +1246,74 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get ownerDash => '条网站线索尚无印度负责人';
+
+  @override
+  String get customers => '客户';
+
+  @override
+  String get search => '搜索';
+
+  @override
+  String get custNone => '暂无客户';
+
+  @override
+  String custStats(int leads, int quotes, int orders) {
+    return '$leads 条线索 · $quotes 个报价 · $orders 个订单';
+  }
+
+  @override
+  String custPending(int n) {
+    return '$n 笔待付款';
+  }
+
+  @override
+  String get custTotal => '订单金额';
+
+  @override
+  String get custPaid => '已付';
+
+  @override
+  String get custDue => '待付';
+
+  @override
+  String get custCompany => '公司';
+
+  @override
+  String get custCity => '城市';
+
+  @override
+  String get custState => '邦';
+
+  @override
+  String get custCountry => '国家';
+
+  @override
+  String get custGst => 'GST（可选）';
+
+  @override
+  String get custAddress => '地址';
+
+  @override
+  String get custNotes => '备注';
+
+  @override
+  String get custTags => '标签（逗号分隔）';
+
+  @override
+  String get custName => '姓名';
+
+  @override
+  String get custNameRequired => '请输入名称或公司';
+
+  @override
+  String get custAdd => '添加客户';
+
+  @override
+  String get custEdit => '编辑客户';
+
+  @override
+  String get custPick => '已有客户';
+
+  @override
+  String get custPickNew => '— 新客户（自动匹配）—';
 }

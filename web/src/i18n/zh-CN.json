@@ -19,7 +19,8 @@
     "collapse": "收起",
     "more": "更多",
     "toggleSidebar": "切换侧栏",
-    "orders": "订单"
+    "orders": "订单",
+    "customers": "客户"
   },
   "header": {
     "search": "按参考编号、线索、产品搜索…",
@@ -849,7 +850,8 @@
       "orders": "订单",
       "reports": "报表与导出",
       "leads": "线索",
-      "admin": "管理"
+      "admin": "管理",
+      "customers": "客户"
     },
     "k": {
       "suppliers.view": "查看供应商列表",
@@ -866,7 +868,9 @@
       "leads.all": "查看全部线索（关闭=仅分配给我的）",
       "leads.delete": "删除线索",
       "staff.manage": "管理员工（办公室管理员）",
-      "settings.sla": "修改 SLA 设置"
+      "settings.sla": "修改 SLA 设置",
+      "customers.view": "查看客户名录",
+      "customers.edit": "添加 / 编辑 / 合并客户"
     }
   },
   "del": {
@@ -907,5 +911,54 @@
     "reassign": "重新分配",
     "filter": "未分配（{{n}}）",
     "dash": "条网站线索尚无印度负责人"
+  },
+  "customers": {
+    "title": "客户",
+    "subtitle": "印度方客户名录——根据线索自动关联（电话 → 邮箱 → 公司）。",
+    "add": "添加客户",
+    "edit": "编辑",
+    "merge": "合并重复",
+    "none": "暂无客户",
+    "customer": "客户",
+    "contact": "联系方式",
+    "place": "城市 / 邦",
+    "activity": "动态",
+    "total": "订单金额",
+    "lastLead": "最近线索",
+    "stats": "{{leads}} 条线索 · {{quotes}} 个报价 · {{orders}} 个订单",
+    "pending": "{{n}} 笔待付款",
+    "due": "待付 {{v}}",
+    "dueLabel": "待付",
+    "paid": "已付",
+    "paidAmt": "已付 {{v}}",
+    "duesFilter": "待付款（{{n}}）",
+    "nameRequired": "请输入名称或公司",
+    "tagsHint": "用逗号分隔，例如 VIP, 回头客",
+    "mergeTitle": "合并到 {{name}}",
+    "mergeHint": "线索将转到此客户，其余客户将被删除。",
+    "mergeGo": "合并 {{n}} 个",
+    "search": "搜索",
+    "addedBy": "添加人",
+    "auto": "自动（来自线索）",
+    "hLeads": "线索（{{n}}）",
+    "hQuotes": "报价（{{n}}）",
+    "hOrders": "订单（{{n}}）",
+    "hShipments": "发货（{{n}}）",
+    "pick": "已有客户",
+    "pickNew": "— 新客户（自动匹配）—",
+    "f": {
+      "name": "姓名",
+      "company": "公司",
+      "phone": "电话",
+      "whatsapp": "WhatsApp",
+      "email": "邮箱",
+      "city": "城市",
+      "state": "邦",
+      "country": "国家",
+      "gst": "GST（可选）",
+      "tags": "标签",
+      "address": "地址",
+      "notes": "备注"
+    }
   }
 }

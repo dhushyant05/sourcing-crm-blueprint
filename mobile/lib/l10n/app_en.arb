@@ -709,5 +709,47 @@
       }
     }
   },
-  "ownerDash": "website leads have no India owner yet"
+  "ownerDash": "website leads have no India owner yet",
+  "customers": "Customers",
+  "search": "Search",
+  "custNone": "No customers yet",
+  "custStats": "{leads} leads · {quotes} quotes · {orders} orders",
+  "@custStats": {
+    "placeholders": {
+      "leads": {
+        "type": "int"
+      },
+      "quotes": {
+        "type": "int"
+      },
+      "orders": {
+        "type": "int"
+      }
+    }
+  },
+  "custPending": "{n} payment pending",
+  "@custPending": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "custTotal": "Order value",
+  "custPaid": "Paid",
+  "custDue": "Due",
+  "custCompany": "Company",
+  "custCity": "City",
+  "custState": "State",
+  "custCountry": "Country",
+  "custGst": "GST (optional)",
+  "custAddress": "Address",
+  "custNotes": "Notes",
+  "custTags": "Tags (comma separated)",
+  "custName": "Name",
+  "custNameRequired": "Enter a name or company",
+  "custAdd": "Add customer",
+  "custEdit": "Edit customer",
+  "custPick": "Existing customer",
+  "custPickNew": "— New customer (auto-match) —"
 }

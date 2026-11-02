@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { NotificationBell } from './NotificationBell';
-import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Factory, UserCog, Package } from 'lucide-react';
+import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Contact, Factory, UserCog, Package } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../lib/store';
 import { ROLES, type Role } from '../lib/roles';
@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { LanguageSwitch } from './LanguageSwitch';
 import { Avatar } from './ui';
 
-export type Route = 'dashboard' | 'leads' | 'quotations' | 'orders' | 'shipping' | 'suppliers' | 'users' | 'settings';
+export type Route = 'dashboard' | 'leads' | 'quotations' | 'orders' | 'shipping' | 'customers' | 'suppliers' | 'users' | 'settings';
 
 export function Layout({ route, go, search, setSearch, children, openLeadId }: {
   route: Route; go: (r: Route) => void; search: string; setSearch: (s: string) => void; children: ReactNode; openLeadId: (id: string) => void;
@@ -31,6 +31,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
     { id: 'quotations', icon: FileText, show: perms.can('quotes.view') },
     { id: 'orders', icon: Package, show: true },
     { id: 'shipping', icon: Ship, show: true },
+    { id: 'customers', icon: Contact, show: perms.customers && perms.can('customers.view') },
     { id: 'suppliers', icon: Factory, show: perms.suppliers && perms.can('suppliers.view') },
     { id: 'users', icon: UserCog, show: perms.manageUsers },
     { id: 'settings', icon: Settings, show: true },

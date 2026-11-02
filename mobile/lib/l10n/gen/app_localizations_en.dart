@@ -1261,4 +1261,74 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ownerDash => 'website leads have no India owner yet';
+
+  @override
+  String get customers => 'Customers';
+
+  @override
+  String get search => 'Search';
+
+  @override
+  String get custNone => 'No customers yet';
+
+  @override
+  String custStats(int leads, int quotes, int orders) {
+    return '$leads leads · $quotes quotes · $orders orders';
+  }
+
+  @override
+  String custPending(int n) {
+    return '$n payment pending';
+  }
+
+  @override
+  String get custTotal => 'Order value';
+
+  @override
+  String get custPaid => 'Paid';
+
+  @override
+  String get custDue => 'Due';
+
+  @override
+  String get custCompany => 'Company';
+
+  @override
+  String get custCity => 'City';
+
+  @override
+  String get custState => 'State';
+
+  @override
+  String get custCountry => 'Country';
+
+  @override
+  String get custGst => 'GST (optional)';
+
+  @override
+  String get custAddress => 'Address';
+
+  @override
+  String get custNotes => 'Notes';
+
+  @override
+  String get custTags => 'Tags (comma separated)';
+
+  @override
+  String get custName => 'Name';
+
+  @override
+  String get custNameRequired => 'Enter a name or company';
+
+  @override
+  String get custAdd => 'Add customer';
+
+  @override
+  String get custEdit => 'Edit customer';
+
+  @override
+  String get custPick => 'Existing customer';
+
+  @override
+  String get custPickNew => '— New customer (auto-match) —';
 }

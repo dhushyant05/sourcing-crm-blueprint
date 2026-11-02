@@ -43,6 +43,18 @@ export interface Shipment {
   etd: string | null; eta: string | null; status: string; customsNote?: string | null; deliveredAt: string | null; production: string | null; expectedShip: string | null; closed?: boolean; closedAt?: string | null; paymentPending?: boolean;
   customer?: string | null; deliveryCity?: string | null; supplier?: string | null; createdAt: string; updatedAt: string;
 }
+/** India-side customer directory row (PostgreSQL `customers`) with activity stats. Never sent to China. INR totals are null without prices.inr. */
+export interface Customer {
+  id: string; name: string; company?: string | null; phone?: string | null; whatsapp?: string | null; email?: string | null; city?: string | null; state?: string | null;
+  country?: string | null; gst?: string | null; address?: string | null; notes?: string | null; tags: string[]; createdByName?: string | null; createdAt?: string;
+  leads: number; quotes: number; orders: number; shipments: number; paymentPending: number; orderTotal: number | null; paid: number | null; due: number | null; lastLeadAt: string | null;
+}
+export interface CustomerDetail extends Customer {
+  leadRows: { id: string; leadRef: string | null; product: string | null; quantity: number | null; unit: string | null; status: string; createdAt: string; ownerName: string | null }[];
+  quoteRows: { id: string; leadId: string; leadRef: string | null; product: string; status: string; updatedAt: string; qty?: number; unitPrice?: number; total?: number }[];
+  orderRows: { id: string; leadId: string; leadRef: string | null; product: string; qty: number; paymentStatus: string; production: string; indiaStatus: string; createdAt: string; agreedPrice?: number; advance?: number; total?: number }[];
+  shipmentRows: { id: string; leadId: string; leadRef: string | null; ref: string; status: string; mode: string | null; etd: string | null; eta: string | null; deliveredAt: string | null }[];
+}
 /** China-side supplier directory row (PostgreSQL `suppliers`) with activity stats. Never sent to India. */
 export interface Supplier {
   id: string; name: string; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null; notes?: string | null;

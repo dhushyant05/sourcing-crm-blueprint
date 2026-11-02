@@ -11,6 +11,8 @@ import { sides, type Role } from './roles.js';
 export type PermSide = 'INDIA' | 'CHINA' | 'ANY';
 export interface PermDef { key: string; group: string; side: PermSide }
 export const PERMISSIONS: PermDef[] = [
+  { key: 'customers.view', group: 'customers', side: 'INDIA' },
+  { key: 'customers.edit', group: 'customers', side: 'INDIA' },
   { key: 'suppliers.view', group: 'suppliers', side: 'CHINA' },
   { key: 'suppliers.edit', group: 'suppliers', side: 'CHINA' },
   { key: 'quotes.view', group: 'quotes', side: 'ANY' },
@@ -36,7 +38,7 @@ const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.
 const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
   INDIA_STAFF, CHINA_STAFF,
-  INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN_EXTRA],
+  INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN_EXTRA, 'customers.view', 'customers.edit'],
   CHINA_ADMIN: [...CHINA_STAFF, ...ADMIN_EXTRA],
   SUPER_ADMIN: [...PERM_KEYS],
 };

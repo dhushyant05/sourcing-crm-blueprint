@@ -49,6 +49,9 @@ class Permissions {
   bool get canBulkDeleteLeads => isSuperAdmin;
   bool get canSeeCustomerDetails => _india;
   bool get canCreateLead => _india;
+  /// India-side customer directory (never China).
+  bool get canSeeCustomers => _india && can('customers.view');
+  bool get canEditCustomers => _india && can('customers.edit');
   bool get canRecordApproval => _india && can('quotes.customer');
   bool get canGenerateClientQuote => _india && can('quotes.customer');
   bool get canSeeClientPricing => _india && can('prices.inr');

@@ -25,6 +25,14 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
   final _product = TextEditingController(), _qty = TextEditingController(), _price = TextEditingController();
   String _channel = 'PHONE', _currency = 'INR';
   bool _busy = false;
+  String? _custId;
+  List<Map<String, dynamic>> _custs = [];
+  @override
+  void initState() {
+    super.initState();
+    final s = context.read<Session>();
+    if (s.perms.canSeeCustomers) s.repo.customers().then((c) { if (mounted) setState(() => _custs = c); }).catchError((_) {});
+  }
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
@@ -41,6 +49,7 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
         targetCurrency: _currency,
         sourceChannel: _channel,
         summary: _summary.text.trim(),
+        customerId: _custId,
       );
       if (!mounted) return;
       showWriteResult(context, r, context.l10n.lead);
@@ -75,6 +84,14 @@ class _LeadFormScreenState extends State<LeadFormScreen> {
       body: Form(
         key: _form,
         child: ListView(padding: const EdgeInsets.all(16), children: [
+          if (_custs.isNotEmpty) ...[DropdownButtonFormField<String?>(key: const Key('lead-customer'), isExpanded: true, initialValue: _custId,
+            decoration: InputDecoration(labelText: context.l10n.custPick),
+            items: [DropdownMenuItem<String?>(value: null, child: Text(context.l10n.custPickNew)),
+              ..._custs.map((c) => DropdownMenuItem<String?>(value: c['id'] as String, child: Text([c['name'], c['company'] != c['name'] ? c['company'] : null, c['phone'], c['city']].where((x) => x != null && '$x'.isNotEmpty).join(' · '), overflow: TextOverflow.ellipsis)))],
+            onChanged: (v) => setState(() {
+              _custId = v; final c = _custs.where((x) => x['id'] == v).firstOrNull; if (c == null) return;
+              _client.text = (c['company'] ?? c['name'] ?? '') as String; _phone.text = (c['phone'] ?? '') as String; _email.text = (c['email'] ?? '') as String;
+            })), const SizedBox(height: 12)],
           TextFormField(controller: _client, decoration: InputDecoration(labelText: context.l10n.clientName), validator: _req),
           gap,
           TextFormField(controller: _phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: context.l10n.phone)),

@@ -1,9 +1,9 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
 export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null; permissions?: string[] }
-export interface NewLead { clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
+export interface NewLead { customerId?: string; clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
 export interface Api {
   leads(): Promise<Lead[]>;
   updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
@@ -15,6 +15,12 @@ export interface Api {
   suppliers(q?: string): Promise<Supplier[]>;
   supplier(id: string): Promise<SupplierDetail>;
   saveSupplier(s: Partial<Supplier> & { name: string }, id?: string): Promise<Supplier>;
+  /** India side + super admin: customer directory (customers.view / customers.edit). */
+  customers(q?: string): Promise<Customer[]>;
+  customer(id: string): Promise<CustomerDetail>;
+  saveCustomer(c: Partial<Customer> & { name: string }, id?: string): Promise<Customer>;
+  mergeCustomers(into: string, from: string[]): Promise<Customer>;
+  deleteCustomer(id: string): Promise<void>;
   /** Returns the new lead id. */
   createLead(l: NewLead): Promise<string>;
   /** India side: edit lead fields (e.g. summary). */
@@ -207,8 +213,19 @@ export class ServerApi implements Api {
     const b = { name: s.name, contact: s.contact ?? null, phone: s.phone ?? null, wechat: s.wechat ?? null, city: s.city ?? null, notes: s.notes ?? null };
     return id ? this.req<Supplier>('PATCH', `/suppliers/${encodeURIComponent(id)}`, b) : this.req<Supplier>('POST', '/suppliers', b);
   }
+  customers(q?: string) { return this.req<Customer[]>('GET', `/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`); }
+  async customer(id: string) {
+    const d = await this.req<Record<string, any>>('GET', `/customers/${encodeURIComponent(id)}`);
+    return { ...d, leads: d.leads.length, leadRows: d.leads, quoteRows: d.quotes, orderRows: d.orders, shipmentRows: d.shipments, quotes: d.quotes.length, orders: d.orders.length, shipments: d.shipments.length } as CustomerDetail;
+  }
+  saveCustomer(c: Partial<Customer> & { name: string }, id?: string) {
+    const b: Record<string, unknown> = {}; for (const k of ['name', 'company', 'phone', 'whatsapp', 'email', 'city', 'state', 'country', 'gst', 'address', 'notes', 'tags'] as const) b[k] = c[k] ?? null;
+    return id ? this.req<Customer>('PATCH', `/customers/${encodeURIComponent(id)}`, b) : this.req<Customer>('POST', '/customers', b);
+  }
+  mergeCustomers(into: string, from: string[]) { return this.req<Customer>('POST', `/customers/${encodeURIComponent(into)}/merge`, { from }); }
+  async deleteCustomer(id: string) { await this.req('DELETE', `/customers/${encodeURIComponent(id)}`); }
   async createLead(l: NewLead) {
-    const r = await this.req<{ id: string }>('POST', '/records/leads', {
+    const r = await this.req<{ id: string }>('POST', '/records/leads', { ...(l.customerId ? { customerId: l.customerId } : {}),
       name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',
       assignedOffice: 'INDIA', office: 'INDIA', ...(l.summary ? { summary: l.summary } : {}),
       ...(l.targetPrice ? { targetPrice: micros(l.targetPrice, l.targetCurrency) } : {}),
@@ -344,6 +361,15 @@ export class DemoApi implements Api {
     if (cur) { Object.assign(cur, s); return cur; }
     const n: Supplier = { quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null, ...s, id: `S${demo.suppliers.length + 1}` }; demo.suppliers.push(n); return n;
   }
+  private dc: Customer[] = [];
+  async customers() { return structuredClone(this.dc); }
+  async customer(id: string) { const c = this.dc.find((x) => x.id === id)!; return { ...c, leadRows: [], quoteRows: [], orderRows: [], shipmentRows: [] }; }
+  async saveCustomer(c: Partial<Customer> & { name: string }, id?: string) {
+    const cur = id ? this.dc.find((x) => x.id === id) : undefined; if (cur) { Object.assign(cur, c); return cur; }
+    const n: Customer = { tags: [], leads: 0, quotes: 0, orders: 0, shipments: 0, paymentPending: 0, orderTotal: 0, paid: 0, due: 0, lastLeadAt: null, ...c, id: `C${this.dc.length + 1}` }; this.dc.push(n); return n;
+  }
+  async mergeCustomers(into: string, from: string[]) { this.dc = this.dc.filter((x) => !from.includes(x.id)); return this.dc.find((x) => x.id === into)!; }
+  async deleteCustomer(id: string) { this.dc = this.dc.filter((x) => x.id !== id); }
   async createLead(l: NewLead) {
     const id = `L${demo.leads.length + 1}`;
     demo.leads.unshift({ id, name: l.clientName, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, summary: l.summary,

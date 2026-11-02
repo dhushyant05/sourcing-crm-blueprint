@@ -101,7 +101,7 @@ class SourceEasyRepository {
 
   Future<WriteResult> createLead({required String clientName, String? phone, String? email,
       required String productInterest, double? quantity, double? targetPrice, String targetCurrency = 'INR',
-      String? sourceChannel, String? summary}) {
+      String? sourceChannel, String? summary, String? customerId}) {
     assert(perms.canCreateLead);
     return _write('lead', {
       'name': '$clientName — $productInterest',
@@ -114,6 +114,7 @@ class SourceEasyRepository {
         'targetPrice': {'amountMicros': (targetPrice * 1e6).round(), 'currencyCode': targetCurrency},
       'sourceChannel': ?sourceChannel,
       if (summary != null && summary.isNotEmpty) 'summary': summary,
+      'customerId': ?customerId,
       'status': 'NEW',
       'assignedOffice': 'INDIA',
       'office': 'BOTH',
@@ -183,6 +184,14 @@ class SourceEasyRepository {
   Future<SeOrder> updateOrder(String id, Map<String, dynamic> b) async => SeOrder(_d(await api.send('PATCH', '/api/orders/${Uri.encodeComponent(id)}', body: b)));
   String absoluteUrl(String path) => api.authed(path).uri.toString();
 
+  /// India-side customer directory (customers.view); `GET /api/customers/:id` adds leads/quotes/orders/shipments.
+  Future<List<Map<String, dynamic>>> customers() async {
+    final j = await api.send('GET', '/api/customers') as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+  }
+  Future<Map<String, dynamic>> customer(String id) async => _d(await api.send('GET', '/api/customers/${Uri.encodeComponent(id)}'));
+  Future<Map<String, dynamic>> saveCustomer(Map<String, dynamic> b, [String? id]) async =>
+      _d(await api.send(id == null ? 'POST' : 'PATCH', id == null ? '/api/customers' : '/api/customers/${Uri.encodeComponent(id)}', body: b));
   Future<List<QuoteSupplier>> quoteSuppliers() async {
     final j = await api.send('GET', '/api/suppliers') as Map<String, dynamic>;
     return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(QuoteSupplier.fromJson).toList();

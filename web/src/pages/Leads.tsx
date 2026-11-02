@@ -8,7 +8,7 @@ import { LostActions } from '../components/LostActions';
 import { DeleteLeadDialog } from '../components/DeleteLead';
 import { BigSla, PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
 import { LeadQuotes } from '../components/LeadQuotes';
-import { PIPELINE, type Attachment, type Currency, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
+import { PIPELINE, type Attachment, type Currency, type Customer, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import i18n, { fmtDate } from '../i18n';
 import { MoneyInput, Money } from '../components/MoneyInput';
@@ -140,8 +140,11 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
 
 /** India creates a lead; the optional target price is stored in the currency picked (USD / RMB / INR). */
 export function NewLead({ open, onClose, onCreated, prefill }: { open: boolean; onClose: () => void; onCreated: (id: string) => void; prefill?: { clientName?: string; productInterest?: string } }) {
-  const { api } = useApp();
+  const { api, perms } = useApp();
   const { t } = useTranslation();
+  const canCust = perms.customers && perms.can('customers.view');
+  const [custs, setCusts] = useState<Customer[] | null>(null), [custId, setCustId] = useState('');
+  useEffect(() => { if (open && canCust) { setCustId(''); void api.customers().then(setCusts).catch(() => setCusts([])); } }, [open, canCust, api]);
   const blank = { clientName: '', productInterest: '', quantity: '100', price: '', currency: 'INR' as Currency, summary: '' };
   const [f, setF] = useState(blank), [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (open) setF({ ...blank, ...prefill }); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -149,7 +152,7 @@ export function NewLead({ open, onClose, onCreated, prefill }: { open: boolean; 
   const submit = async () => {
     try {
       setErr(null); setPct(files.length ? 0 : null);
-      const id = await api.createLead({ clientName: f.clientName, productInterest: f.productInterest, quantity: Number(f.quantity) || 1,
+      const id = await api.createLead({ customerId: custId || undefined, clientName: f.clientName, productInterest: f.productInterest, quantity: Number(f.quantity) || 1,
         targetPrice: Number(f.price) > 0 ? Number(f.price) : undefined, targetCurrency: f.currency, summary: f.summary.trim() || undefined });
       if (files.length) await api.uploadAttachments(id, files, setPct);
       setF(blank); setFiles([]); setPct(null); window.dispatchEvent(new Event('se:leads-changed')); onCreated(id);
@@ -159,6 +162,10 @@ export function NewLead({ open, onClose, onCreated, prefill }: { open: boolean; 
     <SlideOver open={open} onClose={onClose} title={t('leads.new')}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.cancel')}</button><button className="btn-primary" form="new-lead" disabled={pct != null}>{t('leads.create')}</button></>}>
       <form id="new-lead" data-testid="new-lead-form" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        {canCust && <div><label className="label" htmlFor="lead-customer">{t('customers.pick')}</label>
+          <select id="lead-customer" data-testid="lead-customer" className="input" value={custId} onChange={(e) => { const c = custs?.find((x) => x.id === e.target.value); setCustId(e.target.value); if (c) setF({ ...f, clientName: c.company || c.name }); }}>
+            <option value="">{t('customers.pickNew')}</option>
+            {custs?.map((c) => <option key={c.id} value={c.id}>{[c.name, c.company !== c.name ? c.company : null, c.phone, c.city].filter(Boolean).join(' · ')}</option>)}</select></div>}
         <div><label className="label">{t('leads.clientName')}</label><input className="input" required value={f.clientName} onChange={(e) => setF({ ...f, clientName: e.target.value })} /></div>
         <div><label className="label">{t('common.product')}</label><input className="input" required value={f.productInterest} onChange={(e) => setF({ ...f, productInterest: e.target.value })} /></div>
         <div><label className="label">{t('common.quantity')}</label><input className="input" inputMode="numeric" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></div>

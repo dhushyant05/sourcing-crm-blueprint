@@ -19,7 +19,8 @@
     "collapse": "Collapse",
     "more": "More",
     "toggleSidebar": "Toggle sidebar",
-    "orders": "Orders"
+    "orders": "Orders",
+    "customers": "Customers"
   },
   "header": {
     "search": "Search by reference, lead, product…",
@@ -849,7 +850,8 @@
       "orders": "Orders",
       "reports": "Reports & export",
       "leads": "Leads",
-      "admin": "Administration"
+      "admin": "Administration",
+      "customers": "Customers"
     },
     "k": {
       "suppliers.view": "View suppliers list",
@@ -866,7 +868,9 @@
       "leads.all": "View all leads (off = only assigned to me)",
       "leads.delete": "Delete leads",
       "staff.manage": "Manage staff (office admin)",
-      "settings.sla": "Change SLA settings"
+      "settings.sla": "Change SLA settings",
+      "customers.view": "View customer directory",
+      "customers.edit": "Add / edit / merge customers"
     }
   },
   "del": {
@@ -907,5 +911,54 @@
     "reassign": "Reassign",
     "filter": "Unassigned ({{n}})",
     "dash": "website leads have no India owner yet"
+  },
+  "customers": {
+    "title": "Customers",
+    "subtitle": "India-side client directory — linked automatically from leads (phone → email → company).",
+    "add": "Add customer",
+    "edit": "Edit",
+    "merge": "Merge duplicates",
+    "none": "No customers yet",
+    "customer": "Customer",
+    "contact": "Contact",
+    "place": "City / State",
+    "activity": "Activity",
+    "total": "Order value",
+    "lastLead": "Last lead",
+    "stats": "{{leads}} leads · {{quotes}} quotes · {{orders}} orders",
+    "pending": "{{n}} payment pending",
+    "due": "Due {{v}}",
+    "dueLabel": "Due",
+    "paid": "Paid",
+    "paidAmt": "paid {{v}}",
+    "duesFilter": "Payment pending ({{n}})",
+    "nameRequired": "Enter a name or company",
+    "tagsHint": "Comma separated, e.g. VIP, Repeat",
+    "mergeTitle": "Merge into {{name}}",
+    "mergeHint": "Leads move to this customer; the others are removed.",
+    "mergeGo": "Merge {{n}}",
+    "search": "Search",
+    "addedBy": "Added by",
+    "auto": "Auto (from lead)",
+    "hLeads": "Leads ({{n}})",
+    "hQuotes": "Quotes ({{n}})",
+    "hOrders": "Orders ({{n}})",
+    "hShipments": "Shipments ({{n}})",
+    "pick": "Existing customer",
+    "pickNew": "— New customer (auto-match) —",
+    "f": {
+      "name": "Name",
+      "company": "Company",
+      "phone": "Phone",
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "city": "City",
+      "state": "State",
+      "country": "Country",
+      "gst": "GST (optional)",
+      "tags": "Tags",
+      "address": "Address",
+      "notes": "Notes"
+    }
   }
 }
