@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/models/models.dart';
 import '../../l10n/l10n.dart';
 import '../../services/session.dart';
+import '../../services/downloads.dart';
 import '../widgets/se_codes.dart';
 
 /// India: prepare the INR customer quote → branded PDF (server) → share via WhatsApp/email/link → accepted/rejected → order.
@@ -71,6 +72,53 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
     final text = how == 'wa' ? wa : how == 'mail' ? 'mailto:${widget.lead?.contactEmail ?? ''}?subject=${Uri.encodeComponent('Quotation ${q.label ?? ''} – ${q.product}')}&body=${Uri.encodeComponent(_msg)}' : _msg;
     await SharePlus.instance.share(ShareParams(text: text, subject: 'Quotation ${q.label ?? ''}'));
     if (q.status == 'DRAFT' && mounted) await _status('SENT');
+  }
+
+  Future<void> _download() async {
+    final repo = context.read<Session>().repo, m = ScaffoldMessenger.of(context);
+    await _run(() async {
+      final b = await repo.quotePdfBytes(q.pdfUrl!);
+      final name = 'Quotation-${(q.label ?? q.leadRef ?? q.id).replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}.pdf';
+      final where = await Downloads.save(b, name);
+      m.showSnackBar(SnackBar(content: Text(where)));
+      if (q.status == 'DRAFT' && mounted) await _status('SENT');
+    });
+  }
+
+  /// Super admin only: undo an acceptance recorded by mistake (server re-checks role, order state).
+  Future<void> _revert() async {
+    final repo = context.read<Session>().repo;
+    Map<String, dynamic> info;
+    try { info = await repo.revertInfo(q.id); } catch (e) { return setState(() => _err = '$e'); }
+    if (!mounted) return;
+    final order = info['order'] as Map?;
+    final progress = ((order?['progress'] as List?) ?? const []).map((e) => '$e').toList();
+    final c = TextEditingController();
+    String to = 'SENT';
+    bool cancel = false, force = false;
+    final ok = await showDialog<bool>(context: context, builder: (d) => StatefulBuilder(builder: (d, set) {
+      final can = c.text.trim().length >= 3 && (order == null || (cancel && (progress.isEmpty || force)));
+      return AlertDialog(title: Text(tw(context, 'cq.revertTitle')), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tw(context, 'cq.revertHint'), style: Theme.of(context).textTheme.bodySmall), const SizedBox(height: 10),
+        TextField(key: const Key('cq-revert-reason'), controller: c, maxLines: 2, onChanged: (_) => set(() {}), decoration: InputDecoration(labelText: tw(context, 'cq.revertReason'), border: const OutlineInputBorder())),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(key: const Key('cq-revert-to'), initialValue: to, decoration: InputDecoration(labelText: tw(context, 'cq.revertTo')),
+            items: [for (final s in ['SENT', 'DRAFT']) DropdownMenuItem(value: s, child: Text(tw(context, 'status.$s')))], onChanged: (v) => set(() => to = v ?? 'SENT')),
+        if (order != null) ...[
+          const SizedBox(height: 10),
+          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.amber.withValues(alpha: .15), borderRadius: BorderRadius.circular(8)),
+              child: Text(progress.isEmpty ? tw(context, 'cq.revertOrderDraft') : tw(context, 'cq.revertOrderProgress', {'what': progress.join(', ')}))),
+          CheckboxListTile(key: const Key('cq-revert-cancel'), contentPadding: EdgeInsets.zero, value: cancel, onChanged: (v) => set(() => cancel = v ?? false), title: Text(tw(context, 'cq.revertCancelOrder'))),
+          if (progress.isNotEmpty) CheckboxListTile(key: const Key('cq-revert-force'), contentPadding: EdgeInsets.zero, value: force, onChanged: (v) => set(() => force = v ?? false),
+              title: Text(tw(context, 'cq.revertForce'), style: const TextStyle(color: Colors.red))),
+        ],
+      ])), actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: Text(context.l10n.cancel)),
+        FilledButton(key: const Key('cq-revert-ok'), style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: can ? () => Navigator.pop(d, true) : null, child: Text(tw(context, 'cq.revertDo'))),
+      ]);
+    }));
+    if (ok != true || !mounted) return;
+    await _run(() async { final nq = await repo.revertAcceptance(q.id, reason: c.text.trim(), to: to, cancelOrder: cancel, force: force); setState(() => q = nq); });
   }
 
   Future<void> _status(String s, [String? reason]) async {
@@ -141,6 +189,8 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
         if (_err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_err!, style: TextStyle(color: t.colorScheme.error))),
         const SizedBox(height: 12),
         if (!decided) FilledButton.icon(key: const Key('cq-generate'), onPressed: _busy ? null : _save, icon: const Icon(Icons.picture_as_pdf_outlined), label: Text(l.cqGenerate)),
+        if (q.pdfUrl != null) Padding(padding: const EdgeInsets.only(top: 8), child: OutlinedButton.icon(key: const Key('cq-download'), onPressed: _busy ? null : _download,
+            icon: const Icon(Icons.download_outlined), label: Text(tw(context, 'cq.download')))),
         if (q.pdfUrl != null && !decided) Wrap(spacing: 8, children: [
           OutlinedButton.icon(key: const Key('cq-wa'), onPressed: () => _share('wa'), icon: const Icon(Icons.chat_outlined), label: Text(l.cqWhatsapp)),
           OutlinedButton.icon(key: const Key('cq-mail'), onPressed: () => _share('mail'), icon: const Icon(Icons.mail_outline), label: Text(l.cqEmail)),
@@ -152,6 +202,9 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
           OutlinedButton(key: const Key('cq-reject'), onPressed: _busy ? null : _reject, child: Text(l.cqReject)),
         ]),
         if (q.status == 'ACCEPTED' && q.orderId == null) FilledButton.icon(key: const Key('cq-order'), onPressed: _busy ? null : _order, icon: const Icon(Icons.inventory_2_outlined), label: Text(l.cqCreateOrder)),
+        if (q.status == 'ACCEPTED' && context.read<Session>().role.code == 'SUPER_ADMIN') Padding(padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(key: const Key('cq-revert'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red), onPressed: _busy ? null : _revert,
+                icon: const Icon(Icons.undo), label: Text(tw(context, 'cq.revert')))),
         if (q.orderId != null) ListTile(leading: const Icon(Icons.inventory_2_outlined), title: Text(l.cqOrderCreated)),
       ]),
     );

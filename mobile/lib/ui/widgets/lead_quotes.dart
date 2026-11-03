@@ -1,11 +1,12 @@
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/models/models.dart';
 import '../../l10n/l10n.dart';
 import '../../services/session.dart';
+import 'auth_image.dart';
 import 'lead_attachments.dart';
 import 'media_picker.dart';
 import 'se_codes.dart';
@@ -138,7 +139,6 @@ class QuoteFilesStrip extends StatefulWidget {
 }
 
 class _QuoteFilesStripState extends State<QuoteFilesStrip> {
-  final _bytes = <String, Uint8List>{};
   final _gone = <String>{};
 
   Future<void> _delete(LeadAttachment a) async {
@@ -154,17 +154,10 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
   @override
   void initState() {
     super.initState();
-    _thumbs();
   }
 
-  Future<void> _thumbs() async {
-    final imgs = widget.quote.files.where((a) => a.isImage).toList();
-    if (imgs.isEmpty) return;
-    final repo = context.read<Session>().repo;
-    for (final a in imgs) {
-      try { final b = Uint8List.fromList(await repo.quoteFileBytes(widget.quote.id, a)); if (mounted) setState(() => _bytes[a.id] = b); } catch (_) {}
-    }
-  }
+  String _key(LeadAttachment a) => 'quote/${widget.quote.id}/${a.id}';
+  Future<List<int>> Function() _fetch(LeadAttachment a) { final repo = context.read<Session>().repo; return () => repo.quoteFileBytes(widget.quote.id, a); }
 
   Future<void> _open(LeadAttachment a) async {
     final repo = context.read<Session>().repo;
@@ -173,9 +166,17 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => VideoViewer(a: a, uri: s.uri, headers: s.headers)));
       return;
     }
-    final b = _bytes[a.id] ??= Uint8List.fromList(await repo.quoteFileBytes(widget.quote.id, a));
-    if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewer(a: a, bytes: b, onShare: () async {})));
+    final imgs = widget.quote.files.where((x) => x.isImage && !_gone.contains(x.id)).toList();
+    if (!a.isImage) {
+      try {
+        final b = await MediaCache.I.get(_key(a), _fetch(a));
+        await SharePlus.instance.share(ShareParams(files: [XFile.fromData(b, mimeType: a.mime, name: a.name)], fileNameOverrides: [a.name]));
+      } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+      return;
+    }
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryViewer(
+        items: [for (final x in imgs) (key: _key(x), name: x.name, fetch: _fetch(x))], initial: imgs.indexOf(a),
+        onShare: (i, b) => SharePlus.instance.share(ShareParams(files: [XFile.fromData(b, mimeType: imgs[i].mime, name: imgs[i].name)], fileNameOverrides: [imgs[i].name])))));
   }
 
   @override
@@ -191,8 +192,8 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
             width: 84, height: 84, clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: t.colorScheme.surfaceContainerHighest),
             child: Stack(fit: StackFit.expand, children: [
-              _bytes[a.id] != null
-                ? Image.memory(_bytes[a.id]!, fit: BoxFit.cover)
+              a.isImage
+                ? AuthImage(key: Key('qthumb-${a.id}'), cacheKey: _key(a), fetch: _fetch(a), thumbWidth: 200)
                 : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(a.isVideo ? Icons.play_circle_outline : a.mime.contains('pdf') ? Icons.picture_as_pdf_outlined : a.isImage ? Icons.image_outlined : Icons.description_outlined),
                     Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.labelSmall)),

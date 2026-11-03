@@ -173,6 +173,15 @@ class SourceEasyRepository {
   Future<LeadQuote> quotePdf(String id) async => LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/pdf', body: <String, dynamic>{})));
   Future<LeadQuote> setQuoteStatus(String id, String status, [String? reason]) async =>
       setQuoteStatusCode(id, status, reason: reason);
+  /// Super admin: what reverting an acceptance would affect ({status, canRevert, order:{id, progress}}).
+  Future<Map<String, dynamic>> revertInfo(String id) async => Map<String, dynamic>.from(_d(await api.send('GET', '/api/quotes/${Uri.encodeComponent(id)}/revert-acceptance')) as Map);
+  Future<LeadQuote> revertAcceptance(String id, {required String reason, String to = 'SENT', bool cancelOrder = false, bool force = false}) async =>
+      LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/revert-acceptance', body: {'reason': reason, 'to': to, 'cancelOrder': cancelOrder, 'force': force})));
+  /// Branded customer-quote PDF bytes (as an attachment download).
+  Future<List<int>> quotePdfBytes(String pdfUrl) {
+    final u = Uri.parse(pdfUrl);
+    return api.getBytes('${u.path}?dl=1');
+  }
   Future<LeadQuote> setQuoteStatusCode(String id, String status, {String? reason, String? reasonCode}) async =>
       LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(id)}/status',
           body: {'status': status, if (reason != null && reason.isNotEmpty) 'reason': reason, if (reasonCode != null) 'reasonCode': reasonCode})));
@@ -200,6 +209,25 @@ class SourceEasyRepository {
   /// Merge duplicate customers [from] into [into]; their leads move over.
   Future<void> mergeCustomers(String into, List<String> from) async =>
       api.send('POST', '/api/customers/${Uri.encodeComponent(into)}/merge', body: {'from': from});
+  // ---------- Admin (same endpoints as the web Team / Suppliers / Settings pages; server enforces every permission) ----------
+  List<Map<String, dynamic>> _list(dynamic r) => (((r as Map)['data'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  Future<List<Map<String, dynamic>>> users() async => _list(await api.send('GET', '/api/users'));
+  Future<void> createUser(Map<String, dynamic> u) => api.send('POST', '/api/users', body: u);
+  Future<void> updateUser(String id, Map<String, dynamic> patch) => api.send('PATCH', '/api/users/${Uri.encodeComponent(id)}', body: patch);
+  Future<void> resetPassword(String id, String pw) => api.send('POST', '/api/users/${Uri.encodeComponent(id)}/password', body: {'password': pw});
+  Future<void> deleteUser(String id) => api.send('DELETE', '/api/users/${Uri.encodeComponent(id)}');
+  Future<Map<String, dynamic>> userPermissions(String id) async => _d(await api.send('GET', '/api/users/${Uri.encodeComponent(id)}/permissions'));
+  Future<void> setUserPermissions(String id, Map<String, bool?> changes) => api.send('PUT', '/api/users/${Uri.encodeComponent(id)}/permissions', body: {'permissions': changes});
+  Future<List<Map<String, dynamic>>> supplierList() async => _list(await api.send('GET', '/api/suppliers'));
+  Future<Map<String, dynamic>> supplier(String id) async => _d(await api.send('GET', '/api/suppliers/${Uri.encodeComponent(id)}'));
+  Future<void> saveSupplier(Map<String, dynamic> b, [String? id]) =>
+      id == null ? api.send('POST', '/api/suppliers', body: b) : api.send('PATCH', '/api/suppliers/${Uri.encodeComponent(id)}', body: b);
+  Future<Map<String, dynamic>> slaSettings() async => _d(await api.send('GET', '/api/settings/sla'));
+  Future<void> saveSlaSettings(Map<String, dynamic> b) => api.send('PUT', '/api/settings/sla', body: b);
+  Future<Map<String, dynamic>> slaReport([int days = 30]) async => _d(await api.send('GET', '/api/sla/report', query: {'days': '$days'}));
+  Future<List<Map<String, dynamic>>> backups() async => _list(await api.send('GET', '/api/backups'));
+  Future<List<int>> exportCsv(String kind) => api.getBytes('/api/export/${Uri.encodeComponent(kind)}');
+
   Future<List<QuoteSupplier>> quoteSuppliers() async {
     final j = await api.send('GET', '/api/suppliers') as Map<String, dynamic>;
     return ((j['data'] as List?) ?? []).cast<Map<String, dynamic>>().map(QuoteSupplier.fromJson).toList();

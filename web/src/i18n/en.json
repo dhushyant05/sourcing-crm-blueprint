@@ -495,7 +495,9 @@
     "FOLLOW_UP": "Follow-up due for {{ref}}",
     "FOLLOW_UP_nobody": "Follow-up due for {{ref}}",
     "toastOpen": "Open lead",
-    "toastClose": "Dismiss"
+    "toastClose": "Dismiss",
+    "QUOTE_REVERTED": "{{by}}: customer acceptance reverted on {{ref}}",
+    "QUOTE_REVERTED_nobody": "customer acceptance reverted on {{ref}}"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -610,7 +612,20 @@
     "errQty": "Enter the quantity.",
     "errPrice": "Enter the selling price per unit.",
     "pdfHint": "The PDF shows the Source Easy brand, product, photos and INR totals — never the supplier or China cost.",
-    "wonLost": "Lead moved to {{s}}."
+    "wonLost": "Lead moved to {{s}}.",
+    "openPdf": "Open",
+    "dlFailed": "Could not download the PDF (HTTP {{status}}). Generate it again.",
+    "revert": "Revert acceptance",
+    "revertTitle": "Revert the customer's acceptance",
+    "revertHint": "Use this only if the acceptance was recorded by mistake. The quote goes back to Sent (or Draft), the lead leaves Won, and everyone involved is notified. This is logged in the timeline.",
+    "revertReason": "Reason (required)",
+    "revertTo": "Set quote back to",
+    "revertOrderDraft": "An order was already created from this quote. It has no payment or production yet and will be cancelled.",
+    "revertOrderProgress": "The order created from this quote already has: {{what}}. Cancelling deletes the order and its shipment.",
+    "revertCancelOrder": "Cancel the order created from this quote",
+    "revertForce": "Force: I understand payments/production records on this order will be deleted",
+    "revertConfirm": "Revert this acceptance?",
+    "revertDo": "Revert"
   },
   "qlist": {
     "title": "Quotes",
@@ -810,7 +825,9 @@
       "CREATED_FROM": "Created from {{ref}}",
       "CLOSED_PERMANENT": "Closed permanently",
       "FOLLOW_UP_SET": "Follow-up reminder: {{date}}",
-      "FOLLOW_UP_DUE": "Follow-up due ({{date}})"
+      "FOLLOW_UP_DUE": "Follow-up due ({{date}})",
+      "CQ_REVERTED": "Super admin reverted acceptance of quote #{{n}} → {{to}}: {{reason}}",
+      "ORDER_CANCELLED": "Order cancelled (acceptance reverted): {{reason}}"
     }
   },
   "lost": {

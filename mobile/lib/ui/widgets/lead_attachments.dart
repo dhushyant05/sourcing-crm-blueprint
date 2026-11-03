@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../data/models/models.dart';
 import '../../l10n/l10n.dart';
 import '../../services/session.dart';
+import 'auth_image.dart';
 import 'media_picker.dart';
 
 String fileSize(int b) => b < 1024 * 1024 ? '${(b / 1024).ceil()} KB' : '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -23,7 +24,6 @@ class LeadAttachments extends StatefulWidget {
 
 class _LeadAttachmentsState extends State<LeadAttachments> {
   List<LeadAttachment>? _list;
-  final _bytes = <String, Uint8List>{};
   bool _failed = false, _uploading = false;
 
   @override
@@ -38,17 +38,14 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
       final list = await repo.attachments(widget.leadId);
       if (!mounted) return;
       setState(() => _list = list);
-      for (final a in list.where((a) => a.isImage)) {
-        final b = Uint8List.fromList(await repo.attachmentBytes(widget.leadId, a));
-        if (mounted) setState(() => _bytes[a.id] = b);
-      }
     } catch (_) {
       if (mounted) setState(() { _list ??= []; _failed = true; });
     }
   }
 
-  Future<Uint8List> _get(LeadAttachment a) async =>
-      _bytes[a.id] ??= Uint8List.fromList(await context.read<Session>().repo.attachmentBytes(widget.leadId, a));
+  String _key(LeadAttachment a) => 'lead/${widget.leadId}/${a.id}';
+  Future<List<int>> Function() _fetch(LeadAttachment a) { final repo = context.read<Session>().repo; return () => repo.attachmentBytes(widget.leadId, a); }
+  Future<Uint8List> _get(LeadAttachment a) => MediaCache.I.get(_key(a), _fetch(a));
 
   Future<void> _add() async {
     final paths = await pickMedia(context);
@@ -94,12 +91,18 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => VideoViewer(a: a, uri: s.uri, headers: s.headers)));
       return;
     }
-    final b = await _get(a);
-    if (!mounted) return;
     if (a.isImage) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewer(a: a, bytes: b, onShare: () => _share(a, b))));
-    } else {
-      await _share(a, b);
+      final imgs = _list!.where((x) => x.isImage).toList();
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryViewer(
+          items: [for (final x in imgs) (key: _key(x), name: x.name, fetch: _fetch(x))], initial: imgs.indexOf(a),
+          onShare: (i, b) => _share(imgs[i], b))));
+      return;
+    }
+    try {
+      final b = await _get(a);
+      if (mounted) await _share(a, b);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -146,8 +149,8 @@ class _LeadAttachmentsState extends State<LeadAttachments> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(
                       child: Stack(fit: StackFit.expand, children: [
-                        _bytes[a.id] != null && a.isImage
-                            ? Image.memory(_bytes[a.id]!, fit: BoxFit.cover)
+                        a.isImage
+                            ? AuthImage(key: Key('thumb-${a.id}'), cacheKey: _key(a), fetch: _fetch(a))
                             : Container(color: t.colorScheme.surfaceContainerHighest, child: Icon(_icon(a), size: 40, color: t.colorScheme.primary)),
                         if (_canDel(a))
                           Positioned(top: 4, right: 4, child: Material(
@@ -183,7 +186,7 @@ class ImageViewer extends StatelessWidget {
         backgroundColor: Colors.black,
         appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(a.name),
             actions: [IconButton(tooltip: context.l10n.openFile, icon: const Icon(Icons.share), onPressed: onShare)]),
-        body: InteractiveViewer(child: Center(child: Image.memory(bytes))),
+        body: InteractiveViewer(maxScale: 6, child: Center(child: Image.memory(bytes, gaplessPlayback: true))),
       );
 }
 
@@ -226,7 +229,10 @@ class VideoViewerState extends State<VideoViewer> {
         appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(widget.a.name)),
         body: Center(
           child: _err != null
-              ? Text('$_err', style: const TextStyle(color: Colors.white))
+              ? Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.error_outline, color: Colors.white70, size: 40),
+                  Padding(padding: const EdgeInsets.all(12), child: Text('$_err', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
+                ])
               : !_c.value.isInitialized
                   ? const CircularProgressIndicator()
                   : Column(mainAxisSize: MainAxisSize.min, children: [

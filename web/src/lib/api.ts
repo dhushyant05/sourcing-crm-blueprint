@@ -74,6 +74,8 @@ export interface Api {
   saveCustomerQuote(id: string, c: Partial<Record<keyof CustomerQuote, string | number | null>>): Promise<LeadQuote>;
   quotePdf(id: string): Promise<LeadQuote>;
   setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string): Promise<LeadQuote>;
+  revertInfo(id: string): Promise<{ status: string; canRevert: boolean; order: { id: string; progress: string[] } | null }>;
+  revertAcceptance(id: string, b: { reason: string; to: 'SENT' | 'DRAFT'; cancelOrder?: boolean; force?: boolean }): Promise<LeadQuote>;
   reviseRejected?(leadId: string, b: { targetPrice?: number | null; targetCurrency?: string; notes?: string }): Promise<Lead>;
   closeRejected?(leadId: string): Promise<Lead>;
   createOrder(quoteId: string, b: Record<string, unknown>): Promise<Order>;
@@ -258,6 +260,8 @@ export class ServerApi implements Api {
   }
   saveCustomerQuote(id: string, c: object) { return this.req<LeadQuote>('PUT', `/quotes/${encodeURIComponent(id)}/customer`, c); }
   quotePdf(id: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/pdf`); }
+  revertInfo(id: string) { return this.req<{ status: string; canRevert: boolean; order: { id: string; progress: string[] } | null }>('GET', `/quotes/${encodeURIComponent(id)}/revert-acceptance`); }
+  revertAcceptance(id: string, b: { reason: string; to: 'SENT' | 'DRAFT'; cancelOrder?: boolean; force?: boolean }) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/revert-acceptance`, b); }
   setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/status`, { status, reason, reasonCode }); }
   async reviseRejected(leadId: string, b: Record<string, unknown>) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/revise`, b)); }
   async closeRejected(leadId: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/close`, {})); }
@@ -327,6 +331,8 @@ export class DemoApi implements Api {
   async saveCustomerQuote(id: string, c: any) { const q = this.dq.find((x) => x.id === id)!; const n = (k: string) => Number(c[k] ?? 0); q.cq = { qty: n('qty'), unitPrice: n('unitPrice'), gstPct: n('gstPct'), shipCost: n('shipCost'), otherCharges: n('otherCharges'), shipTerm: c.shipTerm ?? null, shipMode: c.shipMode ?? null, port: c.port ?? null, transit: c.transit ?? null, otherLabel: c.otherLabel ?? null, validity: c.validity ?? null, terms: c.terms ?? null };
     const sub = q.cq.qty * q.cq.unitPrice, tx = sub + q.cq.shipCost + q.cq.otherCharges; q.cqTotals = { subtotal: sub, taxable: tx, gst: tx * q.cq.gstPct / 100, total: tx * (1 + q.cq.gstPct / 100) }; q.clientPrice = q.cq.unitPrice; return structuredClone(q); }
   async quotePdf(id: string) { const q = this.dq.find((x) => x.id === id)!; q.pdfUrl = '#demo'; return structuredClone(q); }
+  async revertInfo(id: string) { const q = this.dq.find((x) => x.id === id)!; return { status: q.status ?? 'DRAFT', canRevert: q.status === 'ACCEPTED', order: null }; }
+  async revertAcceptance(id: string, b: { to: 'SENT' | 'DRAFT' }) { const q = this.dq.find((x) => x.id === id)!; Object.assign(q, { status: b.to }); return structuredClone(q); }
   async setQuoteStatus(id: string, status: string, reason?: string) { const q = this.dq.find((x) => x.id === id)!; Object.assign(q, { status, rejectReason: reason ?? null, ...(status === 'SENT' ? { sentAt: new Date().toISOString() } : {}) }); return structuredClone(q); }
   private dor: Order[] = [];
   async createOrder(quoteId: string, b: any) { const q = this.dq.find((x) => x.id === quoteId)!; const o: Order = { id: `do${Date.now()}`, leadId: q.leadId, quoteId, leadRef: null, product: q.product, qty: Number(b.qty ?? q.cq?.qty ?? 0), agreedPrice: Number(b.agreedPrice ?? q.cq?.unitPrice ?? 0), advance: Number(b.advance ?? 0), paymentStatus: b.paymentStatus ?? 'PENDING', expectedShip: b.expectedShip ?? null, production: 'NEW', tracking: null, container: null, etd: null, eta: null, indiaStatus: 'NONE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), leadStatus: 'WON' }; this.dor.push(o); q.orderId = o.id; return structuredClone(o); }

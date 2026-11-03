@@ -495,7 +495,9 @@
     "FOLLOW_UP": "{{ref}} 跟进提醒到期",
     "FOLLOW_UP_nobody": "{{ref}} 跟进提醒到期",
     "toastOpen": "打开线索",
-    "toastClose": "关闭"
+    "toastClose": "关闭",
+    "QUOTE_REVERTED": "{{by}}：{{ref}} 的客户接受已撤销",
+    "QUOTE_REVERTED_nobody": "{{ref}} 的客户接受已撤销"
   },
   "lq": {
     "title": "供应商报价",
@@ -610,7 +612,20 @@
     "errQty": "请输入数量。",
     "errPrice": "请输入单价售价。",
     "pdfHint": "PDF 显示 Source Easy 品牌、产品、图片和卢比合计 — 不含供应商和中国成本。",
-    "wonLost": "线索已移至 {{s}}。"
+    "wonLost": "线索已移至 {{s}}。",
+    "openPdf": "打开",
+    "dlFailed": "无法下载 PDF（HTTP {{status}}），请重新生成。",
+    "revert": "撤销接受",
+    "revertTitle": "撤销客户的接受",
+    "revertHint": "仅在误记录接受时使用。报价将恢复为已发送（或草稿），线索不再为成交，相关人员会收到通知，并记录在时间线中。",
+    "revertReason": "原因（必填）",
+    "revertTo": "报价恢复为",
+    "revertOrderDraft": "已根据此报价创建订单，尚无付款或生产，将被取消。",
+    "revertOrderProgress": "根据此报价创建的订单已有：{{what}}。取消将删除该订单及其发货。",
+    "revertCancelOrder": "取消根据此报价创建的订单",
+    "revertForce": "强制：我了解此订单的付款/生产记录将被删除",
+    "revertConfirm": "确定撤销此接受？",
+    "revertDo": "撤销"
   },
   "qlist": {
     "title": "报价",
@@ -810,7 +825,9 @@
       "CREATED_FROM": "由 {{ref}} 创建",
       "CLOSED_PERMANENT": "永久关闭",
       "FOLLOW_UP_SET": "跟进提醒：{{date}}",
-      "FOLLOW_UP_DUE": "跟进到期（{{date}}）"
+      "FOLLOW_UP_DUE": "跟进到期（{{date}}）",
+      "CQ_REVERTED": "超级管理员撤销报价 #{{n}} 的接受 → {{to}}：{{reason}}",
+      "ORDER_CANCELLED": "订单已取消（撤销接受）：{{reason}}"
     }
   },
   "lost": {

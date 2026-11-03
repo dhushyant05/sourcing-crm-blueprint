@@ -670,7 +670,7 @@ export async function buildApp(o: AppOptions) {
     const leadOf = async (id: string) => { const l = await leadDb.get(id); if (!l) throw Object.assign(new Error('Not found'), { status: 404 }); return l; };
     const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, (await quotes.get(q.id))!, await decorate(l, await assign.get(q.leadId), userNames()), true); };
     /** Notify about a lead-level event (quote decided, order created/updated). */
-    const tell = async (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'LEAD_CLOSED', office: Office, actor: User) => {
+    const tell = async (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'LEAD_CLOSED', office: Office, actor: User) => {
       const ids = [...new Set(recips.filter((x): x is string => !!x && x !== actor.id && !!o.users.byId(x)?.active))];
       if (ids.length) await assign.notify(ids, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office, byName: actor.name });
     };
@@ -694,14 +694,16 @@ export async function buildApp(o: AppOptions) {
       const st = String(b.status ?? '').toUpperCase() as Quote['status'];
       if (!QUOTE_STATUSES.includes(st)) throw bad('status must be DRAFT, SENT, ACCEPTED or REJECTED');
       if (st !== 'DRAFT' && !q.cq) throw bad('Prepare the customer quote first');
+      if (q.status === 'ACCEPTED' && st !== 'ACCEPTED') throw new Forbidden('An accepted quote can only be reverted by the super admin (Revert acceptance)');
       const rcode = String((b as Rec).reasonCode ?? (st === 'REJECTED' && String(b.reason ?? '').trim() ? 'OTHER' : '')).toUpperCase();
       if (st === 'REJECTED' && !REJECT_REASONS.includes(rcode as any)) throw bad('A reason is required when the customer rejects');
       if (st === 'REJECTED' && rcode === 'OTHER' && !String(b.reason ?? '').trim()) throw bad('A reason is required when the customer rejects');
       if (st === 'DRAFT' && (await orders.byQuote(q.id))) throw bad('This quote already has an order');
+      const prevLeadStatus = (await leadOf(q.leadId)).status ?? null;
       await quotes.setStatus(q.id, st, st === 'REJECTED' ? (String(b.reason ?? '').trim() || rcode) : b.reason);
       const lead = await leadOf(q.leadId), qn = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1;
       if (st !== q.status && st !== 'DRAFT') {
-        await ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', u, { n: qn, ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}) });
+        await ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', u, { n: qn, ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}), ...(st === 'ACCEPTED' ? { quoteId: q.id, prevLeadStatus, prevQuoteStatus: q.status } : {}) });
         await stopClock(q.leadId, 'INDIA'); // sending (or closing) the customer quote is India's next action
       }
       if (st === 'ACCEPTED') {
@@ -717,6 +719,52 @@ export async function buildApp(o: AppOptions) {
         await tell(await chinaPeople(q), lead, 'QUOTE_REJECTED', 'CHINA', u);
       }
       return { data: await refresh(u, q) };
+    });
+    // ---- Super admin: undo a customer acceptance recorded by mistake ----
+    /** Order "progress" that makes a revert destructive: any payment, production past NEW, or shipment past PENDING. */
+    const orderProgress = async (ord: Order) => {
+      const shp = await ships.byOrder(ord.id), why: string[] = [];
+      if (ord.paymentStatus !== 'PENDING' || Number(ord.advance ?? 0) > 0) why.push('payment');
+      if (ord.production && ord.production !== 'NEW') why.push('production');
+      if (shp && shp.status && shp.status !== 'PENDING') why.push('shipment');
+      if (ord.closedAt) why.push('closed');
+      return why;
+    };
+    api.get<{ Params: { qid: string } }>('/api/quotes/:qid/revert-acceptance', async (req) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can revert an acceptance');
+      const q = await quoteOf(req); const ord = await orders.byQuote(q.id);
+      return { data: { status: q.status, canRevert: q.status === 'ACCEPTED', order: ord ? { id: ord.id, progress: await orderProgress(ord) } : null } };
+    });
+    api.post<{ Params: { qid: string }; Body: { reason?: string; to?: string; cancelOrder?: boolean; force?: boolean } }>('/api/quotes/:qid/revert-acceptance', async (req) => {
+      const u = req.user!; if (u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can revert an acceptance');
+      const q = await quoteOf(req), b = req.body ?? {};
+      if (q.status !== 'ACCEPTED') throw bad('Only an accepted quote can be reverted', 409);
+      const reason = String(b.reason ?? '').trim();
+      if (reason.length < 3) throw bad('A reason is required to revert an acceptance');
+      const to = String(b.to ?? 'SENT').toUpperCase();
+      if (!['SENT', 'DRAFT'].includes(to)) throw bad('to must be SENT or DRAFT');
+      const ord = await orders.byQuote(q.id);
+      let orderRemoved: string | null = null;
+      if (ord) {
+        const progress = await orderProgress(ord);
+        if (!b.cancelOrder) throw bad(`An order was already created from this quote${progress.length ? ` (has ${progress.join(', ')})` : ''}. Cancel the order to revert.`, 409);
+        if (progress.length && !b.force) throw bad(`The order already has ${progress.join(', ')}. Use force to cancel it anyway — this deletes the order and its shipment.`, 409);
+        await ships.removeOrder(ord.id); await orders.removeQuote(q.id); orderRemoved = ord.id;
+        await ev(q.leadId, 'ORDER_CANCELLED', u, { orderId: ord.id, forced: !!progress.length, progress, reason: reason.slice(0, 500) });
+      }
+      const evs = await wf.events(q.leadId);
+      const acc = [...evs].reverse().find((e) => e.kind === 'CQ_ACCEPTED' && (!e.data.quoteId || e.data.quoteId === q.id));
+      const lead = await leadOf(q.leadId);
+      const prevLead = (acc?.data.prevLeadStatus as string | undefined) && acc!.data.prevLeadStatus !== 'WON' ? String(acc!.data.prevLeadStatus) : 'QUOTED';
+      await quotes.setStatus(q.id, to as Quote['status'], null as any);
+      if (lead.status === 'WON') { const patch: Rec = { status: prevLead }; await leadDb.update(q.leadId, patch); Object.assign(lead, patch); }
+      const qn = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1;
+      await ev(q.leadId, 'CQ_REVERTED', u, { n: qn, to, reason: reason.slice(0, 500), leadStatus: lead.status ?? null, orderRemoved });
+      const recips = [...await indiaPeople(q.leadId), ...await chinaPeople(q)];
+      await tell(recips, lead, 'QUOTE_REVERTED', 'INDIA', u);
+      if (orderRemoved) await liveData({ type: 'order', id: orderRemoved, leadId: q.leadId, deleted: true, at: Date.now() });
+      await liveData({ type: 'lead', id: q.leadId, leadId: q.leadId, at: Date.now() });
+      return { data: await refresh(u, (await quotes.get(q.id))!) };
     });
     // ---- Customer rejection follow-up (India): request a revised quote from China, or close as LOST ----
     const rejLead = async (u: User, id: string) => {
@@ -748,7 +796,7 @@ export async function buildApp(o: AppOptions) {
       return { data: await decorate(readFilter('lead', lead, await ctxOf(u.role))!, await assign.get(String(lead.id)), userNames()) };
     });
     // Public, unguessable link (32 random bytes) so the customer can open the PDF from WhatsApp/email.
-    app.get<{ Params: { token: string } }>('/api/public/cq/:token', async (req, reply) => {
+    app.get<{ Params: { token: string }; Querystring: { dl?: string } }>('/api/public/cq/:token', async (req, reply) => {
       const q = await quotes.byToken(req.params.token.replace(/\.pdf$/, ''));
       if (!q?.cq) return reply.code(404).send({ error: 'Not found' });
       const lead = (await leadDb.get(q.leadId)) as any;
@@ -756,7 +804,7 @@ export async function buildApp(o: AppOptions) {
       const photos = uploads.list(qKey(q.id)).filter((f) => /^image\/(png|jpe?g)$/.test(f.mime)).map((f) => uploads.file(qKey(q.id), f.id)?.path).filter((p): p is string => !!p);
       const pdf = await customerQuotePdf({ ref, label, product: q.product, customer: lead?.clientName ?? null, cq: q.cq, moq: q.moq, leadTime: q.leadTime,
         date: new Date(q.sentAt ?? q.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }), photos });
-      return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `inline; filename="Quotation-${label}.pdf"`)
+      return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `${req.query?.dl ? 'attachment' : 'inline'}; filename="Quotation-${label}.pdf"`)
         .header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(pdf);
     });
 

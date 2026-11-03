@@ -7,6 +7,7 @@ import '../../data/models/models.dart';
 import '../../services/notifications.dart';
 import '../widgets/common.dart';
 import '../widgets/delete_lead.dart' show tDel;
+import '../../l10n/web_strings.dart';
 import 'lead_detail_screen.dart';
 
 /// Privacy: text uses only the SE reference, product summary and the staff name of who handed it over.
@@ -17,6 +18,7 @@ String notifText(BuildContext context, AppNotification n) {
   switch (n.kind) {
     case 'RETURNED': return l.notifReturned(ref, product, by);
     case 'QUOTE_ACCEPTED': return l.notifQuoteAccepted(ref, product, by);
+    case 'QUOTE_REVERTED': return n.byName == null ? '$ref · $product: ${tw(context, 'notif.QUOTE_REVERTED_nobody', {'ref': ref})}' : '$ref · $product: ${tw(context, 'notif.QUOTE_REVERTED', {'by': n.byName, 'ref': ref})}';
     case 'QUOTE_REJECTED': return l.notifQuoteRejected(ref, product, by);
     case 'ORDER_NEW': return l.notifOrderNew(ref, product, by);
     case 'ORDER_UPDATE': return l.notifOrderUpdate(ref, product, by);

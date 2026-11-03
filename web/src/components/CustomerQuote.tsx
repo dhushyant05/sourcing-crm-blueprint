@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileDown, Mail, MessageCircle, Package, RotateCcw, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Undo2, FileDown, Mail, MessageCircle, Package, RotateCcw, Send, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
@@ -17,8 +17,10 @@ export function QuoteStatusChip({ s }: { s?: string | null }) {
 
 /** India: prepare the customer quote (INR), preview, generate the branded PDF, send it, then record the customer's decision and create the order. */
 export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuote; lead?: Lead | null; onChange: (q: LeadQuote) => void; onLeadStatus?: (s: string) => void }) {
-  const { api, perms } = useApp(); const { t } = useTranslation();
+  const { api, perms, session } = useApp(); const { t } = useTranslation();
+  const sa = session?.role === 'SUPER_ADMIN';
   const c = q.cq;
+  const [rv, setRv] = useState<{ reason: string; to: 'SENT' | 'DRAFT'; order: { id: string; progress: string[] } | null; cancelOrder: boolean; force: boolean } | null>(null);
   const init = () => ({ qty: String(c?.qty ?? lead?.quantity ?? ''), unitPrice: String(c?.unitPrice ?? q.clientPrice ?? ''), gstPct: String(c?.gstPct ?? 18),
     shipCost: String(c?.shipCost ?? ''), shipTerm: c?.shipTerm ?? '', shipMode: c?.shipMode ?? q.shipMode ?? '', port: c?.port ?? '', transit: c?.transit ?? '',
     otherCharges: String(c?.otherCharges ?? ''), otherLabel: c?.otherLabel ?? '', validity: c?.validity ?? q.validity ?? '', terms: c?.terms ?? '' });
@@ -35,8 +37,25 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
   const status = q.status ?? 'DRAFT', decided = status === 'ACCEPTED' || status === 'REJECTED';
   const ref = q.label ?? q.leadRef ?? '', url = q.pdfUrl ? absUrl(q.pdfUrl) : '';
   const msg = t('cq.msg', { name: lead?.contactName || lead?.clientName || '', ref, product: q.product, url });
+  /** Real download: fetch the PDF as a blob (works in PWAs/popup blockers) and save via <a download>; falls back to opening the link. */
+  const download = () => void run(async () => {
+    if (!url) return;
+    const res = await fetch(`${url}?dl=1`, { cache: 'no-store' });
+    const ct = res.headers.get('content-type') ?? '';
+    if (!res.ok || !ct.includes('pdf')) throw new Error(t('cq.dlFailed', { status: res.status }));
+    const blob = await res.blob(), href = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = href; a.download = /filename="?([^";]+)/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? `Quotation-${ref || 'SE'}.pdf`; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 30_000);
+    if (status === 'DRAFT') onChange(await api.setQuoteStatus(q.id, 'SENT'));
+  });
+  const openRevert = () => void run(async () => { const p = await api.revertInfo(q.id); setRv({ reason: '', to: 'SENT', order: p.order, cancelOrder: false, force: false }); });
+  const doRevert = () => rv && void run(async () => {
+    const nq = await api.revertAcceptance(q.id, { reason: rv.reason.trim(), to: rv.to, cancelOrder: rv.cancelOrder, force: rv.force });
+    onChange({ ...nq, orderId: null } as LeadQuote); setOrderDone(false); setRv(null); if (nq.leadStatus) onLeadStatus?.(nq.leadStatus as string);
+  });
   const send = (how: 'wa' | 'mail' | 'dl') => {
     if (!url) return;
+    if (how === 'dl') return download();
     const href = how === 'wa' ? `https://wa.me/${waNumber(lead?.contactPhone)}?text=${encodeURIComponent(msg)}`
       : how === 'mail' ? `mailto:${encodeURIComponent(lead?.contactEmail ?? '')}?subject=${encodeURIComponent(t('cq.subject', { ref, product: q.product }))}&body=${encodeURIComponent(msg)}` : url;
     window.open(href, '_blank', 'noopener');
@@ -88,8 +107,12 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
       <div className="mt-3 flex flex-wrap gap-2"><button data-testid="cq-generate" className="btn-primary" disabled={busy} onClick={() => void run(async () => { onChange(await api.quotePdf(q.id)); setMode(null); })}><FileDown size={15} />{q.pdfUrl ? t('cq.regenerate') : t('cq.generate')}</button>
         <button className="btn-outline" onClick={() => setMode('form')}>{t('cq.back')}</button></div>
     </div>)}
+    {!mode && q.pdfUrl && decided && (<div className="mt-2 flex flex-wrap gap-2">
+      <button data-testid="cq-download" className="btn-outline !py-1 text-xs" disabled={busy} onClick={() => send('dl')}><Download size={13} />{t('cq.download')}</button>
+      <a data-testid="cq-open" className="btn-outline !py-1 text-xs" href={url} target="_blank" rel="noopener">{t('cq.openPdf')}</a></div>)}
     {!mode && q.pdfUrl && !decided && (<div className="mt-2 flex flex-wrap gap-2">
-      <button data-testid="cq-download" className="btn-outline !py-1 text-xs" onClick={() => send('dl')}><Download size={13} />{t('cq.download')}</button>
+      <button data-testid="cq-download" className="btn-outline !py-1 text-xs" disabled={busy} onClick={() => send('dl')}><Download size={13} />{t('cq.download')}</button>
+      <a data-testid="cq-open" className="btn-outline !py-1 text-xs" href={url} target="_blank" rel="noopener">{t('cq.openPdf')}</a>
       <button data-testid="cq-wa" className="btn-outline !py-1 text-xs" onClick={() => send('wa')}><MessageCircle size={13} />{t('cq.whatsapp')}</button>
       <button data-testid="cq-mail" className="btn-outline !py-1 text-xs" onClick={() => send('mail')}><Mail size={13} />{t('cq.email')}</button>
       {status === 'DRAFT' && <button data-testid="cq-mark-sent" className="btn-outline !py-1 text-xs" disabled={busy} onClick={() => void run(async () => onChange(await api.setQuoteStatus(q.id, 'SENT')))}><Send size={13} />{t('cq.markSent')}</button>}
@@ -110,7 +133,21 @@ export function CustomerQuote({ q, lead, onChange, onLeadStatus }: { q: LeadQuot
       <div className="col-span-full text-ink-500">{t('orders.qty')}: {c?.qty} · {t('orders.agreed')}: {inr(c?.unitPrice)}</div>
     </div>) : perms.can('orders.create') && <button data-testid="cq-create-order" className="btn-primary mt-2 !py-1 text-xs" onClick={() => setOrder({ advance: '', paymentStatus: 'PENDING', expectedShip: '' })}><Package size={13} />{t('cq.createOrder')}</button>)}
     {(q.orderId || orderDone) && <a data-testid="cq-order-link" href="#/orders" className="mt-2 inline-flex items-center gap-1 text-brand-600 hover:underline"><Package size={13} />{t('cq.viewOrder')}</a>}
-    {!mode && decided && !q.orderId && <button className="ml-2 mt-2 inline-flex items-center gap-1 text-ink-500 hover:underline" onClick={() => void run(async () => onChange(await api.setQuoteStatus(q.id, 'DRAFT')))}><RotateCcw size={12} />{t('cq.reopen')}</button>}
+    {!mode && sa && status === 'ACCEPTED' && !rv && <button data-testid="cq-revert" className="ml-2 mt-2 inline-flex items-center gap-1 text-amber-700 hover:underline" disabled={busy} onClick={openRevert}><Undo2 size={12} />{t('cq.revert')}</button>}
+    {rv && (<div data-testid="cq-revert-box" className="mt-2 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs dark:bg-amber-950/30">
+      <div className="font-semibold text-amber-900 dark:text-amber-200">{t('cq.revertTitle')}</div>
+      <p className="text-amber-900/80 dark:text-amber-200/80">{t('cq.revertHint')}</p>
+      <textarea data-testid="cq-revert-reason" className="input !py-1 text-xs" rows={2} placeholder={t('cq.revertReason')} value={rv.reason} onChange={(e) => setRv({ ...rv, reason: e.target.value })} />
+      <label className="flex items-center gap-2">{t('cq.revertTo')}<select data-testid="cq-revert-to" className="input !w-auto !py-1 text-xs" value={rv.to} onChange={(e) => setRv({ ...rv, to: e.target.value as 'SENT' | 'DRAFT' })}><option value="SENT">{t('qs.SENT')}</option><option value="DRAFT">{t('qs.DRAFT')}</option></select></label>
+      {rv.order && (<div className="rounded border border-rose-300 bg-rose-50 p-2 text-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
+        <div className="flex items-center gap-1 font-medium"><AlertTriangle size={13} />{rv.order.progress.length ? t('cq.revertOrderProgress', { what: rv.order.progress.join(', ') }) : t('cq.revertOrderDraft')}</div>
+        <label className="mt-1 flex items-center gap-2"><input data-testid="cq-revert-cancel" type="checkbox" checked={rv.cancelOrder} onChange={(e) => setRv({ ...rv, cancelOrder: e.target.checked })} />{t('cq.revertCancelOrder')}</label>
+        {rv.order.progress.length > 0 && <label className="mt-1 flex items-center gap-2 font-semibold"><input data-testid="cq-revert-force" type="checkbox" checked={rv.force} onChange={(e) => setRv({ ...rv, force: e.target.checked })} />{t('cq.revertForce')}</label>}
+      </div>)}
+      <div className="flex gap-2"><button data-testid="cq-revert-confirm" className="btn-primary !bg-amber-600 !py-1 text-xs" disabled={busy || rv.reason.trim().length < 3 || (!!rv.order && !rv.cancelOrder) || (!!rv.order?.progress.length && !rv.force)} onClick={() => { if (confirm(t('cq.revertConfirm'))) doRevert(); }}><Undo2 size={13} />{t('cq.revertDo')}</button>
+        <button className="btn-outline !py-1 text-xs" onClick={() => setRv(null)}>{t('common.cancel')}</button></div>
+    </div>)}
+    {!mode && status === 'REJECTED' && !q.orderId && <button className="ml-2 mt-2 inline-flex items-center gap-1 text-ink-500 hover:underline" onClick={() => void run(async () => onChange(await api.setQuoteStatus(q.id, 'DRAFT')))}><RotateCcw size={12} />{t('cq.reopen')}</button>}
     {err && !mode && <p role="alert" className="mt-1 text-rose-600">{err}</p>}
   </div>);
 }

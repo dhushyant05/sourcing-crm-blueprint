@@ -139,6 +139,38 @@ class MainActivity : FlutterActivity() {
                         } catch (e2: Exception) { result.error("install_failed", "${e.message}; ${e2.message}", null) }
                     }
                 }
+                "saveDownload" -> try {
+                    // Android 10+: MediaStore Downloads (no storage permission). Android 7–9: app's own Download dir via FileProvider.
+                    val src = File(call.argument<String>("path")!!)
+                    val name = call.argument<String>("name") ?: src.name
+                    val mime = call.argument<String>("mime") ?: "application/pdf"
+                    val uri: Uri = if (Build.VERSION.SDK_INT >= 29) {
+                        val v = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                            put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+                        }
+                        val u = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v)!!
+                        contentResolver.openOutputStream(u)!!.use { out -> src.inputStream().use { it.copyTo(out) } }
+                        v.clear(); v.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0); contentResolver.update(u, v, null, null)
+                        u
+                    } else {
+                        val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)!!; dir.mkdirs()
+                        val dst = File(dir, name); src.copyTo(dst, overwrite = true)
+                        FileProvider.getUriForFile(this, "$packageName.updates", dst)
+                    }
+                    result.success(uri.toString())
+                } catch (e: Exception) { result.error("save_failed", e.message, null) }
+                "openFile" -> try {
+                    val raw = call.argument<String>("uri")!!
+                    val uri = if (raw.startsWith("/")) FileProvider.getUriForFile(this, "$packageName.updates", File(raw)) else Uri.parse(raw)
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, call.argument<String>("mime") ?: "application/pdf")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(true)
+                } catch (e: Exception) { result.error("open_failed", e.message, null) }
                 "openUrl" -> try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)

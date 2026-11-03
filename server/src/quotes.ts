@@ -83,7 +83,7 @@ export class QuoteStore {
   }
   async setStatus(id: string, status: QuoteStatus, reason?: string | null): Promise<Quote> {
     const at = new Date().toISOString();
-    if (status === 'SENT') await this.db.run("UPDATE quotes SET status='SENT', sent_at=?, updated_at=? WHERE id=?", at, at, id);
+    if (status === 'SENT') await this.db.run("UPDATE quotes SET status='SENT', sent_at=COALESCE(sent_at, ?), decided_at=NULL, reject_reason=NULL, updated_at=? WHERE id=?", at, at, id);
     else if (status === 'DRAFT') await this.db.run("UPDATE quotes SET status='DRAFT', decided_at=NULL, reject_reason=NULL, updated_at=? WHERE id=?", at, id);
     else await this.db.run('UPDATE quotes SET status=?, decided_at=?, reject_reason=?, updated_at=? WHERE id=?', status, at, status === 'REJECTED' ? s(reason, 500) : null, at, id);
     return (await this.get(id))!;

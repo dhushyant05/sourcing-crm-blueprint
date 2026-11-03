@@ -18,6 +18,7 @@ import 'screens/settings_screen.dart';
 import 'screens/shipping_screen.dart';
 import 'screens/quotes_screen.dart';
 import 'screens/orders_screen.dart';
+import 'screens/admin_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -105,6 +106,7 @@ class MoreScreen extends StatelessWidget {
       if (context.read<Session>().perms.canSeeCustomers) tile(Icons.contacts_outlined, l.customers, const CustomersScreen()),
       tile(Icons.local_shipping_outlined, l.shipping, const ShippingScreen()),
       tile(Icons.chat_bubble_outline, l.chat, const ChatListScreen()),
+      const AdminSection(),
       tile(Icons.settings_outlined, l.settings, const SettingsScreen()),
     ]));
   }
