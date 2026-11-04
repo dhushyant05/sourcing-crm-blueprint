@@ -1,0 +1,3 @@
+# crontab for the backup user on server 3
+45 3 * * * /opt/source-easy/infra/server3-storage/rotate.sh >> /var/log/se-rotate.log 2>&1
+0 * * * *  /opt/source-easy/infra/server3-storage/healthcheck.sh >> /var/log/se-health.log 2>&1

@@ -1,0 +1,64 @@
+/**
+ * Orders (v1): created by India from an accepted quote, linked to the lead's SE reference.
+ * India fields: qty, agreed INR price, advance received, payment status, expected ship date, India-side shipment status (customs / delivered).
+ * China fields: production status, tracking / container no, ETD / ETA. Stored in PostgreSQL.
+ */
+import type { Db } from './db.js';
+import { randomUUID } from 'node:crypto';
+import { BadQuote } from './quotes.js';
+
+export const PAYMENT = ['PENDING', 'PARTIAL', 'PAID'] as const;
+export const PRODUCTION = ['NEW', 'DEPOSIT_PAID', 'IN_PRODUCTION', 'READY', 'SHIPPED'] as const;
+export const INDIA_SHIP = ['NONE', 'IN_TRANSIT', 'CUSTOMS', 'OUT_FOR_DELIVERY', 'DELIVERED'] as const;
+export interface Order {
+  id: string; leadId: string; quoteId: string; leadRef: string | null; product: string; qty: number; agreedPrice: number; advance: number;
+  paymentStatus: string; expectedShip: string | null; production: string; tracking: string | null; container: string | null;
+  etd: string | null; eta: string | null; indiaStatus: string; createdBy: string; createdAt: string; updatedAt: string; closedAt: string | null;
+}
+const s = (v: unknown, max = 120) => { const t = v == null ? '' : String(v).trim(); return t ? t.slice(0, max) : null; };
+const n = (v: unknown, what: string, req = false) => {
+  if (v === undefined || v === null || v === '') { if (req) throw new BadQuote(`${what} is required`); return 0; }
+  const x = typeof v === 'string' ? Number(v.replace(/,/g, '')) : Number(v);
+  if (!Number.isFinite(x) || x < 0) throw new BadQuote(`${what} must be a number`); return x;
+};
+const date = (v: unknown, what: string) => { const t = s(v, 10); if (t && !/^\d{4}-\d{2}-\d{2}$/.test(t)) throw new BadQuote(`${what} must be YYYY-MM-DD`); return t; };
+const one = (v: unknown, list: readonly string[], what: string) => { const t = String(v).toUpperCase(); if (!list.includes(t)) throw new BadQuote(`${what} must be one of ${list.join(', ')}`); return t; };
+export const INDIA_KEYS = ['qty', 'agreedPrice', 'advance', 'paymentStatus', 'expectedShip', 'indiaStatus'];
+export const CHINA_KEYS = ['production', 'tracking', 'container', 'etd', 'eta'];
+
+export class OrderStore {
+  constructor(private db: Db) {}
+  private o = (r: any): Order => ({ id: r.id, leadId: r.lead_id, quoteId: r.quote_id, leadRef: r.lead_ref, product: r.product, qty: r.qty, agreedPrice: r.agreed_price,
+    advance: r.advance, paymentStatus: r.payment_status, expectedShip: r.expected_ship, production: r.production, tracking: r.tracking, container: r.container,
+    etd: r.etd, eta: r.eta, indiaStatus: r.india_status, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at, closedAt: r.closed_at ?? null });
+  async all(): Promise<Order[]> { return ((await this.db.all('SELECT * FROM orders ORDER BY created_at DESC, id')) as any[]).map(this.o); }
+  async byLead(leadId: string): Promise<Order[]> { return (await this.db.all('SELECT * FROM orders WHERE lead_id = ? ORDER BY created_at DESC, id', leadId)).map(this.o); }
+  async get(id: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE id = ?', id)); return r ? this.o(r) : null; }
+  async byQuote(qid: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE quote_id = ?', qid)); return r ? this.o(r) : null; }
+  async create(x: { leadId: string; quoteId: string; leadRef: string | null; product: string }, b: Record<string, unknown>, by: string): Promise<Order> {
+    const id = randomUUID(), at = new Date().toISOString();
+    (await this.db.run(`INSERT INTO orders (id, lead_id, quote_id, lead_ref, product, qty, agreed_price, advance, payment_status, expected_ship, production, india_status, created_by, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, x.leadId, x.quoteId, x.leadRef, x.product, n(b.qty, 'Quantity', true), n(b.agreedPrice, 'Agreed price', true), n(b.advance, 'Advance'),
+      one(b.paymentStatus ?? 'PENDING', PAYMENT, 'Payment status'), date(b.expectedShip, 'Expected ship date'), 'NEW', 'NONE', by, at, at));
+    return (await this.get(id))!;
+  }
+  async update(id: string, b: Record<string, unknown>): Promise<Order> {
+    const c = (await this.get(id))!, h = (k: string) => k in b;
+    const v = {
+      qty: h('qty') ? n(b.qty, 'Quantity', true) : c.qty, agreedPrice: h('agreedPrice') ? n(b.agreedPrice, 'Agreed price', true) : c.agreedPrice,
+      advance: h('advance') ? n(b.advance, 'Advance') : c.advance, paymentStatus: h('paymentStatus') ? one(b.paymentStatus, PAYMENT, 'Payment status') : c.paymentStatus,
+      expectedShip: h('expectedShip') ? date(b.expectedShip, 'Expected ship date') : c.expectedShip, indiaStatus: h('indiaStatus') ? one(b.indiaStatus, INDIA_SHIP, 'Shipment status') : c.indiaStatus,
+      production: h('production') ? one(b.production, PRODUCTION, 'Production status') : c.production, tracking: h('tracking') ? s(b.tracking) : c.tracking,
+      container: h('container') ? s(b.container) : c.container, etd: h('etd') ? date(b.etd, 'ETD') : c.etd, eta: h('eta') ? date(b.eta, 'ETA') : c.eta,
+    };
+    (await this.db.run(`UPDATE orders SET qty=?, agreed_price=?, advance=?, payment_status=?, expected_ship=?, india_status=?, production=?, tracking=?, container=?, etd=?, eta=?, updated_at=? WHERE id=?`, v.qty, v.agreedPrice, v.advance, v.paymentStatus, v.expectedShip, v.indiaStatus, v.production, v.tracking, v.container, v.etd, v.eta, new Date().toISOString(), id));
+    return (await this.get(id))!;
+  }
+  /** Delivered + lead completed = closed (read-only); reopening the lead clears it. */
+  async setClosed(leadId: string, closed: boolean) {
+    if (closed) (await this.db.run("UPDATE orders SET closed_at = ? WHERE lead_id = ? AND india_status = 'DELIVERED' AND closed_at IS NULL", new Date().toISOString(), leadId));
+    else (await this.db.run('UPDATE orders SET closed_at = NULL WHERE lead_id = ?', leadId));
+  }
+  async removeLead(leadId: string) { (await this.db.run('DELETE FROM orders WHERE lead_id = ?', leadId)); }
+  async removeQuote(qid: string) { (await this.db.run('DELETE FROM orders WHERE quote_id = ?', qid)); }
+}

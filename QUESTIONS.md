@@ -1,7 +1,8 @@
 # Questions — All Resolved (2026-10-31)
 
 1. **Client quotes**: Auto-generated PDF, shared to WhatsApp manually via the phone's share sheet. No WhatsApp integration for now.
-2. **Currency**: Multi-currency, mainly RMB and USD. Prices stored in the supplier's quoted currency; India view shows INR. Admin controls the exchange rate source with manual override.
+2. **Currency**: Multi-currency (USD, RMB/CNY, INR) with **no conversion**. Every price is stored and shown in the currency it was entered in; each price form has a currency picker. (Revised 2026-11-01: no exchange rates.)
+2a. **Language**: English / Simplified Chinese switch in the top-right of web and Android (also on login), saved per device and per user.
 3. **Data visibility**: China team sees supplier details; India team sees customer details. Each office admin sees everything on their own side. Super admin sees everything across both offices.
 4. **Voice notes**: Not needed.
 5. **Account administration**: One admin per office (scoped to that office) plus one global super admin.

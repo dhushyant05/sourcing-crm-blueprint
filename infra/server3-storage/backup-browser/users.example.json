@@ -1,0 +1,5 @@
+{
+  "superadmin": {"role": "super_admin", "hash": "pbkdf2_sha256$260000$REPLACE$REPLACE"},
+  "india-admin": {"role": "india_admin", "hash": "pbkdf2_sha256$260000$REPLACE$REPLACE"},
+  "china-admin": {"role": "china_admin", "hash": "pbkdf2_sha256$260000$REPLACE$REPLACE"}
+}

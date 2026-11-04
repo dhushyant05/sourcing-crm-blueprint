@@ -1,0 +1,416 @@
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix } from './types';
+import type { Role } from './roles';
+import { demo } from './demo';
+
+export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null; permissions?: string[] }
+export interface NewLead { customerId?: string; clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
+export interface Api {
+  leads(): Promise<Lead[]>;
+  updateLeadStatus(id: string, status: LeadStatus): Promise<void>;
+  deleteLead(id: string, force?: boolean): Promise<void>;
+  bulkDeleteLeads(ids: string[], force?: boolean): Promise<BulkDelete>;
+  shipments(): Promise<Shipment[]>;
+  updateShipment?(id: string, b: Record<string, unknown>): Promise<Shipment>;
+  /** China side + super admin: supplier directory with activity stats (search on the server). */
+  suppliers(q?: string): Promise<Supplier[]>;
+  supplier(id: string): Promise<SupplierDetail>;
+  saveSupplier(s: Partial<Supplier> & { name: string }, id?: string): Promise<Supplier>;
+  /** India side + super admin: customer directory (customers.view / customers.edit). */
+  customers(q?: string): Promise<Customer[]>;
+  customer(id: string): Promise<CustomerDetail>;
+  saveCustomer(c: Partial<Customer> & { name: string }, id?: string): Promise<Customer>;
+  mergeCustomers(into: string, from: string[]): Promise<Customer>;
+  /** The directory customer a lead is linked to (null when unlinked). */
+  leadCustomer(leadId: string): Promise<Customer | null>;
+  deleteCustomer(id: string): Promise<void>;
+  /** Returns the new lead id. */
+  createLead(l: NewLead): Promise<string>;
+  /** India side: edit lead fields (e.g. summary). */
+  updateLead(id: string, data: Partial<Pick<Lead, 'summary' | 'assignedChinaAgent' | 'status' | 'assignedOffice'>>): Promise<void>;
+  /** Hand the lead to the China office (assignedOffice=CHINA, status ASSIGNED). */
+  assignToChina(id: string, agent?: string): Promise<void>;
+  /** Leads; mine=true → only leads currently assigned to me. */
+  leads(mine?: boolean): Promise<Lead[]>;
+  lead(id: string): Promise<Lead | null>;
+  /** Send / return / reassign a lead. assignedTo null = office queue, undefined = server default (China: queue, India: raiser). */
+  assignLead(id: string, office: Office, assignedTo?: string | null): Promise<Lead>;
+  staff(office: Office): Promise<StaffLite[]>;
+  notifications(): Promise<{ data: AppNotification[]; unread: number }>;
+  markNotificationRead(id?: string): Promise<void>;
+  streamNotifications?(onEvent: (ev: string, data: any) => void, signal: AbortSignal): Promise<void>;
+  /** India side: upload product photos / videos / documents to a lead. */
+  uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void): Promise<Attachment[]>;
+  deleteAttachment(leadId: string, id: string): Promise<void>;
+  setLanguage(lang: string): Promise<void>;
+  /** Upload (already cropped) or remove my picture; super admin can do it for any user via userId. */
+  setAvatar(file: Blob, userId?: string): Promise<string | null>;
+  removeAvatar(userId?: string): Promise<void>;
+  /** Returns a fresh token for this device; every other session is signed out. */
+  changePassword(current: string, next: string): Promise<string>;
+  users(): Promise<User[]>;
+  userPermissions?(id: string): Promise<PermMatrix>;
+  setUserPermissions?(id: string, changes: Record<string, boolean | null>): Promise<{ changed: number }>;
+  exportCsv?(kind: 'leads' | 'quotes' | 'orders' | 'shipments'): Promise<void>;
+  createUser(u: { email: string; name: string; role: Role; password: string }): Promise<void>;
+  resetPassword(id: string, password: string): Promise<void>;
+  setUserActive(id: string, active: boolean): Promise<void>;
+  updateUser(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }): Promise<void>;
+  /** Super admin only: hard delete (leads keep their references). */
+  deleteUser(id: string): Promise<void>;
+  backups(): Promise<BackupLink[]>;
+  /** Enquiry photos/documents of a lead (India side + super admin). */
+  attachments(leadId: string): Promise<Attachment[]>;
+  /** Supplier quotes on a lead (China adds; India sees them without supplier identity). */
+  quotes(leadId: string): Promise<LeadQuote[]>;
+  createQuote(leadId: string, q: QuoteInput): Promise<LeadQuote>;
+  updateQuote(id: string, q: QuoteInput | { clientPrice?: number | string | null; clientCurrency?: string; clientNotes?: string }): Promise<LeadQuote>;
+  deleteQuote(id: string): Promise<void>;
+  uploadQuoteFiles(id: string, files: File[], onProgress?: (pct: number) => void): Promise<LeadQuote>;
+  quoteFileUrl(id: string, a: Attachment): Promise<string>;
+  deleteQuoteFile(id: string, fid: string): Promise<void>;
+  quoteSuppliers(): Promise<QuoteSupplier[]>;
+  /** Every quote across the leads this user can read (role-filtered on the server). */
+  allQuotes(f?: { status?: string; office?: string; mine?: boolean }): Promise<LeadQuote[]>;
+  saveCustomerQuote(id: string, c: Partial<Record<keyof CustomerQuote, string | number | null>>): Promise<LeadQuote>;
+  quotePdf(id: string): Promise<LeadQuote>;
+  setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string): Promise<LeadQuote>;
+  revertInfo(id: string): Promise<{ status: string; canRevert: boolean; order: { id: string; progress: string[] } | null }>;
+  revertAcceptance(id: string, b: { reason: string; to: 'SENT' | 'DRAFT'; cancelOrder?: boolean; force?: boolean }): Promise<LeadQuote>;
+  reviseRejected?(leadId: string, b: { targetPrice?: number | null; targetCurrency?: string; notes?: string }): Promise<Lead>;
+  closeRejected?(leadId: string): Promise<Lead>;
+  createOrder(quoteId: string, b: Record<string, unknown>): Promise<Order>;
+  orders(): Promise<Order[]>;
+  updateOrder(id: string, b: Record<string, unknown>): Promise<Order>;
+  setRaiser(leadId: string, userId: string | null): Promise<Lead>;
+  setIndiaOwner(leadId: string, userId?: string): Promise<Lead>;
+  /** Downloads one file with the staff token (never a public URL) and returns a blob: URL. */
+  attachmentUrl(leadId: string, a: Attachment): Promise<string>;
+  /** Workflow timeline (role-filtered on the server), progress stage and SLA clock. */
+  timeline?(leadId: string): Promise<Timeline>;
+  setPriority?(leadId: string, priority: boolean): Promise<{ priority: boolean; sla: Sla | null }>;
+  reopenLead?(leadId: string, office: 'INDIA' | 'CHINA'): Promise<Lead>;
+  copyLead?(leadId: string): Promise<Lead>;
+  closeLeadPermanently?(leadId: string, followUp: string | null, reason?: string): Promise<Lead>;
+  setFollowUp?(leadId: string, date: string | null): Promise<Lead>;
+  slaSettings?(): Promise<SlaSettings>;
+  saveSlaSettings?(s: SlaSettings): Promise<SlaSettings>;
+  slaReport?(days?: number): Promise<SlaReport>;
+}
+
+type Raw = Record<string, any>;
+const amount = (c?: { amountMicros?: number }) => (c?.amountMicros != null ? c.amountMicros / 1e6 : undefined);
+const micros = (v: number, c: Currency) => ({ amountMicros: Math.round(v * 1e6), currencyCode: c });
+
+export type BulkDelete = { deleted: string[]; failed: { id: string; code?: string; leadRef?: string | null; error?: string; activeOrders?: number }[] };
+export class HttpError extends Error { status: number; body: Record<string, any>; constructor(m: string, s: number, b: Record<string, any> = {}) { super(m); this.status = s; this.body = b; } }
+
+/** Sign in against the Source Easy server (same origin). Returns a JWT; no Twenty key ever reaches the browser. */
+export async function login(email: string, password: string): Promise<{ token: string; user: Me }> {
+  const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new HttpError(j.error ?? 'Sign-in failed', res.status);
+  return j;
+}
+
+/**
+ * Client for the Source Easy server's REST API. The server already removed every record/field the
+ * signed-in role may not see; this class only reshapes the server's lead fields into the dashboard's view models.
+ */
+export class ServerApi implements Api {
+  private token: string; readonly role: Role; private onAuthError: () => void;
+  constructor(token: string, role: Role, onAuthError: () => void) { this.token = token; this.role = role; this.onAuthError = onAuthError; }
+  private async req<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`/api${path}`, {
+      method, body: body ? JSON.stringify(body) : undefined,
+      headers: { authorization: `Bearer ${this.token}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j);
+    return j.data as T;
+  }
+
+  private mapLead = (n: Raw): Lead => ({
+      ...n, contactPhone: n.contactPhone?.primaryPhoneNumber && [n.contactPhone.primaryPhoneCallingCode, n.contactPhone.primaryPhoneNumber].filter(Boolean).join(' '),
+      contactEmail: n.contactEmail?.primaryEmail, referenceUrl: n.referenceUrl?.primaryLinkUrl,
+      targetPrice: amount(n.targetPrice), targetCurrency: n.targetPrice?.currencyCode,
+    }) as Lead;
+  async leads(mine?: boolean) { return (await this.req<Raw[]>('GET', `/records/leads${mine ? '?assignedTo=me' : ''}`)).map(this.mapLead); }
+  async lead(id: string) { try { return this.mapLead(await this.req<Raw>('GET', `/records/leads/${encodeURIComponent(id)}`)); } catch { return null; } }
+  async assignLead(id: string, office: Office, assignedTo?: string | null) {
+    return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/assign`, { office, ...(assignedTo !== undefined ? { assignedTo } : {}) }));
+  }
+  async setAvatar(file: Blob, userId?: string) {
+    const fd = new FormData(); fd.append('file', file, 'avatar.jpg');
+    const res = await fetch(userId ? `/api/users/${encodeURIComponent(userId)}/avatar` : '/api/me/avatar', { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j);
+    return (userId ? j.data?.avatarUrl : j.avatarUrl) ?? null;
+  }
+  async removeAvatar(userId?: string) {
+    const res = await fetch(userId ? `/api/users/${encodeURIComponent(userId)}/avatar` : '/api/me/avatar', { method: 'DELETE', headers: { authorization: `Bearer ${this.token}` } });
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+  }
+  async changePassword(current: string, next: string) {
+    const res = await fetch('/api/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: current, newPassword: next }), headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' } });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j);
+    return j.token as string;
+  }
+  staff(office: Office) { return this.req<StaffLite[]>('GET', `/staff?office=${office}`); }
+  timeline(id: string) { return this.req<Timeline>('GET', `/leads/${encodeURIComponent(id)}/timeline`); }
+  async reopenLead(id: string, office: 'INDIA' | 'CHINA') { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/reopen`, { office })); }
+  async copyLead(id: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/copy`, {})); }
+  async closeLeadPermanently(id: string, followUp: string | null, reason?: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/close-permanent`, { followUp, reason })); }
+  async setFollowUp(id: string, date: string | null) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(id)}/follow-up`, { date })); }
+  setPriority(id: string, priority: boolean) { return this.req<{ priority: boolean; sla: Sla | null }>('POST', `/leads/${encodeURIComponent(id)}/priority`, { priority }); }
+  slaSettings() { return this.req<SlaSettings>('GET', '/settings/sla'); }
+  saveSlaSettings(s: SlaSettings) { return this.req<SlaSettings>('PUT', '/settings/sla', s); }
+  slaReport(days = 30) { return this.req<SlaReport>('GET', `/sla/report?days=${days}`); }
+  async notifications() {
+    const res = await fetch('/api/notifications', { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return res.json() as Promise<{ data: AppNotification[]; unread: number }>;
+  }
+  /** Opens the real-time notification stream (SSE over fetch so the JWT stays in the Authorization header). Resolves when it ends. */
+  async streamNotifications(onEvent: (ev: string, data: any) => void, signal: AbortSignal) {
+    const res = await fetch('/api/notifications/stream', { headers: { authorization: `Bearer ${this.token}`, accept: 'text/event-stream' }, signal, cache: 'no-store' });
+    if (res.status === 401) { this.onAuthError(); return; }
+    if (!res.ok || !res.body) throw new HttpError(`HTTP ${res.status}`, res.status);
+    const rd = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) {
+      const { value, done } = await rd.read(); if (done) return;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        let ev = 'message', data = '';
+        for (const line of block.split('\n')) { if (line.startsWith('event:')) ev = line.slice(6).trim(); else if (line.startsWith('data:')) data += line.slice(5).trim(); }
+        if (data) { try { onEvent(ev, JSON.parse(data)); } catch { /* ignore */ } }
+      }
+    }
+  }
+  async markNotificationRead(id?: string) { await this.req('POST', id ? `/notifications/${encodeURIComponent(id)}/read` : '/notifications/read-all', {}); }
+  async attachments(leadId: string) { return this.req<Attachment[]>('GET', `/leads/${encodeURIComponent(leadId)}/attachments`); }
+  async attachmentUrl(leadId: string, a: Attachment) {
+    const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(a.id)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+  async deleteLead(id: string, force = false) { await this.req('DELETE', `/records/leads/${encodeURIComponent(id)}${force ? '?force=1' : ''}`); }
+  async bulkDeleteLeads(ids: string[], force = false): Promise<BulkDelete> {
+    const res = await fetch('/api/leads/bulk-delete', { method: 'POST', body: JSON.stringify({ ids, force }), headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' } });
+    const j = await res.json().catch(() => ({})); if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j); return j as BulkDelete;
+  }
+  async updateLeadStatus(id: string, status: LeadStatus) { await this.req('PATCH', `/records/leads/${id}`, { status }); } // server sets assignedOffice=CHINA for China stages
+  shipments() { return this.req<Shipment[]>('GET', '/shipments'); }
+  updateShipment(id: string, b: Record<string, unknown>) { return this.req<Shipment>('PATCH', `/shipments/${id}`, b); }
+  suppliers(q?: string) { return this.req<Supplier[]>('GET', `/suppliers${q ? `?q=${encodeURIComponent(q)}` : ''}`); }
+  async supplier(id: string) {
+    const d = await this.req<Omit<SupplierDetail, 'quoteCount'> & { quotes: SupplierDetail['quotes'] } & Record<string, unknown>>('GET', `/suppliers/${encodeURIComponent(id)}`);
+    return { ...d, quoteCount: d.quotes.length } as SupplierDetail;
+  }
+  saveSupplier(s: Partial<Supplier> & { name: string }, id?: string) {
+    const b = { name: s.name, contact: s.contact ?? null, phone: s.phone ?? null, wechat: s.wechat ?? null, city: s.city ?? null, notes: s.notes ?? null };
+    return id ? this.req<Supplier>('PATCH', `/suppliers/${encodeURIComponent(id)}`, b) : this.req<Supplier>('POST', '/suppliers', b);
+  }
+  customers(q?: string) { return this.req<Customer[]>('GET', `/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`); }
+  async customer(id: string) {
+    const d = await this.req<Record<string, any>>('GET', `/customers/${encodeURIComponent(id)}`);
+    return { ...d, leads: d.leads.length, leadRows: d.leads, quoteRows: d.quotes, orderRows: d.orders, shipmentRows: d.shipments, quotes: d.quotes.length, orders: d.orders.length, shipments: d.shipments.length } as CustomerDetail;
+  }
+  saveCustomer(c: Partial<Customer> & { name: string }, id?: string) {
+    const b: Record<string, unknown> = {}; for (const k of ['name', 'company', 'phone', 'whatsapp', 'email', 'city', 'state', 'country', 'gst', 'address', 'notes', 'tags'] as const) b[k] = c[k] ?? null;
+    return id ? this.req<Customer>('PATCH', `/customers/${encodeURIComponent(id)}`, b) : this.req<Customer>('POST', '/customers', b);
+  }
+  mergeCustomers(into: string, from: string[]) { return this.req<Customer>('POST', `/customers/${encodeURIComponent(into)}/merge`, { from }); }
+  leadCustomer(leadId: string) { return this.req<Customer | null>('GET', `/leads/${encodeURIComponent(leadId)}/customer`); }
+  async deleteCustomer(id: string) { await this.req('DELETE', `/customers/${encodeURIComponent(id)}`); }
+  async createLead(l: NewLead) {
+    const r = await this.req<{ id: string }>('POST', '/records/leads', { ...(l.customerId ? { customerId: l.customerId } : {}),
+      name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',
+      assignedOffice: 'INDIA', office: 'INDIA', ...(l.summary ? { summary: l.summary } : {}),
+      ...(l.targetPrice ? { targetPrice: micros(l.targetPrice, l.targetCurrency) } : {}),
+    });
+    return r.id;
+  }
+  async updateLead(id: string, data: Record<string, unknown>) { await this.req('PATCH', `/records/leads/${id}`, data); }
+  async assignToChina(id: string, agent?: string) {
+    await this.req('PATCH', `/records/leads/${id}`, { assignedOffice: 'CHINA', status: 'ASSIGNED', ...(agent ? { assignedChinaAgent: agent } : {}) });
+  }
+  quotes(leadId: string) { return this.req<LeadQuote[]>('GET', `/leads/${encodeURIComponent(leadId)}/quotes`); }
+  createQuote(leadId: string, q: QuoteInput) { return this.req<LeadQuote>('POST', `/leads/${encodeURIComponent(leadId)}/quotes`, q); }
+  updateQuote(id: string, q: object) { return this.req<LeadQuote>('PATCH', `/quotes/${encodeURIComponent(id)}`, q); }
+  async deleteQuote(id: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}`); }
+  uploadQuoteFiles(id: string, files: File[], onProgress?: (pct: number) => void) { return this.xhrUpload<LeadQuote>(`/api/quotes/${encodeURIComponent(id)}/files`, files, onProgress); }
+  async quoteFileUrl(id: string, a: Attachment) {
+    const res = await fetch(`/api/quotes/${encodeURIComponent(id)}/files/${encodeURIComponent(a.id)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+  async deleteQuoteFile(id: string, fid: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}/files/${encodeURIComponent(fid)}`); }
+  quoteSuppliers() { return this.req<QuoteSupplier[]>('GET', '/suppliers'); }
+  allQuotes(f: { status?: string; office?: string; mine?: boolean } = {}) {
+    const p = new URLSearchParams(); if (f.status) p.set('status', f.status); if (f.office) p.set('office', f.office); if (f.mine) p.set('mine', '1');
+    return this.req<LeadQuote[]>('GET', `/quotes${p.size ? `?${p}` : ''}`);
+  }
+  saveCustomerQuote(id: string, c: object) { return this.req<LeadQuote>('PUT', `/quotes/${encodeURIComponent(id)}/customer`, c); }
+  quotePdf(id: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/pdf`); }
+  revertInfo(id: string) { return this.req<{ status: string; canRevert: boolean; order: { id: string; progress: string[] } | null }>('GET', `/quotes/${encodeURIComponent(id)}/revert-acceptance`); }
+  revertAcceptance(id: string, b: { reason: string; to: 'SENT' | 'DRAFT'; cancelOrder?: boolean; force?: boolean }) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/revert-acceptance`, b); }
+  setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/status`, { status, reason, reasonCode }); }
+  async reviseRejected(leadId: string, b: Record<string, unknown>) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/revise`, b)); }
+  async closeRejected(leadId: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/close`, {})); }
+  createOrder(quoteId: string, b: Record<string, unknown>) { return this.req<Order>('POST', `/quotes/${encodeURIComponent(quoteId)}/order`, b); }
+  orders() { return this.req<Order[]>('GET', '/orders'); }
+  updateOrder(id: string, b: Record<string, unknown>) { return this.req<Order>('PATCH', `/orders/${encodeURIComponent(id)}`, b); }
+  async setIndiaOwner(leadId: string, userId?: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/india-owner`, userId ? { userId } : {})); }
+  setRaiser(leadId: string, userId: string | null) { return this.req<Lead>('POST', `/leads/${encodeURIComponent(leadId)}/assign`, { raisedBy: userId }); }
+  uploadAttachments(leadId: string, files: File[], onProgress?: (pct: number) => void) { return this.xhrUpload<Attachment[]>(`/api/leads/${encodeURIComponent(leadId)}/attachments`, files, onProgress); }
+  /** XHR (not fetch) so large videos show upload progress. */
+  private xhrUpload<T>(url: string, files: File[], onProgress?: (pct: number) => void) {
+    return new Promise<T>((resolve, reject) => {
+      const fd = new FormData(); files.forEach((f) => fd.append('files', f, f.name));
+      const x = new XMLHttpRequest();
+      x.open('POST', url);
+      x.setRequestHeader('authorization', `Bearer ${this.token}`);
+      x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
+      x.onload = () => {
+        let j: any = {}; try { j = JSON.parse(x.responseText); } catch { /* empty */ }
+        if (x.status === 401) this.onAuthError();
+        if (x.status >= 400) reject(new HttpError(j.error ?? `HTTP ${x.status}`, x.status)); else resolve(j.data as T);
+      };
+      x.onerror = () => reject(new HttpError('Network error', 0));
+      x.send(fd);
+    });
+  }
+  async deleteAttachment(leadId: string, id: string) { await this.req('DELETE', `/leads/${encodeURIComponent(leadId)}/attachments/${encodeURIComponent(id)}`); }
+  async setLanguage(language: string) { await this.req('PATCH', '/me', { language }); }
+  users() { return this.req<User[]>('GET', '/users'); }
+  userPermissions(id: string) { return this.req<PermMatrix>('GET', `/users/${encodeURIComponent(id)}/permissions`); }
+  setUserPermissions(id: string, changes: Record<string, boolean | null>) { return this.req<{ changed: number }>('PUT', `/users/${encodeURIComponent(id)}/permissions`, { permissions: changes }); }
+  async exportCsv(kind: 'leads' | 'quotes' | 'orders' | 'shipments') {
+    const res = await fetch(`/api/export/${kind}`, { headers: { authorization: `Bearer ${this.token}` }, cache: 'no-store' });
+    if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `Export failed (${res.status})`);
+    const url = URL.createObjectURL(await res.blob()), a = document.createElement('a');
+    a.href = url; a.download = `source-easy-${kind}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  async createUser(u: { email: string; name: string; role: Role; password: string }) { await this.req('POST', '/users', u); }
+  async resetPassword(id: string, password: string) { await this.req('POST', `/users/${id}/password`, { password }); }
+  async setUserActive(id: string, active: boolean) { await this.req('PATCH', `/users/${id}`, { active }); }
+  async updateUser(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }) { await this.req('PATCH', `/users/${id}`, patch); }
+  async deleteUser(id: string) { await this.req('DELETE', `/users/${id}`); }
+  backups() { return this.req<BackupLink[]>('GET', '/backups'); }
+}
+
+/** In-browser demo data (used for screenshots and the "Explore with demo data" button). No server needed. */
+export class DemoApi implements Api {
+  private wait = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 450));
+  leads(mine?: boolean) { return this.wait(mine ? demo.leads.filter((l) => l.assignedTo === 'demo-me') : demo.leads); }
+  async lead(id: string) { return structuredClone(demo.leads.find((l) => l.id === id) ?? null); }
+  async assignLead(id: string, office: Office, assignedTo?: string | null) {
+    const l = demo.leads.find((x) => x.id === id)!;
+    const to = assignedTo === undefined ? (office === 'INDIA' ? l.raisedBy ?? null : null) : assignedTo;
+    Object.assign(l, { ownerOffice: office, assignedTo: to, assignedToName: demoStaff.find((s) => s.id === to)?.name ?? null, ...(office === 'CHINA' ? { assignedOffice: 'CHINA', status: l.status === 'NEW' ? 'ASSIGNED' : l.status } : {}) });
+    return structuredClone(l);
+  }
+  async setAvatar() { return null; }
+  async removeAvatar() {}
+  async changePassword(): Promise<string> { throw new Error('Not available in demo'); }
+  async staff(office: Office) { return demoStaff.filter((s) => s.role.startsWith(office)); }
+  async notifications() { return structuredClone({ data: demoNotes, unread: demoNotes.filter((n) => !n.read).length }); }
+  async markNotificationRead(id?: string) { demoNotes.forEach((n) => { if (!id || n.id === id) n.read = true; }); }
+  async attachments(leadId: string) { return structuredClone(demo.attachments[leadId] ?? []); }
+  private dq: LeadQuote[] = []; private ds: QuoteSupplier[] = [{ id: 'ds1', name: 'Yiwu Hardware Co.', contact: 'Ms Li', phone: '+86 139 0000 0000', wechat: 'yiwu_hw', city: 'Yiwu' }];
+  async quotes(leadId: string) { return structuredClone(this.dq.filter((q) => q.leadId === leadId)); }
+  async allQuotes() { return structuredClone(this.dq.map((q) => ({ ...q, status: q.status ?? 'DRAFT', leadRef: demo.leads.find((l) => l.id === q.leadId)?.leadRef ?? null }))); }
+  async saveCustomerQuote(id: string, c: any) { const q = this.dq.find((x) => x.id === id)!; const n = (k: string) => Number(c[k] ?? 0); q.cq = { qty: n('qty'), unitPrice: n('unitPrice'), gstPct: n('gstPct'), shipCost: n('shipCost'), otherCharges: n('otherCharges'), shipTerm: c.shipTerm ?? null, shipMode: c.shipMode ?? null, port: c.port ?? null, transit: c.transit ?? null, otherLabel: c.otherLabel ?? null, validity: c.validity ?? null, terms: c.terms ?? null };
+    const sub = q.cq.qty * q.cq.unitPrice, tx = sub + q.cq.shipCost + q.cq.otherCharges; q.cqTotals = { subtotal: sub, taxable: tx, gst: tx * q.cq.gstPct / 100, total: tx * (1 + q.cq.gstPct / 100) }; q.clientPrice = q.cq.unitPrice; return structuredClone(q); }
+  async quotePdf(id: string) { const q = this.dq.find((x) => x.id === id)!; q.pdfUrl = '#demo'; return structuredClone(q); }
+  async revertInfo(id: string) { const q = this.dq.find((x) => x.id === id)!; return { status: q.status ?? 'DRAFT', canRevert: q.status === 'ACCEPTED', order: null }; }
+  async revertAcceptance(id: string, b: { to: 'SENT' | 'DRAFT' }) { const q = this.dq.find((x) => x.id === id)!; Object.assign(q, { status: b.to }); return structuredClone(q); }
+  async setQuoteStatus(id: string, status: string, reason?: string) { const q = this.dq.find((x) => x.id === id)!; Object.assign(q, { status, rejectReason: reason ?? null, ...(status === 'SENT' ? { sentAt: new Date().toISOString() } : {}) }); return structuredClone(q); }
+  private dor: Order[] = [];
+  async createOrder(quoteId: string, b: any) { const q = this.dq.find((x) => x.id === quoteId)!; const o: Order = { id: `do${Date.now()}`, leadId: q.leadId, quoteId, leadRef: null, product: q.product, qty: Number(b.qty ?? q.cq?.qty ?? 0), agreedPrice: Number(b.agreedPrice ?? q.cq?.unitPrice ?? 0), advance: Number(b.advance ?? 0), paymentStatus: b.paymentStatus ?? 'PENDING', expectedShip: b.expectedShip ?? null, production: 'NEW', tracking: null, container: null, etd: null, eta: null, indiaStatus: 'NONE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), leadStatus: 'WON' }; this.dor.push(o); q.orderId = o.id; return structuredClone(o); }
+  async orders() { return structuredClone(this.dor); }
+  async updateOrder(id: string, b: any) { const o = this.dor.find((x) => x.id === id)!; Object.assign(o, b); return structuredClone(o); }
+  async setIndiaOwner(leadId: string, userId?: string) { const l = demo.leads.find((x) => x.id === leadId)!; const id = userId ?? 'demo-me', name = demoStaff.find((s) => s.id === id)?.name ?? 'Me'; Object.assign(l, { raisedBy: id, raisedByName: name, unassignedIndia: false, ...(l.ownerOffice !== 'CHINA' ? { assignedTo: id, assignedToName: name } : {}) }); return structuredClone(l); }
+  async setRaiser(leadId: string, userId: string | null) { const l = demo.leads.find((x) => x.id === leadId)!; Object.assign(l, { raisedBy: userId, raisedByName: demoStaff.find((s) => s.id === userId)?.name ?? null }); return structuredClone(l); }
+  async createQuote(leadId: string, q: QuoteInput) {
+    let supplierId = q.supplierId ?? null;
+    if (q.newSupplier) { const s = { id: `ds${Date.now()}`, ...q.newSupplier }; this.ds.push(s); supplierId = s.id; }
+    const nq: LeadQuote = { id: `dq${Date.now()}`, leadId, product: q.product ?? '', unitPrice: Number(q.unitPrice ?? 0), currency: q.currency ?? 'USD', moq: q.moq, leadTime: q.leadTime, validity: q.validity, notes: q.notes,
+      supplierId, supplier: this.ds.find((s) => s.id === supplierId) ?? null, createdBy: 'demo-me', createdByName: 'Demo', canEdit: true, files: [], createdAt: new Date().toISOString() };
+    this.dq.push(nq); return structuredClone(nq);
+  }
+  async updateQuote(id: string, p: any) {
+    const q = this.dq.find((x) => x.id === id)!; Object.assign(q, p, p.unitPrice != null ? { unitPrice: Number(p.unitPrice) } : {}, p.clientPrice != null ? { clientPrice: Number(p.clientPrice), clientCurrency: 'INR' } : {});
+    if (p.supplierId) q.supplier = this.ds.find((s) => s.id === p.supplierId) ?? null; return structuredClone(q);
+  }
+  async deleteQuote(id: string) { this.dq = this.dq.filter((q) => q.id !== id); }
+  async uploadQuoteFiles(id: string, files: File[]) {
+    const q = this.dq.find((x) => x.id === id)!; q.files.push(...files.map((f, i) => ({ id: `df${Date.now()}${i}`, name: f.name, mime: f.type, size: f.size, createdAt: new Date().toISOString() }))); return structuredClone(q);
+  }
+  async quoteFileUrl() { return ''; }
+  async deleteQuoteFile(id: string, fid: string) { const q = this.dq.find((x) => x.id === id); if (q) q.files = q.files.filter((f) => f.id !== fid); }
+  async quoteSuppliers() { return structuredClone(this.ds); }
+  async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
+  async deleteLead(id: string) { demo.leads = demo.leads.filter((x) => x.id !== id); }
+  async bulkDeleteLeads(ids: string[]): Promise<BulkDelete> { demo.leads = demo.leads.filter((x) => !ids.includes(x.id)); return { deleted: ids, failed: [] }; }
+  async updateLeadStatus(id: string, status: LeadStatus) { const l = demo.leads.find((x) => x.id === id); if (l) l.status = status; }
+  async shipments(): Promise<Shipment[]> { return []; }
+  suppliers(q?: string) { return this.wait(demo.suppliers.filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()))); }
+  async supplier(id: string) { const s = demo.suppliers.find((x) => x.id === id)!; return { ...s, quotes: [], quoteCount: 0 }; }
+  async saveSupplier(s: Partial<Supplier> & { name: string }, id?: string) {
+    const cur = id ? demo.suppliers.find((x) => x.id === id) : undefined;
+    if (cur) { Object.assign(cur, s); return cur; }
+    const n: Supplier = { quotes: 0, accepted: 0, leads: 0, orders: 0, lastQuoteAt: null, ...s, id: `S${demo.suppliers.length + 1}` }; demo.suppliers.push(n); return n;
+  }
+  private dc: Customer[] = [];
+  async customers() { return structuredClone(this.dc); }
+  async customer(id: string) { const c = this.dc.find((x) => x.id === id)!; return { ...c, leadRows: [], quoteRows: [], orderRows: [], shipmentRows: [] }; }
+  async saveCustomer(c: Partial<Customer> & { name: string }, id?: string) {
+    const cur = id ? this.dc.find((x) => x.id === id) : undefined; if (cur) { Object.assign(cur, c); return cur; }
+    const n: Customer = { tags: [], leads: 0, quotes: 0, orders: 0, shipments: 0, paymentPending: 0, orderTotal: 0, paid: 0, due: 0, lastLeadAt: null, ...c, id: `C${this.dc.length + 1}` }; this.dc.push(n); return n;
+  }
+  async mergeCustomers(into: string, from: string[]) { this.dc = this.dc.filter((x) => !from.includes(x.id)); return this.dc.find((x) => x.id === into)!; }
+  async leadCustomer(_leadId: string) { return null; }
+  async deleteCustomer(id: string) { this.dc = this.dc.filter((x) => x.id !== id); }
+  async createLead(l: NewLead) {
+    const id = `L${demo.leads.length + 1}`;
+    demo.leads.unshift({ id, name: l.clientName, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, summary: l.summary,
+      targetPrice: l.targetPrice, targetCurrency: l.targetCurrency, status: 'NEW', createdAt: new Date().toISOString() });
+    return id;
+  }
+  async updateLead(id: string, data: Partial<Lead>) { const l = demo.leads.find((x) => x.id === id); if (l) Object.assign(l, data); }
+  async assignToChina(id: string, agent?: string) { await this.updateLead(id, { assignedOffice: 'CHINA', status: 'ASSIGNED', ...(agent ? { assignedChinaAgent: agent } : {}) }); }
+  async uploadAttachments(leadId: string, files: File[]) {
+    const list = (demo.attachments[leadId] ??= []);
+    for (const f of files) { const id = crypto.randomUUID(); demo.files[id] = URL.createObjectURL(f); list.push({ id, name: f.name, mime: f.type || 'application/octet-stream', size: f.size, createdAt: new Date().toISOString() }); }
+    return structuredClone(list);
+  }
+  async deleteAttachment(leadId: string, id: string) { demo.attachments[leadId] = (demo.attachments[leadId] ?? []).filter((a) => a.id !== id); }
+  async setLanguage() {}
+  users() { return this.wait(demo.users); }
+  async createUser(u: { email: string; name: string; role: Role }) {
+    demo.users.push({ id: crypto.randomUUID(), email: u.email, name: u.name, role: u.role, active: true, createdAt: new Date().toISOString() });
+  }
+  async resetPassword() {}
+  async setUserActive(id: string, active: boolean) { const u = demo.users.find((x) => x.id === id); if (u) u.active = active; }
+  async updateUser(id: string, patch: { name?: string; email?: string; role?: Role; active?: boolean }) { const u = demo.users.find((x) => x.id === id); if (u) Object.assign(u, patch); }
+  async deleteUser(id: string) { const i = demo.users.findIndex((x) => x.id === id); if (i >= 0) demo.users.splice(i, 1); }
+  backups() { return this.wait([{ label: 'Backup browser (demo)', url: 'https://backups.example.com' }]); }
+}
+
+const demoStaff: StaffLite[] = [
+  { id: 'demo-me', name: 'Dhushyanth Kumar', role: 'INDIA_STAFF' }, { id: 'demo-asha', name: 'Asha', role: 'INDIA_STAFF' },
+  { id: 'demo-li', name: 'Li Wei', role: 'CHINA_STAFF' }, { id: 'demo-chen', name: 'Chen Jing', role: 'CHINA_ADMIN' },
+];
+const demoNotes: AppNotification[] = [
+  { id: 'n1', leadId: 'L2', leadRef: 'SE-2611-0002', product: 'Bamboo cutting boards', kind: 'RETURNED', office: 'INDIA', byName: 'Li Wei', createdAt: new Date(Date.now() - 12 * 60e3).toISOString(), read: false },
+  { id: 'n2', leadId: 'L1', leadRef: 'SE-2611-0001', product: 'Steel water bottles', kind: 'ASSIGNED', office: 'INDIA', byName: 'Chen Jing', createdAt: new Date(Date.now() - 3 * 3600e3).toISOString(), read: true },
+];

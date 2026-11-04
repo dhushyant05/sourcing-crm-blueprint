@@ -1,0 +1,41 @@
+{
+  "name": "source-easy-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Source Easy API: role-based API on its own PostgreSQL + Redis (serves the web app).",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.6",
+    "@fastify/static": "^10.1.8",
+    "bcryptjs": "^3.0.3",
+    "fastify": "^5.12.7",
+    "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "node-pg-migrate": "^9.0.0",
+    "pdfkit": "^0.17.2",
+    "pg": "^8.23.1",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.14",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.6.6",
+    "@types/pdfkit": "^0.17.7",
+    "@types/pg": "^8.23.1",
+    "eslint": "^10.14.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}

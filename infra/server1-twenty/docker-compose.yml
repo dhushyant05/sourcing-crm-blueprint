@@ -1,0 +1,59 @@
+# Server 1 — Source Easy on sourceeasy.in
+# Public entry: caddy (80/443) -> api (Source Easy server: REST API + web app).
+# Source Easy keeps its data in its own PostgreSQL database (`sourceeasy`) and uses Redis for
+# pub/sub (live updates, session revocation) and rate limits. Postgres and Redis have NO public ports.
+# Twenty CRM was retired on 2026-11-02; its last database dump is kept in /opt/sourceeasy-backups/archive.
+name: source-easy-twenty
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: default
+      POSTGRES_USER: ${PG_DATABASE_USER}
+      POSTGRES_PASSWORD: ${PG_DATABASE_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Bound to localhost only, used by the nightly pg_dump script.
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: pg_isready -U ${PG_DATABASE_USER} -h localhost -d default
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7
+    restart: unless-stopped
+  api:
+    build: { context: ../.., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://sourceeasy:${SE_DB_PASSWORD}@db:5432/sourceeasy
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL: ${JWT_TTL:-12h}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Super Admin}
+      BACKUP_LINKS: ${BACKUP_LINKS:-[]}
+      UPLOADS_DIR: /data/uploads
+    volumes:
+      - api-data:/data   # uploads (+ the retired users.db, kept read-only as an archive)
+    mem_limit: 384m
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [api]
+volumes:
+  db-data:
+  caddy-data:
+  api-data:
