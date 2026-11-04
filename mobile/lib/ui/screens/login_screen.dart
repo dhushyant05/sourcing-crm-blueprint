@@ -63,6 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(context.l10n.indiaChinaSourcing, textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
                 Center(child: TextButton.icon(key: const Key('login-back-home'), onPressed: _openHome, icon: const Icon(Icons.home_outlined, size: 18), label: Text(tw(context, 'login.backHome')))),
                 const SizedBox(height: 16),
+                if (context.watch<Session>().sessionExpired) Padding(padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(context.l10n.quSessionExpired, key: const Key('login-expired'), textAlign: TextAlign.center, style: TextStyle(color: t.colorScheme.error))),
                 TextField(controller: _email, keyboardType: TextInputType.emailAddress,
                     autofillHints: [AutofillHints.email], decoration: InputDecoration(labelText: context.l10n.email)),
                 const SizedBox(height: 12),

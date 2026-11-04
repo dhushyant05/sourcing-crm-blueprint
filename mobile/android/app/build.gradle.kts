@@ -68,5 +68,6 @@ flutter {
 }
 
 dependencies {
+    implementation("androidx.appcompat:appcompat:1.7.0") // FlutterFragmentActivity + biometric prompt
     implementation("androidx.core:core-ktx:1.13.1") // FileProvider for OTA installs
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'ui/screens/unlock_screen.dart';
 
 import 'l10n/l10n.dart';
 import 'services/session.dart';
@@ -10,7 +11,10 @@ import 'ui/update_dialog.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(ChangeNotifierProvider(create: (_) => Session()..restore(), child: const SourceEasyApp()));
+  final session = Session()..restore();
+  // Re-lock with the PIN when the app returns after 5+ minutes in the background.
+  AppLifecycleListener(onHide: session.onPaused, onShow: session.onResumed);
+  runApp(ChangeNotifierProvider.value(value: session, child: const SourceEasyApp()));
 }
 
 class SourceEasyApp extends StatelessWidget {
@@ -121,6 +125,8 @@ class SourceEasyApp extends StatelessWidget {
             const CircularProgressIndicator(),
           ])));
         }
+        if (s.signedIn && s.locked) return const UnlockScreen();
+        if (s.signedIn && s.offerPin) return const SetPinScreen(offer: true);
         return UpdateGate(child: s.signedIn ? const HomeShell() : const LoginScreen());
       }),
     );

@@ -1316,4 +1316,72 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get custPickNew => '— 新客户（自动匹配）—';
+
+  @override
+  String get quSetPinTitle => '设置快速解锁 PIN';
+
+  @override
+  String get quSetPinBody => '使用 4–6 位 PIN（或指纹）解锁 Source Easy，无需输入密码。';
+
+  @override
+  String get quEnterNewPin => '新 PIN（4–6 位数字）';
+
+  @override
+  String get quConfirmPin => '确认 PIN';
+
+  @override
+  String get quPinMismatch => '两次输入的 PIN 不一致';
+
+  @override
+  String get quPinInvalid => '请输入 4 到 6 位数字';
+
+  @override
+  String get quNotNow => '暂不设置';
+
+  @override
+  String get quSave => '保存 PIN';
+
+  @override
+  String get quUseFingerprint => '使用指纹解锁';
+
+  @override
+  String get quUnlockTitle => '请输入 PIN';
+
+  @override
+  String quWrongPin(String n) {
+    return 'PIN 错误，还剩 $n 次。';
+  }
+
+  @override
+  String get quLockedOut => 'PIN 错误次数过多，请使用密码登录。';
+
+  @override
+  String get quUsePassword => '改用密码登录';
+
+  @override
+  String get quBioReason => '解锁 Source Easy';
+
+  @override
+  String get quSection => '快速解锁';
+
+  @override
+  String get quPinOn => 'PIN 解锁';
+
+  @override
+  String get quPinOnSub => '打开应用时需要输入 PIN';
+
+  @override
+  String get quChangePin => '修改 PIN';
+
+  @override
+  String get quBioToggle => '指纹解锁';
+
+  @override
+  String get quBioUnavailable => '此手机未设置指纹';
+
+  @override
+  String get quPinSaved => 'PIN 已保存';
+
+  @override
+  String get quSessionExpired => '会话已结束，请重新登录。';
 }

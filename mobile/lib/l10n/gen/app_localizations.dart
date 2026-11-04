@@ -2557,6 +2557,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'— New customer (auto-match) —'**
   String get custPickNew;
+
+  /// No description provided for @quSetPinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a quick-unlock PIN'**
+  String get quSetPinTitle;
+
+  /// No description provided for @quSetPinBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock Source Easy with a 4–6 digit PIN (or your fingerprint) instead of typing your password.'**
+  String get quSetPinBody;
+
+  /// No description provided for @quEnterNewPin.
+  ///
+  /// In en, this message translates to:
+  /// **'New PIN (4–6 digits)'**
+  String get quEnterNewPin;
+
+  /// No description provided for @quConfirmPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm PIN'**
+  String get quConfirmPin;
+
+  /// No description provided for @quPinMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'PINs do not match'**
+  String get quPinMismatch;
+
+  /// No description provided for @quPinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Use 4 to 6 digits'**
+  String get quPinInvalid;
+
+  /// No description provided for @quNotNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get quNotNow;
+
+  /// No description provided for @quSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save PIN'**
+  String get quSave;
+
+  /// No description provided for @quUseFingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock with fingerprint'**
+  String get quUseFingerprint;
+
+  /// No description provided for @quUnlockTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your PIN'**
+  String get quUnlockTitle;
+
+  /// No description provided for @quWrongPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong PIN. {n} attempts left.'**
+  String quWrongPin(String n);
+
+  /// No description provided for @quLockedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong PINs. Please sign in with your password.'**
+  String get quLockedOut;
+
+  /// No description provided for @quUsePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Use password instead'**
+  String get quUsePassword;
+
+  /// No description provided for @quBioReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock Source Easy'**
+  String get quBioReason;
+
+  /// No description provided for @quSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick unlock'**
+  String get quSection;
+
+  /// No description provided for @quPinOn.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN unlock'**
+  String get quPinOn;
+
+  /// No description provided for @quPinOnSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for a PIN when the app opens'**
+  String get quPinOnSub;
+
+  /// No description provided for @quChangePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Change PIN'**
+  String get quChangePin;
+
+  /// No description provided for @quBioToggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Fingerprint unlock'**
+  String get quBioToggle;
+
+  /// No description provided for @quBioUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No fingerprint set up on this phone'**
+  String get quBioUnavailable;
+
+  /// No description provided for @quPinSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN saved'**
+  String get quPinSaved;
+
+  /// No description provided for @quSessionExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Your session ended. Please sign in again.'**
+  String get quSessionExpired;
 }
 
 class _AppLocalizationsDelegate

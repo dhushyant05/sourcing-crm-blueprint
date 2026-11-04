@@ -1,4 +1,5 @@
 import 'push.dart';
+import 'quick_unlock.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -24,8 +25,17 @@ class AppConfig {
 }
 
 class Session extends ChangeNotifier {
-  Session({FlutterSecureStorage? storage}) : _secure = storage ?? const FlutterSecureStorage();
+  Session({FlutterSecureStorage? storage, QuickUnlock? unlock}) : _secure = storage ?? const FlutterSecureStorage() {
+    this.unlock = unlock ?? QuickUnlock(_secure);
+  }
   final FlutterSecureStorage _secure;
+
+  /// PIN / fingerprint quick unlock. [locked] hides the app behind the unlock screen.
+  late final QuickUnlock unlock;
+  bool locked = false;
+  /// Set after a password sign-in when this device has no PIN yet: the app offers to create one.
+  bool offerPin = false;
+  DateTime? _pausedAt;
 
   AppConfig config = AppConfig();
   String? email, displayName;
@@ -95,6 +105,8 @@ class Session extends ChangeNotifier {
         final g = await _secure.read(key: 'perms');
         if (g != null) granted = g.isEmpty ? <String>{} : g.split(',').toSet();
         userId = await _secure.read(key: 'userId');
+        await unlock.load();
+        locked = unlock.pinSet;
         await _start(token);
       }
     } finally {
@@ -107,6 +119,7 @@ class Session extends ChangeNotifier {
   Future<void> signIn(String email, String password) async {
     await saveConfig();
     final me = await ServerClient(baseUrl: config.serverUrl).login(email, password);
+    if (me.refreshToken != null) await _secure.write(key: 'refresh', value: me.refreshToken);
     this.email = me.email;
     displayName = me.name.isEmpty ? me.email : me.name;
     role = Role.fromCode(me.role);
@@ -120,11 +133,14 @@ class Session extends ChangeNotifier {
     await _secure.write(key: 'email', value: me.email);
     await _secure.write(key: 'name', value: displayName);
     await _secure.write(key: 'role', value: role.code);
+    await unlock.load();
+    locked = false;
+    offerPin = !unlock.pinSet && !(await unlock.offered());
     notifyListeners();
   }
 
   Future<void> _start(String token) async {
-    _api = ServerClient(baseUrl: config.serverUrl, token: token);
+    _api = ServerClient(baseUrl: config.serverUrl, token: token)..onUnauthorized = _refreshToken;
     _store ??= await LocalStore.open(p.join(await getDatabasesPath(), 'source_easy.db'));
     _rebuildRepo();
     _conn ??= Connectivity().onConnectivityChanged.listen((r) {
@@ -135,6 +151,53 @@ class Session extends ChangeNotifier {
     });
     unawaited(syncNow());
     unawaited(refreshMe());
+  }
+
+  Future<bool>? _refreshing;
+  /// Silent access-token refresh, single-flight (parallel 401s share one rotation). Only a definite
+  /// rejection of the refresh token signs out; being offline keeps the session.
+  Future<bool> _refreshToken() => _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
+  Future<bool> _doRefresh() async {
+    final api = _api; if (api == null) return false;
+    final rt = await _secure.read(key: 'refresh');
+    if (rt == null) { unawaited(signOut(expired: true)); return false; } // pre-0.3.15 login: one more password sign-in
+    try {
+      final r = await ServerClient(baseUrl: config.serverUrl).refresh(rt);
+      await _secure.write(key: 'refresh', value: r.refreshToken);
+      await _secure.write(key: 'token', value: r.token);
+      api.token = r.token;
+      return true;
+    } on ApiException catch (e) {
+      if (e.isAuth) { unawaited(signOut(expired: true)); }
+      return false;
+    } on OfflineException { return false; }
+  }
+
+  /// Unlocks with the PIN. Returns false when wrong; after 5 wrong PINs the session is ended (full password sign-in).
+  Future<bool> unlockWithPin(String pin) async {
+    if (await unlock.check(pin)) { locked = false; notifyListeners(); return true; }
+    if (unlock.lockedOut) await signOut();
+    notifyListeners();
+    return false;
+  }
+  Future<bool> unlockWithBio(String reason) async {
+    if (!unlock.bioOn) return false;
+    final ok = await unlock.bioUnlock(reason);
+    if (ok) { locked = false; notifyListeners(); }
+    return ok;
+  }
+  Future<void> setPin(String pin) async { await unlock.setPin(pin); offerPin = false; notifyListeners(); }
+  Future<void> skipPinOffer() async { await unlock.markOffered(); offerPin = false; notifyListeners(); }
+  Future<void> disablePin() async { await unlock.clear(); notifyListeners(); }
+  Future<void> setBio(bool on) async { await unlock.setBio(on); notifyListeners(); }
+  /// "Use password instead": ends this session so the login screen shows.
+  Future<void> usePassword() => signOut();
+
+  /// App lifecycle: lock again when the app comes back after 5+ minutes in the background.
+  void onPaused() { _pausedAt = DateTime.now(); }
+  void onResumed() {
+    final t = _pausedAt; _pausedAt = null;
+    if (t != null && signedIn && unlock.pinSet && DateTime.now().difference(t) > const Duration(minutes: 5)) { locked = true; notifyListeners(); }
   }
 
   /// Re-reads /api/me: role, permissions and profile picture. Called on start and live when an admin
@@ -167,9 +230,10 @@ class Session extends ChangeNotifier {
   }
 
   Future<void> changePassword(String current, String next) async {
-    final j = await _api!.send('POST', '/api/me/password', body: {'currentPassword': current, 'newPassword': next}) as Map<String, dynamic>;
-    final t = j['token'] as String?;
+    final j = await _api!.send('POST', '/api/me/password', body: {'currentPassword': current, 'newPassword': next, 'refresh': true, 'device': 'android'}) as Map<String, dynamic>;
+    final t = j['token'] as String?, rt = j['refreshToken'] as String?;
     if (t != null) { _api!.token = t; await _secure.write(key: 'token', value: t); }
+    if (rt != null) await _secure.write(key: 'refresh', value: rt);
   }
 
   Future<void> setAvatar(String? path) async {
@@ -207,18 +271,27 @@ class Session extends ChangeNotifier {
   /// Mobile push: registers this device's FCM token for the signed-in user.
   Future<void> registerDevice(String token) async { await _api?.send('POST', '/api/devices', body: {'token': token, 'platform': 'android'}); }
 
-  Future<void> signOut() async {
-    final t = Push.token;
-    if (t != null && _api != null) { try { await _api!.send('DELETE', '/api/devices', body: {'token': t}).timeout(const Duration(seconds: 3)); } catch (_) {} }
+  /// True after an automatic sign-out because the server ended the session (login screen shows a note).
+  bool sessionExpired = false;
+
+  Future<void> signOut({bool expired = false}) async {
+    final api = _api, t = Push.token;
+    // Drop the in-memory session first so the UI goes straight to the login screen.
     unawaited(Push.stop());
     granted = null; userId = null; avatarUrl = null;
     _repo = null;
     _api = null;
+    locked = false; offerPin = false; sessionExpired = expired;
     notifyListeners();
     onSignedOut?.call();
-    for (final k in ['token', 'email', 'name', 'role', 'perms', 'userId']) {
+    String? rt; try { rt = await _secure.read(key: 'refresh'); } catch (_) {}
+    for (final k in ['token', 'refresh', 'email', 'name', 'role', 'perms', 'userId', ...QuickUnlock.keys]) {
       try { await _secure.delete(key: k); } catch (_) {}
     }
+    unlock.pinSet = false; unlock.bioOn = false; unlock.fails = 0;
+    // Best-effort server clean-up in the background (device push token + refresh token).
+    if (api != null && t != null) unawaited(api.send('DELETE', '/api/devices', body: {'token': t}).timeout(const Duration(seconds: 3)).then((_) {}, onError: (_) {}));
+    if (rt != null && !expired) unawaited(ServerClient(baseUrl: config.serverUrl).send('POST', '/api/auth/logout', body: {'refreshToken': rt}).timeout(const Duration(seconds: 3)).then((_) {}, onError: (_) {}));
   }
 
   @override

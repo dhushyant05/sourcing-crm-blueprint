@@ -32,10 +32,15 @@ class ServerClient {
   String? token;
   final http.Client _http;
 
+  /// Called on a 401: refreshes the access token (single-flight in Session) and returns true when the call should be retried.
+  Future<bool> Function()? onUnauthorized;
+  Future<bool> _reauth(int code, String path, bool retried) async =>
+      code == 401 && !retried && !path.startsWith('/api/auth/') && onUnauthorized != null && await onUnauthorized!();
+
   Uri _uri(String path, [Map<String, String>? q]) =>
       Uri.parse(baseUrl.replaceAll(RegExp(r'/+$'), '') + path).replace(queryParameters: (q == null || q.isEmpty) ? null : q);
 
-  Future<dynamic> send(String method, String path, {Object? body, Map<String, String>? query}) async {
+  Future<dynamic> send(String method, String path, {Object? body, Map<String, String>? query, bool retried = false}) async {
     final req = http.Request(method, _uri(path, query))
       ..headers.addAll({
         'Accept': 'application/json',
@@ -54,6 +59,7 @@ class ServerClient {
       throw OfflineException(e);
     }
     if (res.statusCode >= 500 && res.statusCode != 502) throw OfflineException('HTTP ${res.statusCode}');
+    if (await _reauth(res.statusCode, path, retried)) return send(method, path, body: body, query: query, retried: true);
     final j = res.body.isEmpty ? <String, dynamic>{} : jsonDecode(res.body);
     if (res.statusCode >= 400) {
       throw ApiException((j is Map ? j['error'] : null)?.toString() ?? 'HTTP ${res.statusCode}', statusCode: res.statusCode);
@@ -62,7 +68,7 @@ class ServerClient {
   }
 
   /// Streams files to a multipart endpoint (videos up to 100 MB are not loaded into memory).
-  Future<dynamic> upload(String path, List<String> filePaths, {void Function(double)? onProgress, String field = 'files'}) async {
+  Future<dynamic> upload(String path, List<String> filePaths, {void Function(double)? onProgress, String field = 'files', bool retried = false}) async {
     final req = http.MultipartRequest('POST', _uri(path))
       ..headers.addAll({'Accept': 'application/json', if (token != null) 'Authorization': 'Bearer $token'});
     for (final f in filePaths) {
@@ -78,6 +84,7 @@ class ServerClient {
     } on http.ClientException catch (e) {
       throw OfflineException(e);
     }
+    if (await _reauth(res.statusCode, path, retried)) return upload(path, filePaths, onProgress: onProgress, field: field, retried: true);
     final j = res.body.isEmpty ? <String, dynamic>{} : jsonDecode(res.body);
     if (res.statusCode >= 400) {
       throw ApiException((j is Map ? j['error'] : null)?.toString() ?? 'HTTP ${res.statusCode}', statusCode: res.statusCode);
@@ -93,6 +100,7 @@ class ServerClient {
     try {
       final req = http.Request('GET', _uri(path))..headers.addAll({'Accept': 'text/event-stream', if (token != null) 'Authorization': 'Bearer $token'});
       final res = await c.send(req).timeout(const Duration(seconds: 20));
+      if (res.statusCode == 401 && await _reauth(401, path, false)) throw ApiException('stream token refreshed', statusCode: 499);
       if (res.statusCode != 200) throw ApiException('stream ${res.statusCode}', statusCode: res.statusCode);
       var ev = 'message'; final data = StringBuffer();
       await for (final line in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
@@ -108,18 +116,24 @@ class ServerClient {
   ({Uri uri, Map<String, String> headers}) authed(String path) =>
       (uri: _uri(path), headers: {if (token != null) 'Authorization': 'Bearer $token'});
 
-  Future<({String token, String email, String name, String role, String? language})> login(String email, String password) async {
-    final j = await send('POST', '/api/auth/login', body: {'email': email, 'password': password}) as Map<String, dynamic>;
+  Future<({String token, String? refreshToken, String email, String name, String role, String? language})> login(String email, String password, {String? device}) async {
+    final j = await send('POST', '/api/auth/login', body: {'email': email, 'password': password, 'refresh': true, 'device': device ?? 'android'}) as Map<String, dynamic>;
     final u = j['user'] as Map<String, dynamic>;
-    return (token: j['token'] as String, email: u['email'] as String, name: u['name'] as String, role: u['role'] as String,
+    return (token: j['token'] as String, refreshToken: j['refreshToken'] as String?, email: u['email'] as String, name: u['name'] as String, role: u['role'] as String,
         language: u['language'] as String?);
+  }
+
+  /// Exchanges a refresh token for a new access + refresh token (rotation). Throws ApiException(401) when the session is gone.
+  Future<({String token, String refreshToken})> refresh(String refreshToken) async {
+    final j = await send('POST', '/api/auth/refresh', body: {'refreshToken': refreshToken}) as Map<String, dynamic>;
+    return (token: j['token'] as String, refreshToken: j['refreshToken'] as String);
   }
 
   /// Saves the UI language on the user's account (`en` or `zh-CN`).
   Future<void> setLanguage(String language) async => send('PATCH', '/api/me', body: {'language': language});
 
   /// Authenticated binary download (enquiry attachments are never public URLs).
-  Future<List<int>> getBytes(String path) async {
+  Future<List<int>> getBytes(String path, {bool retried = false}) async {
     http.Response res;
     try {
       res = await _http.get(_uri(path), headers: {if (token != null) 'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 60));
@@ -130,6 +144,7 @@ class ServerClient {
     } on http.ClientException catch (e) {
       throw OfflineException(e);
     }
+    if (await _reauth(res.statusCode, path, retried)) return getBytes(path, retried: true);
     if (res.statusCode >= 400) throw ApiException('HTTP ${res.statusCode}', statusCode: res.statusCode);
     return res.bodyBytes;
   }

@@ -3,7 +3,7 @@ import fastifyStatic from '@fastify/static';
 import jwt from 'jsonwebtoken';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
 import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged, type Attachment } from './uploads.js';
@@ -314,7 +314,44 @@ export async function buildApp(o: AppOptions) {
     const u = await o.users.verify(email, password);
     if (!u) { await o.bus.incr(key, 600); return reply.code(401).send({ error: 'Invalid email or password' }); }
     await o.bus.del(key);
-    return { token: sign(u), user: me(u) };
+    const body = (req.body ?? {}) as { refresh?: boolean; device?: string };
+    return { token: sign(u), user: me(u), ...(body.refresh ? { refreshToken: await issueRefresh(u, body.device) } : {}) };
+  });
+
+  // Long-lived rotating refresh tokens (mobile). Format "<id>.<secret>"; only a SHA-256 of the secret is stored.
+  // Revoked by sign-out, password reset/role change (token_version), disabling or removing the user.
+  const RT_DAYS = Number(process.env.REFRESH_TTL_DAYS ?? 60);
+  const sha = (x: string) => createHash('sha256').update(x).digest('hex');
+  const issueRefresh = async (u: User, device?: string) => {
+    const id = randomUUID(), secret = randomBytes(32).toString('base64url');
+    await o.db.run("DELETE FROM refresh_tokens WHERE expires_at < now()");
+    await o.db.run(`INSERT INTO refresh_tokens (id, user_id, token_hash, token_version, device, expires_at) VALUES (?,?,?,?,?, now() + interval '${RT_DAYS} days')`, id, u.id, sha(secret), o.users.tokenVersion(u.id) ?? 0, String(device ?? '').slice(0, 120) || null);
+    return `${id}.${secret}`;
+  };
+  const parseRt = (t: unknown) => { const m = /^([0-9a-f-]{36})\.([A-Za-z0-9_-]{20,})$/.exec(String(t ?? '')); return m ? { id: m[1], secret: m[2] } : null; };
+  app.post<{ Body: { refreshToken?: string } }>('/api/auth/refresh', async (req, reply) => {
+    const p = parseRt(req.body?.refreshToken); if (!p) return reply.code(401).send({ error: 'Session expired' });
+    const row = await o.db.get<{ user_id: string; token_hash: string; prev_hash: string | null; token_version: number; expired: boolean }>('SELECT user_id, token_hash, prev_hash, token_version, expires_at < now() AS expired FROM refresh_tokens WHERE id = ?', p.id);
+    if (!row) return reply.code(401).send({ error: 'Session expired' });
+    const h = sha(p.secret);
+    if (h !== row.token_hash) {
+      // An already-rotated token was replayed: treat the whole session as stolen.
+      if (h === row.prev_hash) await o.db.run('DELETE FROM refresh_tokens WHERE id = ?', p.id);
+      return reply.code(401).send({ error: 'Session expired' });
+    }
+    const u = o.users.byId(row.user_id);
+    if (row.expired || !u || !u.active || (o.users.tokenVersion(u.id) ?? 0) !== row.token_version) {
+      await o.db.run('DELETE FROM refresh_tokens WHERE id = ?', p.id);
+      return reply.code(401).send({ error: u && !u.active ? 'Account disabled' : 'Session expired' });
+    }
+    const secret = randomBytes(32).toString('base64url');
+    await o.db.run(`UPDATE refresh_tokens SET prev_hash = token_hash, token_hash = ?, rotated_at = now(), expires_at = now() + interval '${RT_DAYS} days' WHERE id = ?`, sha(secret), p.id);
+    return { token: sign(u), refreshToken: `${p.id}.${secret}`, user: me(u) };
+  });
+  app.post<{ Body: { refreshToken?: string } }>('/api/auth/logout', async (req) => {
+    const p = parseRt(req.body?.refreshToken);
+    if (p) { const row = await o.db.get<{ token_hash: string }>('SELECT token_hash FROM refresh_tokens WHERE id = ?', p.id); if (row && row.token_hash === sha(p.secret)) await o.db.run('DELETE FROM refresh_tokens WHERE id = ?', p.id); }
+    return { ok: true };
   });
 
   // Public website enquiry -> a NEW lead for the India office. No auth; honeypot + per-IP rate limit (5/hour).
@@ -480,7 +517,9 @@ export async function buildApp(o: AppOptions) {
       if (!(await o.users.verify(req.user!.email, req.body?.currentPassword ?? ''))) return reply.code(400).send({ error: 'Current password is wrong' });
       try { await o.users.setPassword(req.user!.id, String(req.body.newPassword ?? '')); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
       // All other sessions are revoked (token version bumped); this device gets a fresh token.
-      return { token: sign(o.users.byId(req.user!.id)!) };
+      const nu = o.users.byId(req.user!.id)!;
+      const rq = (req.body ?? {}) as { refresh?: boolean; device?: string };
+      return { token: sign(nu), ...(rq.refresh ? { refreshToken: await issueRefresh(nu, rq.device) } : {}) };
     });
     api.post('/api/me/avatar', async (req) => { await avatars.set(req.user!.id, await readImage(req)); return me(req.user!); });
     api.delete('/api/me/avatar', async (req) => { await avatars.remove(req.user!.id); return me(req.user!); });

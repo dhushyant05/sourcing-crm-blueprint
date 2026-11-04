@@ -8,6 +8,7 @@ import '../../services/session.dart';
 import '../widgets/language_switch.dart';
 import '../widgets/profile.dart';
 import '../update_dialog.dart';
+import 'unlock_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -45,6 +46,8 @@ class SettingsScreen extends StatelessWidget {
           subtitle: Text(s.config.chatwootToken.isEmpty ? context.l10n.notConfigured : '${s.config.chatwootUrl} · account ${s.config.chatwootAccountId}'),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatwootSettingsScreen())),
         ),
+        const Divider(),
+        const QuickUnlockSettings(),
         if (p.canDownloadBackups)
           ListTile(
             leading: Icon(Icons.backup_outlined),

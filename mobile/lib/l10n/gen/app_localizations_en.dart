@@ -1331,4 +1331,74 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get custPickNew => '— New customer (auto-match) —';
+
+  @override
+  String get quSetPinTitle => 'Set a quick-unlock PIN';
+
+  @override
+  String get quSetPinBody =>
+      'Unlock Source Easy with a 4–6 digit PIN (or your fingerprint) instead of typing your password.';
+
+  @override
+  String get quEnterNewPin => 'New PIN (4–6 digits)';
+
+  @override
+  String get quConfirmPin => 'Confirm PIN';
+
+  @override
+  String get quPinMismatch => 'PINs do not match';
+
+  @override
+  String get quPinInvalid => 'Use 4 to 6 digits';
+
+  @override
+  String get quNotNow => 'Not now';
+
+  @override
+  String get quSave => 'Save PIN';
+
+  @override
+  String get quUseFingerprint => 'Unlock with fingerprint';
+
+  @override
+  String get quUnlockTitle => 'Enter your PIN';
+
+  @override
+  String quWrongPin(String n) {
+    return 'Wrong PIN. $n attempts left.';
+  }
+
+  @override
+  String get quLockedOut =>
+      'Too many wrong PINs. Please sign in with your password.';
+
+  @override
+  String get quUsePassword => 'Use password instead';
+
+  @override
+  String get quBioReason => 'Unlock Source Easy';
+
+  @override
+  String get quSection => 'Quick unlock';
+
+  @override
+  String get quPinOn => 'PIN unlock';
+
+  @override
+  String get quPinOnSub => 'Ask for a PIN when the app opens';
+
+  @override
+  String get quChangePin => 'Change PIN';
+
+  @override
+  String get quBioToggle => 'Fingerprint unlock';
+
+  @override
+  String get quBioUnavailable => 'No fingerprint set up on this phone';
+
+  @override
+  String get quPinSaved => 'PIN saved';
+
+  @override
+  String get quSessionExpired => 'Your session ended. Please sign in again.';
 }

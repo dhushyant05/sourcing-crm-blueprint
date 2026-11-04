@@ -751,5 +751,34 @@
   "custAdd": "Add customer",
   "custEdit": "Edit customer",
   "custPick": "Existing customer",
-  "custPickNew": "— New customer (auto-match) —"
+  "custPickNew": "— New customer (auto-match) —",
+  "quSetPinTitle": "Set a quick-unlock PIN",
+  "quSetPinBody": "Unlock Source Easy with a 4–6 digit PIN (or your fingerprint) instead of typing your password.",
+  "quEnterNewPin": "New PIN (4–6 digits)",
+  "quConfirmPin": "Confirm PIN",
+  "quPinMismatch": "PINs do not match",
+  "quPinInvalid": "Use 4 to 6 digits",
+  "quNotNow": "Not now",
+  "quSave": "Save PIN",
+  "quUseFingerprint": "Unlock with fingerprint",
+  "quUnlockTitle": "Enter your PIN",
+  "quWrongPin": "Wrong PIN. {n} attempts left.",
+  "quLockedOut": "Too many wrong PINs. Please sign in with your password.",
+  "quUsePassword": "Use password instead",
+  "quBioReason": "Unlock Source Easy",
+  "quSection": "Quick unlock",
+  "quPinOn": "PIN unlock",
+  "quPinOnSub": "Ask for a PIN when the app opens",
+  "quChangePin": "Change PIN",
+  "quBioToggle": "Fingerprint unlock",
+  "quBioUnavailable": "No fingerprint set up on this phone",
+  "quPinSaved": "PIN saved",
+  "quSessionExpired": "Your session ended. Please sign in again.",
+  "@quWrongPin": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  }
 }
