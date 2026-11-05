@@ -436,6 +436,14 @@ class SourceEasyRepository {
   Future<Lead> reviseRejected(String id, {double? targetPrice, String? targetCurrency, String? notes}) => _leadPost(id, 'rejection/revise',
       {if (targetPrice != null) 'targetPrice': targetPrice, if (targetCurrency != null) 'targetCurrency': targetCurrency, if (notes != null && notes.isNotEmpty) 'notes': notes});
   Future<Lead> closeRejected(String id) => _leadPost(id, 'rejection/close');
+  // Send-back loop: China returns a lead to India for missing info; India answers and re-sends.
+  Future<Lead> sendBackLead(String id, String note) => _leadPost(id, 'send-back', {'note': note});
+  Future<Lead> resendLead(String id, String note) => _leadPost(id, 'resend', {'note': note});
+  // India returns a quote to China for revision; China resubmits it (revision +1).
+  Future<LeadQuote> sendBackQuote(String qid, String note) async =>
+      LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(qid)}/send-back', body: {'note': note})));
+  Future<LeadQuote> resubmitQuote(String qid, [String? note]) async =>
+      LeadQuote.fromJson(_d(await api.send('POST', '/api/quotes/${Uri.encodeComponent(qid)}/resubmit', body: {if (note != null && note.isNotEmpty) 'note': note})));
 
   // ---------- Timeline ----------
   Future<List<TimelineEvent>> timeline(Lead lead) async {

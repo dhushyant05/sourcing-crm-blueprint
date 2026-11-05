@@ -11,7 +11,7 @@ export type Vis = 'ALL' | 'INDIA' | 'CHINA';
 export type EventKind =
   | 'CREATED' | 'SUMMARY' | 'MEDIA_ADDED' | 'MEDIA_REMOVED' | 'ASSIGNED' | 'REASSIGNED' | 'QUEUED' | 'RETURNED' | 'STATUS'
   | 'QUOTE_ADDED' | 'QUOTE_EDITED' | 'CQ_PREPARED' | 'CQ_SENT' | 'CQ_ACCEPTED' | 'CQ_REJECTED' | 'CQ_REVERTED' | 'ORDER_CANCELLED'
-  | 'ORDER_CREATED' | 'ORDER_UPDATE' | 'SHIPPED' | 'SHIPMENT_UPDATE' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'REOPENED' | 'COPIED_TO' | 'CREATED_FROM' | 'CLOSED_PERMANENT' | 'FOLLOW_UP_SET' | 'FOLLOW_UP_DUE' | 'PRIORITY' | 'SLA_WARN' | 'SLA_BREACH' | 'COMPLETED';
+  | 'ORDER_CREATED' | 'ORDER_UPDATE' | 'SHIPPED' | 'SHIPMENT_UPDATE' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'REOPENED' | 'COPIED_TO' | 'CREATED_FROM' | 'CLOSED_PERMANENT' | 'FOLLOW_UP_SET' | 'FOLLOW_UP_DUE' | 'PRIORITY' | 'SLA_WARN' | 'SLA_BREACH' | 'COMPLETED' | 'SENT_BACK' | 'BACK_ANSWERED' | 'QUOTE_REVISED';
 export interface LeadEvent { id: string; leadId: string; at: string; kind: EventKind; actorId: string | null; actorName: string | null; actorOffice: Office | 'ADMIN' | null; data: Record<string, unknown>; vis: Vis }
 export interface Clock { leadId: string; office: Office; assignee: string | null; startedAt: string; dueAt: string; priority: boolean; warned: boolean; breached: boolean }
 export interface ClockRun { leadId: string; office: Office; assignee: string | null; startedAt: string; dueAt: string; endedAt: string; breached: boolean }
@@ -20,7 +20,8 @@ export const SLA_DEFAULT: SlaSettings = { normalMinutes: 5 * 60, priorityMinutes
 /** When the "about to expire" warning fires: `warnMinutes` before due, but never before 20% of the clock has run. */
 export const warnAt = (start: number, due: number, warnMinutes: number) => due - Math.min(warnMinutes * 60e3, (due - start) * 0.8);
 
-export interface LeadMeta { closedAt: string | null; closedBy: string | null; followUp: string | null; followUpBy: string | null; fromId: string | null; fromRef: string | null }
+export interface SendBack { side: Office; note: string; by: string | null; at: string; quoteId: string | null; from: string | null }
+export interface LeadMeta { sendBack: SendBack | null; closedAt: string | null; closedBy: string | null; followUp: string | null; followUpBy: string | null; fromId: string | null; fromRef: string | null }
 export class WorkflowStore {
   constructor(private db: Db, private now: () => number = Date.now) {}
   private iso(ms = this.now()) { return new Date(ms).toISOString(); }
@@ -58,11 +59,16 @@ export class WorkflowStore {
   // ---- lost-lead meta: permanent close, follow-up reminder, copied-from link ----
   async meta(leadId: string): Promise<LeadMeta> {
     const r = await this.db.get('SELECT * FROM lead_meta WHERE lead_id = ?', leadId);
-    return { closedAt: r?.closed_at ?? null, closedBy: r?.closed_by ?? null, followUp: r?.follow_up ?? null, followUpBy: r?.follow_up_by ?? null, fromId: r?.from_id ?? null, fromRef: r?.from_ref ?? null };
+    return { sendBack: r?.back_side ? { side: r.back_side, note: r.back_note ?? '', by: r.back_by ?? null, at: r.back_at, quoteId: r.back_quote_id ?? null, from: r.back_from ?? null } : null, closedAt: r?.closed_at ?? null, closedBy: r?.closed_by ?? null, followUp: r?.follow_up ?? null, followUpBy: r?.follow_up_by ?? null, fromId: r?.from_id ?? null, fromRef: r?.from_ref ?? null };
   }
   private async setMeta(leadId: string, cols: Record<string, unknown>) {
     const ks = Object.keys(cols);
     await this.db.run(`INSERT INTO lead_meta (lead_id, ${ks.join(', ')}) VALUES (?${', ?'.repeat(ks.length)}) ON CONFLICT (lead_id) DO UPDATE SET ${ks.map((k) => `${k} = excluded.${k}`).join(', ')}`, leadId, ...Object.values(cols));
+  }
+  /** Open send-back request: `side` is the office that has to act on it (India answers a China question; China revises a quote). */
+  async setSendBack(leadId: string, b: Omit<SendBack, 'at'> | null) {
+    await this.setMeta(leadId, b ? { back_side: b.side, back_note: b.note, back_by: b.by, back_at: this.iso(), back_quote_id: b.quoteId, back_from: b.from }
+      : { back_side: null, back_note: null, back_by: null, back_at: null, back_quote_id: null, back_from: null });
   }
   async closeLead(leadId: string, by: string) { await this.setMeta(leadId, { closed_at: this.iso(), closed_by: by }); }
   async reopenLead(leadId: string) { await this.setMeta(leadId, { closed_at: null, closed_by: null }); }

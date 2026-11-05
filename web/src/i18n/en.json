@@ -497,7 +497,13 @@
     "toastOpen": "Open lead",
     "toastClose": "Dismiss",
     "QUOTE_REVERTED": "{{by}}: customer acceptance reverted on {{ref}}",
-    "QUOTE_REVERTED_nobody": "customer acceptance reverted on {{ref}}"
+    "QUOTE_REVERTED_nobody": "customer acceptance reverted on {{ref}}",
+    "SENT_BACK": "{{by}} sent {{ref}} back — needs info",
+    "SENT_BACK_nobody": "{{ref}} sent back — needs info",
+    "INFO_PROVIDED": "{{by}} added info and re-sent {{ref}}",
+    "INFO_PROVIDED_nobody": "Info added on {{ref}}",
+    "QUOTE_REVISED": "{{by}} revised the quote for {{ref}}",
+    "QUOTE_REVISED_nobody": "Quote revised for {{ref}}"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -827,7 +833,11 @@
       "FOLLOW_UP_SET": "Follow-up reminder: {{date}}",
       "FOLLOW_UP_DUE": "Follow-up due ({{date}})",
       "CQ_REVERTED": "Super admin reverted acceptance of quote #{{n}} → {{to}}: {{reason}}",
-      "ORDER_CANCELLED": "Order cancelled (acceptance reverted): {{reason}}"
+      "ORDER_CANCELLED": "Order cancelled (acceptance reverted): {{reason}}",
+      "SENT_BACK": "Sent back to {{to}} for more info",
+      "SENT_BACK_Q": "Q{{n}} sent back to China for revision",
+      "BACK_ANSWERED": "Info added, re-sent to China",
+      "QUOTE_REVISED": "Q{{n}} revised (rev {{rev}}) and resubmitted"
     }
   },
   "lost": {
@@ -979,5 +989,25 @@
       "address": "Address",
       "notes": "Notes"
     }
+  },
+  "sb": {
+    "toIndia": "Send back to India",
+    "toChina": "Send back to China",
+    "resend": "Answer & re-send to China",
+    "resubmit": "Resubmit revision",
+    "needsInfo": "Needs info — returned to India",
+    "revisionRequested": "Revision requested — returned to China",
+    "notePh": "What is missing or needs changing? (required)",
+    "noteOpt": "What changed? (optional)",
+    "noteRequired": "Please write a note",
+    "privacy": "Both offices see this note. Don't type customer or supplier names or contacts — nothing removes them automatically.",
+    "resendHint": "Update the lead details first, then explain what you added. China is notified.",
+    "resubmitHint": "Edit the quote first, then resubmit. The revision number goes up; India is notified.",
+    "rev": "rev {{n}}",
+    "filter": "Returned · {{n}}",
+    "chipIndia": "Needs info",
+    "chipChina": "Revision requested",
+    "dash": "leads sent back to your office need action",
+    "dashLabel": "Returned for action"
   }
 }

@@ -18,6 +18,7 @@ export interface Quote {
   shipCost: number | null; shipCurrency: Currency | null; shipTerm: string | null; shipMode: string | null; shipPort: string | null; shipTransit: string | null;
   // India-side customer quote
   cq: CustomerQuote | null; status: QuoteStatus; sentAt: string | null; decidedAt: string | null; rejectReason: string | null; pdfToken: string | null;
+  revision: number; revRequest: { note: string; at: string; by: string | null } | null;
 }
 export const INCOTERMS = ['EXW', 'FOB', 'CIF', 'CFR', 'DDP', 'DAP', 'DOOR'] as const;
 export const SHIP_MODES = ['AIR', 'SEA', 'EXPRESS', 'ROAD'] as const;
@@ -54,7 +55,8 @@ export class QuoteStore {
     moq: r.moq, leadTime: r.lead_time, validity: r.validity, notes: r.notes, clientPrice: r.client_price, clientCurrency: r.client_currency,
     clientNotes: r.client_notes, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
     shipCost: r.ship_cost, shipCurrency: r.ship_currency, shipTerm: r.ship_term, shipMode: r.ship_mode, shipPort: r.ship_port, shipTransit: r.ship_transit,
-    cq: this.cqOf(r), status: r.status ?? 'DRAFT', sentAt: r.sent_at, decidedAt: r.decided_at, rejectReason: r.reject_reason, pdfToken: r.pdf_token });
+    cq: this.cqOf(r), status: r.status ?? 'DRAFT', sentAt: r.sent_at, decidedAt: r.decided_at, rejectReason: r.reject_reason, pdfToken: r.pdf_token,
+    revision: r.revision ?? 0, revRequest: r.rev_at ? { note: r.rev_note ?? '', at: r.rev_at, by: r.rev_by ?? null } : null });
   private static SEL = `SELECT q.*, c.qty cq_qty, c.unit_price cq_unit_price, c.gst_pct cq_gst_pct, c.ship_cost cq_ship_cost, c.ship_term cq_ship_term, c.ship_mode cq_ship_mode,
     c.port cq_port, c.transit cq_transit, c.other_charges cq_other_charges, c.other_label cq_other_label, c.validity cq_validity, c.terms cq_terms
     FROM quotes q LEFT JOIN customer_quotes c ON c.quote_id = q.id`;
@@ -162,6 +164,10 @@ export class QuoteStore {
     await this.db.run('UPDATE quotes SET client_price=?, client_currency=?, client_notes=?, updated_at=? WHERE id=?', price, price == null ? null : ccy, notes, new Date().toISOString(), id);
     return (await this.get(id))!;
   }
+  /** India asks China to revise this quote (one open request per quote). */
+  async requestRevision(id: string, note: string, by: string) { await this.db.run('UPDATE quotes SET rev_note=?, rev_at=?, rev_by=? WHERE id=?', note, new Date().toISOString(), by, id); return (await this.get(id))!; }
+  /** China resubmits: revision counter +1, request closed. */
+  async revised(id: string) { await this.db.run('UPDATE quotes SET revision = revision + 1, rev_note=NULL, rev_at=NULL, rev_by=NULL, updated_at=? WHERE id=?', new Date().toISOString(), id); return (await this.get(id))!; }
   async remove(id: string) { await this.db.run('DELETE FROM quotes WHERE id = ?', id); }
   async removeLead(leadId: string) { await this.db.run('DELETE FROM quotes WHERE lead_id = ?', leadId); }
   async deleteSupplier(id: string) { await this.db.run('DELETE FROM suppliers WHERE id = ?', id); } // quotes.supplier_id → NULL (FK)

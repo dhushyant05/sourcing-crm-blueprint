@@ -67,7 +67,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const push = o.push ?? new PushStore(o.db);
-  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed' };
+  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed' };
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
@@ -105,7 +105,8 @@ export async function buildApp(o: AppOptions) {
   const leadMetaView = async (rec: Rec, names: Map<string, string>) => {
     const m = rec.id ? await wf.meta(String(rec.id)) : null;
     if (!m) return {};
-    return { ...(m.closedAt ? { status: 'CLOSED', closedAt: m.closedAt, closedByName: (m.closedBy && names.get(m.closedBy)) || null } : {}),
+    const sb = m.sendBack;
+    return { sendBack: sb ? { side: sb.side, note: sb.note, at: sb.at, byName: (sb.by && names.get(sb.by)) || null, quoteId: sb.quoteId } : null, ...(m.closedAt ? { status: 'CLOSED', closedAt: m.closedAt, closedByName: (m.closedBy && names.get(m.closedBy)) || null } : {}),
       followUp: m.followUp, createdFromRef: m.fromRef, createdFromId: m.fromId };
   };
   const slaView = async (leadId: string, names?: Map<string, string>) => {
@@ -124,7 +125,7 @@ export async function buildApp(o: AppOptions) {
   const indiaOwner = (u: User | null | undefined) => !!u && u.active && (officeOf(u.role) === 'INDIA' || u.role === 'SUPER_ADMIN');
   /** Who hears about an unowned India/China lead: that office's admins, plus the super admin(s). */
   const queueWatchers = (office: Office) => o.users.list().filter((u) => u.active && (u.role === 'SUPER_ADMIN' || (officeOf(u.role) === office && u.role.endsWith('ADMIN')))).map((u) => u.id);
-  const handoff = async (lead: Rec, actor: User | null, office: Office, to: string | null | undefined) => {
+  const handoff = async (lead: Rec, actor: User | null, office: Office, to: string | null | undefined, why?: { kind: NotifKind; detail?: string | null }) => {
     const leadId = String(lead.id), prev = await assign.get(leadId);
     if (to) {
       const u = o.users.byId(to);
@@ -141,6 +142,8 @@ export async function buildApp(o: AppOptions) {
       to = office === 'INDIA' && indiaOwner(r) ? r!.id : null;
     }
     const returned = office === 'INDIA' && prev?.ownerOffice === 'CHINA';
+    // Any move to the other office closes an open send-back request held by this office.
+    { const sb = (await wf.meta(leadId)).sendBack; if (sb && sb.side !== office) await wf.setSendBack(leadId, null); }
     const changed = prev?.ownerOffice !== office || (prev?.assignedTo ?? null) !== to;
     await assign.set(leadId, { ownerOffice: office, assignedTo: to });
     if (changed) {
@@ -149,11 +152,12 @@ export async function buildApp(o: AppOptions) {
       // Each handoff to another office starts that office's SLA clock; a reassignment within the office keeps it running.
       if (prev?.ownerOffice !== office || (await wf.clock(leadId))) await wf.start(leadId, office, to);
     }
-    if (changed) {
+    if (changed || why) {
       const recips = (to ? [to] : queueWatchers(office)).filter((id) => id !== actor?.id);
       await assign.notify(recips, { leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null,
-        kind: !to ? 'QUEUE' : returned ? 'RETURNED' : 'ASSIGNED', office, byName: actor?.name ?? null });
+        kind: why?.kind ?? (!to ? 'QUEUE' : returned ? 'RETURNED' : 'ASSIGNED'), office, byName: actor?.name ?? null, detail: why?.detail ?? null });
     }
+    await liveData({ type: 'lead', id: leadId, leadId, at: Date.now() });
   };
   const stopClock = (leadId: string, office?: Office) => wf.stop(leadId, office);
   /** SLA watcher: 80% → the clock's assignee (or the office queue watchers); breach → office admins + super admin (+ assignee), logged on the timeline. */
@@ -456,6 +460,8 @@ export async function buildApp(o: AppOptions) {
       'POST /api/quotes/:qid/pdf': () => ['quotes.customer', 'prices.inr'],
       'POST /api/quotes/:qid/status': () => ['quotes.customer'],
       'POST /api/leads/:id/rejection/revise': () => ['quotes.customer'],
+      'POST /api/quotes/:qid/send-back': () => ['quotes.view'],
+      'POST /api/quotes/:qid/resubmit': () => ['quotes.create'],
       'POST /api/leads/:id/rejection/close': () => ['quotes.customer'],
       'POST /api/quotes/:qid/order': () => ['orders.create'],
       'PATCH /api/orders/:id': (_u, b) => { const k = Object.keys(b); const r: string[] = [];
@@ -600,7 +606,8 @@ export async function buildApp(o: AppOptions) {
       const base = { id: q.id, leadId: q.leadId, product: q.product, unitPrice: q.unitPrice, currency: q.currency, moq: q.moq, leadTime: q.leadTime,
         validity: q.validity, notes: q.notes, createdAt: q.createdAt, updatedAt: q.updatedAt,
         shipCost: q.shipCost, shipCurrency: q.shipCurrency, shipTerm: q.shipTerm, shipMode: q.shipMode, shipPort: q.shipPort, shipTransit: q.shipTransit,
-        status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt, rejectReason: q.rejectReason, orderId: (await orders.byQuote(q.id))?.id ?? null };
+        status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt, rejectReason: q.rejectReason, revision: q.revision,
+        revRequest: q.revRequest ? { note: q.revRequest.note, at: q.revRequest.at, byName: (q.revRequest.by && names.get(q.revRequest.by)) || null } : null, orderId: (await orders.byQuote(q.id))?.id ?? null };
       const client = { clientPrice: q.clientPrice, clientCurrency: q.clientCurrency, clientNotes: q.clientNotes, cq: q.cq, cqTotals: q.cq ? cqTotals(q.cq) : null,
         pdfUrl: q.pdfToken ? `/api/public/cq/${q.pdfToken}.pdf` : null };
       if (s.china) {
@@ -804,6 +811,61 @@ export async function buildApp(o: AppOptions) {
       if (orderRemoved) await liveData({ type: 'order', id: orderRemoved, leadId: q.leadId, deleted: true, at: Date.now() });
       await liveData({ type: 'lead', id: q.leadId, leadId: q.leadId, at: Date.now() });
       return { data: await refresh(u, (await quotes.get(q.id))!) };
+    });
+    // ---- Send-back loop: China asks India for missing lead details; India asks China to revise a quote. ----
+    // Notes are free text, shown to both offices on the timeline: nothing strips customer/supplier names typed into them.
+    const noteOf = (b: Rec | undefined, required = true) => {
+      const t = typeof b?.note === 'string' ? b.note.trim().slice(0, 2000) : '';
+      if (required && !t) throw bad('A note is required');
+      return t || null;
+    };
+    const sbOut = async (u: User, lead: Rec) => decorate(readFilter('lead', lead, await ctxOf(u.role))!, await assign.get(String(lead.id)), userNames());
+    const activeChina = (id: string | null | undefined) => { const x = id ? o.users.byId(id) : null; return x && x.active && officeOf(x.role) === 'CHINA' ? x.id : null; };
+    api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/send-back', async (req) => {
+      const u = req.user!; chinaOnly(u.role);
+      const id = await attLead(req), lead = await leadOf(id), a = await assign.get(id), note = noteOf(req.body)!;
+      if ((a?.ownerOffice ?? (lead.assignedOffice === 'CHINA' ? 'CHINA' : 'INDIA')) !== 'CHINA') throw bad('Only a lead China is holding can be sent back', 409);
+      const from = activeChina(a?.assignedTo) ?? activeChina(u.id);
+      await ev(id, 'SENT_BACK', u, { to: 'INDIA', note });
+      await handoff(lead, u, 'INDIA', undefined, { kind: 'SENT_BACK', detail: note.slice(0, 120) });
+      await wf.setSendBack(id, { side: 'INDIA', note, by: u.id, quoteId: null, from });
+      await liveData({ type: 'lead', id, leadId: id, at: Date.now() });
+      return { data: await sbOut(u, lead) };
+    });
+    api.post<{ Params: { id: string }; Body: Rec }>('/api/leads/:id/resend', async (req) => {
+      const u = req.user!; indiaOnly(u.role);
+      const id = await attLead(req), lead = await leadOf(id), sb = (await wf.meta(id)).sendBack, note = noteOf(req.body)!;
+      if (sb?.side !== 'INDIA' || sb.quoteId) throw bad('This lead has no open request from China', 409);
+      await ev(id, 'BACK_ANSWERED', u, { to: 'CHINA', note });
+      await handoff(lead, u, 'CHINA', activeChina(sb.from), { kind: 'INFO_PROVIDED', detail: note.slice(0, 120) });
+      return { data: await sbOut(u, lead) };
+    });
+    api.post<{ Params: { qid: string }; Body: Rec }>('/api/quotes/:qid/send-back', async (req) => {
+      const u = req.user!; indiaOnly(u.role); need(u, 'quotes.view');
+      const q = await quoteOf(req), note = noteOf(req.body)!, lead = await leadOf(q.leadId);
+      if (q.status === 'ACCEPTED' || (await orders.byQuote(q.id))) throw bad('An accepted quote cannot be sent back', 409);
+      const n = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1;
+      await quotes.requestRevision(q.id, note, u.id);
+      await ev(q.leadId, 'SENT_BACK', u, { to: 'CHINA', n, rev: q.revision, note });
+      if (lead.assignedOffice !== 'CHINA') { await leadDb.update(q.leadId, { assignedOffice: 'CHINA' }); lead.assignedOffice = 'CHINA'; }
+      const a = await assign.get(q.leadId);
+      await handoff(lead, u, 'CHINA', activeChina(q.createdBy) ?? activeChina(a?.ownerOffice === 'CHINA' ? a?.assignedTo : null), { kind: 'REVISE_REQUESTED', detail: `Q${n}: ${note}`.slice(0, 120) });
+      await wf.setSendBack(q.leadId, { side: 'CHINA', note, by: u.id, quoteId: q.id, from: a?.raisedBy ?? u.id });
+      await liveData({ type: 'lead', id: q.leadId, leadId: q.leadId, at: Date.now() });
+      return { data: await refresh(u, q) };
+    });
+    api.post<{ Params: { qid: string }; Body: Rec }>('/api/quotes/:qid/resubmit', async (req) => {
+      const u = req.user!; chinaOnly(u.role);
+      const q = await quoteOf(req), note = noteOf(req.body, false), lead = await leadOf(q.leadId);
+      if (!canEditQuote(u.role, u.id, q) && activeChina(u.id) !== (await assign.get(q.leadId))?.assignedTo) throw new Forbidden('Only the China staff working this quote can resubmit it');
+      if (!q.revRequest) throw bad('No revision was requested on this quote', 409);
+      const n = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1, nq = await quotes.revised(q.id);
+      await ev(q.leadId, 'QUOTE_REVISED', u, { to: 'INDIA', n, rev: nq.revision, note });
+      const sb = (await wf.meta(q.leadId)).sendBack;
+      if (sb?.quoteId === q.id) await wf.setSendBack(q.leadId, null);
+      const back = sb?.quoteId === q.id && sb.from && indiaOwner(o.users.byId(sb.from)) ? sb.from : undefined;
+      await handoff(lead, u, 'INDIA', back, { kind: 'QUOTE_REVISED', detail: `Q${n} rev ${nq.revision}${note ? ': ' + note : ''}`.slice(0, 120) });
+      return { data: await refresh(u, nq) };
     });
     // ---- Customer rejection follow-up (India): request a revised quote from China, or close as LOST ----
     const rejLead = async (u: User, id: string) => {

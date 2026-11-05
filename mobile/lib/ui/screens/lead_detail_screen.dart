@@ -266,6 +266,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with LiveRefresh {
               const SizedBox(height: 12),
               LeadQuotesSection(key: ValueKey('quotes-${l.id}'), leadId: l.id, lead: l),
               const SizedBox(height: 12),
+              SendBackCard(key: ValueKey('sb-${l.id}-${l.owner}-${l.sendBack?['at']}'), lead: l, onLead: (_) => _reload()),
               RejectionCard(key: ValueKey('rej-${l.id}-${l.status}'), lead: l, onLead: (_) => _reload()),
               LostActions(key: ValueKey('lost-${l.id}-${l.status}'), lead: l, onLead: (_) => _reload(),
                   openLead: (n) => Navigator.pushReplacement(c, MaterialPageRoute(builder: (_) => LeadDetailScreen(leadId: n.id)))),

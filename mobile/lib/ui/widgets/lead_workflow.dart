@@ -86,13 +86,15 @@ class WorkflowProgress extends StatelessWidget {
 String eventText(BuildContext context, String kind, Map<String, dynamic> d) {
   String t(String k, [Map<String, Object?> a = const {}]) => tw(context, k, a);
   final office = d['office'] != null ? t('sla.office.${d['office']}') : '';
-  final base = t('wf.ev.$kind', {
-    'n': d['n'] ?? '', 'office': office, 'to': d['to'] ?? office, 'from': d['from'] != null ? t('status.${d['from']}') : '',
+  final k2 = kind == 'SENT_BACK' && d['n'] != null ? 'SENT_BACK_Q' : kind;
+  final base = t('wf.ev.$k2', {
+    'n': d['n'] ?? '', 'office': office, 'to': kind == 'SENT_BACK' && d['to'] != null ? t('sla.office.${d['to']}') : d['to'] ?? office, 'from': d['from'] != null ? t('status.${d['from']}') : '',
     'st': d['to'] != null && kind == 'STATUS' ? t('status.${d['to']}') : '', 'ship': d['status'] == null ? '' : (tw(context, 'ship.st.${d['status']}').startsWith('ship.st.') ? d['status'] : tw(context, 'ship.st.${d['status']}')),
     'on': d['on'] == true ? t('wf.on') : t('wf.off'), 'ref': d['ref'] ?? '', 'date': d['date'] ?? '—'});
-  final b = base == 'wf.ev.$kind' ? kind : base;
+  final b = base == 'wf.ev.$k2' ? kind : base;
   final extra = switch (kind) {
     'QUOTE_ADDED' => d['supplier'] != null ? ' · ${d['supplier']}' : '',
+    'SENT_BACK' || 'BACK_ANSWERED' || 'QUOTE_REVISED' => d['note'] != null && '${d['note']}'.isNotEmpty ? ' — “${d['note']}”' : '',
     'CQ_REJECTED' || 'LEAD_CLOSED' => d['reason'] != null ? ' — “${d['reason']}”' : '',
     'REVISE_REQUESTED' => [if (d['reason'] != null) '“${d['reason']}”', if (d['targetPrice'] != null) '${t('wf.target')} ${d['targetPrice']} ${d['targetCurrency'] ?? ''}', if (d['notes'] != null) '${d['notes']}'].join(' · '),
     'CLOSED_PERMANENT' => [if (d['reason'] != null) ' — “${d['reason']}”', if (d['followUp'] != null) ' · ${t('lost.followUp')} ${d['followUp']}'].join(),
@@ -292,5 +294,91 @@ class _LostActionsState extends State<LostActions> {
       if (msg != null) Text(msg!, style: const TextStyle(color: Colors.green, fontSize: 12)),
       if (err != null) Text(err!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
     ])));
+  }
+}
+
+bool _chinaSide(Session s) => s.role.code.startsWith('CHINA') || s.role.code == 'SUPER_ADMIN';
+
+/// Note dialog for send-back / re-send. Returns the note, or null if cancelled.
+Future<String?> askSendBackNote(BuildContext context, {required String title, String? hint, bool required = true}) {
+  final c = TextEditingController();
+  String? err;
+  return showDialog<String>(context: context, builder: (d) => StatefulBuilder(builder: (d, set) => AlertDialog(
+    title: Text(title),
+    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (hint != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(hint, style: Theme.of(d).textTheme.bodySmall)),
+      TextField(key: const Key('sb-note'), controller: c, autofocus: true, maxLines: 4, minLines: 2,
+          decoration: InputDecoration(hintText: tw(context, required ? 'sb.notePh' : 'sb.noteOpt'), errorText: err, border: const OutlineInputBorder())),
+      const SizedBox(height: 6),
+      Text(tw(context, 'sb.privacy'), key: const Key('sb-privacy'), style: TextStyle(fontSize: 12, color: Colors.amber.shade900)),
+    ]),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(d), child: Text(context.l10n.cancel)),
+      FilledButton(key: const Key('sb-submit'), onPressed: () {
+        final v = c.text.trim();
+        if (required && v.isEmpty) { set(() => err = tw(context, 'sb.noteRequired')); return; }
+        Navigator.pop(d, v);
+      }, child: Text(title)),
+    ],
+  )));
+}
+
+/// "Needs info" banner + China "Send back to India" / India "Answer & re-send" actions on a lead.
+class SendBackCard extends StatefulWidget {
+  const SendBackCard({super.key, required this.lead, required this.onLead});
+  final Lead lead;
+  final void Function(Lead) onLead;
+  @override
+  State<SendBackCard> createState() => _SendBackCardState();
+}
+
+class _SendBackCardState extends State<SendBackCard> {
+  bool busy = false;
+  String? err;
+  Future<void> _go(String title, Future<Lead> Function(String) f, {String? hint}) async {
+    final note = await askSendBackNote(context, title: title, hint: hint);
+    if (note == null || !mounted) return;
+    setState(() { busy = true; err = null; });
+    try { widget.onLead(await f(note)); } catch (e) { setState(() => err = '$e'); } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<Session>(), l = widget.lead, sb = l.sendBack;
+    late final repo = s.repo;
+    final closed = ['WON', 'LOST', 'CLOSED', 'COMPLETED'].contains(l.status);
+    final leadSb = sb != null && sb['quoteId'] == null;
+    final canSendBack = !closed && _chinaSide(s) && l.owner == 'CHINA' && !s.role.code.startsWith('INDIA');
+    final canResend = leadSb && sb['side'] == 'INDIA' && _indiaSide(s) && l.owner == 'INDIA';
+    if (sb == null && !canSendBack) return const SizedBox.shrink();
+    final india = sb?['side'] == 'INDIA';
+    return Card(key: const Key('sendback'), color: sb != null ? Colors.amber.shade50 : null, child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (sb != null) ...[
+        Row(children: [Icon(Icons.reply, size: 18, color: Colors.amber.shade900), const SizedBox(width: 6),
+          Expanded(child: Text(tw(context, india ? 'sb.needsInfo' : 'sb.revisionRequested'), key: const Key('sb-banner'), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber.shade900)))]),
+        Padding(padding: const EdgeInsets.only(top: 4), child: Text('“${sb['note'] ?? ''}”', key: const Key('sb-note-text'))),
+        Text([sb['byName'], '${sb['at'] ?? ''}'.replaceFirst('T', ' ').split('.').first].whereType<String>().where((x) => x.isNotEmpty).join(' · '), style: Theme.of(context).textTheme.bodySmall),
+      ],
+      if (canSendBack || canResend) Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, children: [
+        if (canSendBack) OutlinedButton.icon(key: const Key('sb-to-india'), onPressed: busy ? null : () => _go(tw(context, 'sb.toIndia'), (n) => repo.sendBackLead(l.id, n)),
+            icon: const Icon(Icons.reply, size: 16), label: Text(tw(context, 'sb.toIndia'))),
+        if (canResend) FilledButton.icon(key: const Key('sb-resend'), onPressed: busy ? null : () => _go(tw(context, 'sb.resend'), (n) => repo.resendLead(l.id, n), hint: tw(context, 'sb.resendHint')),
+            icon: const Icon(Icons.send, size: 16), label: Text(tw(context, 'sb.resend'))),
+      ])),
+      if (err != null) Text(err!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+    ])));
+  }
+}
+
+/// Small amber chip for lists: "Needs info" (India must act) / "Revision requested" (China must act).
+class SendBackChip extends StatelessWidget {
+  const SendBackChip(this.lead, {super.key});
+  final Lead lead;
+  @override
+  Widget build(BuildContext context) {
+    final sb = lead.sendBack;
+    if (sb == null) return const SizedBox.shrink();
+    return Container(key: Key('sb-chip-${lead.id}'), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6)),
+        child: Text(tw(context, sb['side'] == 'INDIA' ? 'sb.chipIndia' : 'sb.chipChina'), style: TextStyle(fontSize: 11, color: Colors.amber.shade900, fontWeight: FontWeight.w600)));
   }
 }

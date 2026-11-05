@@ -1,3 +1,4 @@
+import '../../l10n/web_strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/codes.dart';
@@ -92,6 +93,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: ListTile(leading: Text('${leads.where((l) => l.unassignedIndia).length}', style: t.textTheme.headlineSmall?.copyWith(color: Colors.amber.shade900)),
                       title: Text(context.l10n.ownerDash, style: TextStyle(color: Colors.amber.shade900)), trailing: const Icon(Icons.chevron_right),
                       onTap: () => _showList(context.l10n.ownerUnassigned, leads.where((l) => l.unassignedIndia).toList())))),
+              Builder(builder: (_) {
+                final sa = s.role.code == 'SUPER_ADMIN', side = s.role.code.startsWith('CHINA') ? 'CHINA' : 'INDIA';
+                final back = leads.where((l) => l.sendBack != null && (sa || l.sendBack!['side'] == side)).toList();
+                if (back.isEmpty) return const SizedBox.shrink();
+                return Padding(padding: const EdgeInsets.only(top: 12), child: Card(key: const Key('dash-returned'), color: Colors.amber.shade50,
+                  child: ListTile(leading: Text('${back.length}', style: t.textTheme.headlineSmall?.copyWith(color: Colors.amber.shade900)),
+                      title: Text(tw(context, 'sb.dash'), style: TextStyle(color: Colors.amber.shade900)), trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _showList(tw(context, 'sb.dashLabel'), back))));
+              }),
               const SizedBox(height: 24),
               Text(context.l10n.pipeline, style: t.textTheme.titleMedium),
               const SizedBox(height: 8),

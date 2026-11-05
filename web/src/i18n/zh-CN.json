@@ -497,7 +497,13 @@
     "toastOpen": "打开线索",
     "toastClose": "关闭",
     "QUOTE_REVERTED": "{{by}}：{{ref}} 的客户接受已撤销",
-    "QUOTE_REVERTED_nobody": "{{ref}} 的客户接受已撤销"
+    "QUOTE_REVERTED_nobody": "{{ref}} 的客户接受已撤销",
+    "SENT_BACK": "{{by}} 退回了 {{ref}} — 需补充信息",
+    "SENT_BACK_nobody": "{{ref}} 已退回 — 需补充信息",
+    "INFO_PROVIDED": "{{by}} 已补充信息并重新发送 {{ref}}",
+    "INFO_PROVIDED_nobody": "{{ref}} 已补充信息",
+    "QUOTE_REVISED": "{{by}} 修改了 {{ref}} 的报价",
+    "QUOTE_REVISED_nobody": "{{ref}} 的报价已修改"
   },
   "lq": {
     "title": "供应商报价",
@@ -827,7 +833,11 @@
       "FOLLOW_UP_SET": "跟进提醒：{{date}}",
       "FOLLOW_UP_DUE": "跟进到期（{{date}}）",
       "CQ_REVERTED": "超级管理员撤销报价 #{{n}} 的接受 → {{to}}：{{reason}}",
-      "ORDER_CANCELLED": "订单已取消（撤销接受）：{{reason}}"
+      "ORDER_CANCELLED": "订单已取消（撤销接受）：{{reason}}",
+      "SENT_BACK": "已退回{{to}}补充信息",
+      "SENT_BACK_Q": "Q{{n}} 已退回中国修改",
+      "BACK_ANSWERED": "已补充信息并重新发送给中国",
+      "QUOTE_REVISED": "Q{{n}} 已修改（第{{rev}}版）并重新提交"
     }
   },
   "lost": {
@@ -979,5 +989,25 @@
       "address": "地址",
       "notes": "备注"
     }
+  },
+  "sb": {
+    "toIndia": "退回印度",
+    "toChina": "退回中国",
+    "resend": "补充信息并重新发送给中国",
+    "resubmit": "重新提交修订",
+    "needsInfo": "需补充信息 — 已退回印度",
+    "revisionRequested": "需修改报价 — 已退回中国",
+    "notePh": "缺少什么或需要修改什么？（必填）",
+    "noteOpt": "修改了什么？（选填）",
+    "noteRequired": "请填写备注",
+    "privacy": "双方办公室都能看到此备注。请勿填写客户或供应商的名称或联系方式 — 系统不会自动删除。",
+    "resendHint": "请先更新线索信息，再说明补充了什么。中国团队会收到通知。",
+    "resubmitHint": "请先修改报价，再重新提交。修订号将递增，印度团队会收到通知。",
+    "rev": "第{{n}}版",
+    "filter": "已退回 · {{n}}",
+    "chipIndia": "需补充信息",
+    "chipChina": "需修改报价",
+    "dash": "条退回到您办公室的线索待处理",
+    "dashLabel": "已退回待处理"
   }
 }

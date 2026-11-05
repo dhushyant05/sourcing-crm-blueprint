@@ -17,6 +17,7 @@ export function notifText(t: (k: string, o?: any) => string, n: AppNotification)
   const d = n.detail ? String(n.detail) : '';
   const [k, v] = d.split(':');
   const extra = k === 'production' ? t(`orders.prod.${v}`) : k === 'ship' ? t(`ship.st.${v}`) : k === 'payment' ? `${t('notif.payment')}: ${t(`orders.pay.${v}`)}` : '';
+  if (d && ['SENT_BACK', 'INFO_PROVIDED', 'REVISE_REQUESTED', 'QUOTE_REVISED'].includes(n.kind)) return `${base} — “${d}”`;
   return extra ? `${base} — ${extra}` : base;
 }
 
@@ -95,7 +96,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     openLead(n.leadId);
   };
   const unread = data?.unread ?? 0;
-  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' || n.kind === 'LEAD_COMPLETED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' || n.kind === 'LEAD_CLOSED' || n.kind === 'QUOTE_REVERTED' ? XCircle : n.kind === 'REVISE_REQUESTED' ? CornerDownLeft : n.kind === 'ORDER_SHIPPED' ? Ship : n.kind === 'SLA_WARN' ? Timer : n.kind === 'SLA_BREACH' ? AlarmClock : n.kind === 'PRIORITY' ? Flame : n.kind.startsWith('ORDER') ? Package : n.kind === 'SHIPMENT_UPDATE' ? Ship : UserCheck);
+  const Icon = (n: AppNotification) => (n.kind === 'RETURNED' || n.kind === 'SENT_BACK' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' || n.kind === 'LEAD_COMPLETED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' || n.kind === 'LEAD_CLOSED' || n.kind === 'QUOTE_REVERTED' ? XCircle : n.kind === 'REVISE_REQUESTED' ? CornerDownLeft : n.kind === 'ORDER_SHIPPED' ? Ship : n.kind === 'SLA_WARN' ? Timer : n.kind === 'SLA_BREACH' ? AlarmClock : n.kind === 'PRIORITY' ? Flame : n.kind.startsWith('ORDER') ? Package : n.kind === 'SHIPMENT_UPDATE' ? Ship : UserCheck);
   return (
     <div className="relative" ref={box}>
       <button data-testid="notif-bell" className="btn-ghost relative p-2" aria-label={t('header.notifications')} onClick={() => { setOpen(!open); if (!open) load(); }}>
@@ -114,7 +115,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
             {data?.data.map((n) => { const I = Icon(n); return (
               <li key={n.id}>
                 <button data-testid="notif-item" onClick={() => void click(n)} className={clsx('flex w-full gap-3 px-4 py-3 text-left transition hover:bg-ink-50 dark:hover:bg-ink-800', !n.read && 'bg-brand-50/50 dark:bg-brand-500/5')}>
-                  {n.byName && people[n.byName] ? <Avatar name={n.byName} src={people[n.byName]} className="mt-0.5" /> : <span className={clsx('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', n.kind === 'RETURNED' ? 'bg-amber-100 text-amber-700' : n.kind === 'QUEUE' ? 'bg-ink-100 text-ink-600' : 'bg-brand-100 text-brand-700')}><I size={15} /></span>}
+                  {n.byName && people[n.byName] ? <Avatar name={n.byName} src={people[n.byName]} className="mt-0.5" /> : <span className={clsx('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', n.kind === 'RETURNED' || n.kind === 'SENT_BACK' || n.kind === 'REVISE_REQUESTED' ? 'bg-amber-100 text-amber-700' : n.kind === 'QUEUE' ? 'bg-ink-100 text-ink-600' : 'bg-brand-100 text-brand-700')}><I size={15} /></span>}
                   <span className="min-w-0 flex-1">
                     <span className={clsx('block text-sm', n.read ? 'text-ink-600 dark:text-ink-300' : 'font-medium text-ink-900 dark:text-white')}>{notifText(t, n)}</span>
                     {n.product && <span className="block truncate text-xs text-ink-500">{n.product}</span>}

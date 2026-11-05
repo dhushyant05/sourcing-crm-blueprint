@@ -49,10 +49,11 @@ const evText = (t: (k: string, o?: any) => string, kind: string, d: Record<strin
   const office = d.office ? t(`sla.office.${d.office}`) : '';
   const extra: Record<string, string> = {
     QUOTE_ADDED: d.supplier ? ` · ${d.supplier}` : '', CQ_REJECTED: d.reason ? ` — “${d.reason}”` : '', REVISE_REQUESTED: [d.reason && `“${d.reason}”`, d.targetPrice && `${t('wf.target')} ${d.targetPrice} ${d.targetCurrency ?? ''}`, d.notes].filter(Boolean).join(' · '),
+    SENT_BACK: d.note ? `“${d.note}”` : '', BACK_ANSWERED: d.note ? `“${d.note}”` : '', QUOTE_REVISED: d.note ? `“${d.note}”` : '',
     LEAD_CLOSED: d.reason ? ` — “${d.reason}”` : '', CLOSED_PERMANENT: [d.reason && ` — “${d.reason}”`, d.followUp && ` · ${t('lost.followUp')} ${d.followUp}`].filter(Boolean).join(''), SHIPPED: [d.tracking || d.container, d.etd && `ETD ${d.etd}`].filter(Boolean).join(' · '),
   };
-  const base = t(`wf.ev.${kind}`, { n: d.n ?? '', office, to: d.to ?? office, from: d.from ? t(`status.${d.from}`) : '', st: d.to && kind === 'STATUS' ? t(`status.${d.to}`) : '', ship: d.status ? t(`ship.st.${d.status}`, { defaultValue: d.status }) : '', on: d.on ? t('wf.on') : t('wf.off'), ref: d.ref ?? '', date: d.date ?? '—', defaultValue: kind });
-  const x = extra[kind]; return x ? (kind === 'REVISE_REQUESTED' || kind === 'SHIPPED' ? `${base} — ${x}` : base + x) : base;
+  const base = t(kind === 'SENT_BACK' && d.n ? 'wf.ev.SENT_BACK_Q' : `wf.ev.${kind}`, { rev: d.rev ?? '', n: d.n ?? '', office, to: kind === 'SENT_BACK' && d.to ? t(`sla.office.${d.to}`) : d.to ?? office, from: d.from ? t(`status.${d.from}`) : '', st: d.to && kind === 'STATUS' ? t(`status.${d.to}`) : '', ship: d.status ? t(`ship.st.${d.status}`, { defaultValue: d.status }) : '', on: d.on ? t('wf.on') : t('wf.off'), ref: d.ref ?? '', date: d.date ?? '—', defaultValue: kind });
+  const x = extra[kind]; return x ? (['REVISE_REQUESTED', 'SHIPPED', 'SENT_BACK', 'BACK_ANSWERED', 'QUOTE_REVISED'].includes(kind) ? `${base} — ${x}` : base + x) : base;
 };
 
 /** Lead drawer section: progress, SLA clock, priority toggle and the role-filtered event log. */
@@ -76,7 +77,7 @@ export function WorkflowPanel({ lead, onPriority }: { lead: Lead; onPriority?: (
       {data.sla && <p className="mt-2 text-xs text-ink-500" data-testid="sla-line">{t('sla.line', { office: t(`sla.office.${data.sla.office}`), who: data.sla.assigneeName || t('sla.queue'), d: new Date(data.sla.dueAt).toLocaleString() })}</p>}
       <ol data-testid="wf-events" className="mt-3 space-y-3 border-l border-ink-200 pl-4 dark:border-ink-800">
         {data.events.map((e) => <li key={e.id} data-kind={e.kind} className="relative text-sm">
-          <span className={clsx('absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ring-4 ring-white dark:ring-ink-900', e.kind.startsWith('SLA') ? 'bg-rose-500' : e.kind === 'SHIPPED' || e.kind === 'CQ_ACCEPTED' || e.kind === 'COMPLETED' ? 'bg-emerald-500' : e.kind === 'CQ_REJECTED' || e.kind === 'LEAD_CLOSED' ? 'bg-rose-400' : 'bg-brand-500')} />
+          <span className={clsx('absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ring-4 ring-white dark:ring-ink-900', e.kind.startsWith('SLA') ? 'bg-rose-500' : e.kind === 'SHIPPED' || e.kind === 'CQ_ACCEPTED' || e.kind === 'COMPLETED' ? 'bg-emerald-500' : e.kind === 'CQ_REJECTED' || e.kind === 'LEAD_CLOSED' ? 'bg-rose-400' : e.kind === 'SENT_BACK' ? 'bg-amber-500' : 'bg-brand-500')} />
           <div className="flex items-start gap-2 text-ink-800 dark:text-ink-100">{e.actorName && <Avatar name={e.actorName} person className="h-5 w-5 text-[9px]" />}<span>{evText(t, e.kind, e.data)}</span></div>
           <div className="text-xs text-ink-400">{e.actorName ? `${e.actorName} · ` : ''}{new Date(e.at).toLocaleString()}</div></li>)}
       </ol></>}

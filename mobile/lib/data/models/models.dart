@@ -44,6 +44,8 @@ class Lead {
   bool get unassignedIndia => raw['unassignedIndia'] == true;
   String? get followUp => raw['followUp'] as String?;
   String? get createdFromRef => raw['createdFromRef'] as String?;
+  /// Open send-back {side: INDIA|CHINA, note, at, byName, quoteId} - the side that must act.
+  Map<String, dynamic>? get sendBack => (raw['sendBack'] as Map?)?.cast<String, dynamic>();
   Map<String, dynamic>? get rejection => (raw['rejection'] as Map?)?.cast<String, dynamic>();
   Map<String, dynamic>? get sla => (raw['sla'] as Map?)?.cast<String, dynamic>();
   final String? raisedBy, raisedByName, assignedTo, assignedToName, ownerOffice;
@@ -314,14 +316,14 @@ class StaffLite {
 
 /// Server notification. Carries only the SE reference + product summary (never customer details).
 class AppNotification {
-  AppNotification({required this.id, required this.leadId, this.leadRef, this.product, required this.kind, this.office, this.byName, this.createdAt, this.read = false});
+  AppNotification({required this.id, required this.leadId, this.leadRef, this.product, required this.kind, this.office, this.byName, this.detail, this.createdAt, this.read = false});
   final String id, leadId, kind;
-  final String? leadRef, product, office, byName;
+  final String? leadRef, product, office, byName, detail;
   final DateTime? createdAt;
   final bool read;
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
         id: '${j['id']}', leadId: j['leadId'] as String, leadRef: j['leadRef'] as String?, product: j['product'] as String?,
-        kind: (j['kind'] as String?) ?? 'ASSIGNED', office: j['office'] as String?, byName: j['byName'] as String?,
+        kind: (j['kind'] as String?) ?? 'ASSIGNED', office: j['office'] as String?, byName: j['byName'] as String?, detail: j['detail'] as String?,
         createdAt: _date(j['createdAt']), read: j['read'] == true || j['readAt'] != null);
 }
 
@@ -340,7 +342,9 @@ class LeadQuote {
       this.validity, this.notes, this.clientPrice, this.clientCurrency, this.clientNotes, this.supplierId, this.supplier, this.createdByName,
       this.canEdit = false, this.files = const [], this.status = 'DRAFT', this.sentAt, this.decidedAt, this.rejectReason, this.shipCost, this.shipCurrency,
       this.shipTerm, this.shipMode, this.shipPort, this.shipTransit, this.cq, this.cqTotals, this.pdfUrl, this.leadId, this.leadRef, this.leadStatus,
-      this.assignedToName, this.ownerOffice, this.orderId});
+      this.assignedToName, this.ownerOffice, this.orderId, this.revision = 0, this.revRequest});
+  final int revision;
+  final Map<String, dynamic>? revRequest;
   final String id, product, currency, status;
   final String? sentAt, decidedAt, rejectReason, shipCurrency, shipTerm, shipMode, shipPort, shipTransit, pdfUrl, leadId, leadRef, leadStatus, assignedToName, ownerOffice, orderId;
   final double? shipCost;
@@ -363,7 +367,8 @@ class LeadQuote {
         shipPort: j['shipPort'] as String?, shipTransit: j['shipTransit'] as String?,
         cq: (j['cq'] as Map?)?.cast<String, dynamic>(), cqTotals: (j['cqTotals'] as Map?)?.cast<String, dynamic>(), pdfUrl: j['pdfUrl'] as String?,
         leadId: j['leadId'] as String?, leadRef: j['leadRef'] as String?, leadStatus: j['leadStatus'] as String?, assignedToName: j['assignedToName'] as String?,
-        ownerOffice: j['ownerOffice'] as String?, orderId: j['orderId'] as String?);
+        ownerOffice: j['ownerOffice'] as String?, orderId: j['orderId'] as String?,
+        revision: (j['revision'] as num?)?.toInt() ?? 0, revRequest: (j['revRequest'] as Map?)?.cast<String, dynamic>());
 }
 
 /// An order created from an accepted customer quote. Fields the caller may not see are null (server-redacted).

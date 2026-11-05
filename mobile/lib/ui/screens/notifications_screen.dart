@@ -16,6 +16,9 @@ String notifText(BuildContext context, AppNotification n) {
   final ref = n.leadRef ?? '—', product = n.product ?? l.lead;
   final by = n.byName == null ? '' : l.notifBy(n.byName!);
   switch (n.kind) {
+    case 'SENT_BACK' || 'INFO_PROVIDED' || 'QUOTE_REVISED':
+      final b = n.byName == null ? tw(context, 'notif.${n.kind}_nobody', {'ref': ref}) : tw(context, 'notif.${n.kind}', {'by': n.byName, 'ref': ref});
+      return '$ref · $product: $b${(n.detail ?? '').isNotEmpty ? ' — “${n.detail}”' : ''}';
     case 'RETURNED': return l.notifReturned(ref, product, by);
     case 'QUOTE_ACCEPTED': return l.notifQuoteAccepted(ref, product, by);
     case 'QUOTE_REVERTED': return n.byName == null ? '$ref · $product: ${tw(context, 'notif.QUOTE_REVERTED_nobody', {'ref': ref})}' : '$ref · $product: ${tw(context, 'notif.QUOTE_REVERTED', {'by': n.byName, 'ref': ref})}';
@@ -50,7 +53,7 @@ class NotificationsScreen extends StatelessWidget {
                   final n = nc.items[i];
                   return ListTile(
                     key: Key('notif-${n.id}'),
-                    leading: Icon(n.kind == 'RETURNED' ? Icons.reply : n.kind == 'QUEUE' ? Icons.inbox_outlined : n.kind.startsWith('SLA') ? Icons.timer_outlined : n.kind == 'LEAD_COMPLETED' ? Icons.task_alt : Icons.assignment_ind_outlined,
+                    leading: Icon(n.kind == 'SENT_BACK' || n.kind == 'REVISE_REQUESTED' ? Icons.reply : n.kind == 'RETURNED' ? Icons.reply : n.kind == 'QUEUE' ? Icons.inbox_outlined : n.kind.startsWith('SLA') ? Icons.timer_outlined : n.kind == 'LEAD_COMPLETED' ? Icons.task_alt : Icons.assignment_ind_outlined,
                         color: n.read ? Colors.grey : Theme.of(c).colorScheme.primary),
                     title: Text(notifText(c, n), style: TextStyle(fontWeight: n.read ? FontWeight.normal : FontWeight.w600)),
                     subtitle: n.createdAt == null ? null : Text(dateFmt.format(n.createdAt!.toLocal())),

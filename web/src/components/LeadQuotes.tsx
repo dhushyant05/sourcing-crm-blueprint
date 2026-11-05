@@ -1,3 +1,4 @@
+import { QuoteSendBack } from './SendBack';
 import { Download, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -40,7 +41,7 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
           <li key={q.id} data-testid="quote-card" className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-[11px] font-mono text-ink-400">{q.label ?? `Q${i + 1}`}<QuoteStatusChip s={q.status} /></div>
+                <div className="flex items-center gap-2 text-[11px] font-mono text-ink-400">{q.label ?? `Q${i + 1}`}{!!q.revision && <span data-testid="quote-rev" className="rounded bg-ink-100 px-1 text-ink-600 dark:bg-ink-800 dark:text-ink-300">{t('sb.rev', { n: q.revision })}</span>}<QuoteStatusChip s={q.status} /></div>
                 <div className="font-medium text-ink-900 dark:text-white">{q.product}</div>
                 <div className="mt-0.5 text-lg font-semibold text-brand-700 dark:text-brand-300">{money(q.unitPrice, q.currency)} <span className="text-xs font-normal text-ink-400">/ {t('lq.unit')}</span></div>
               </div>
@@ -57,6 +58,7 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
               <b>{t('lq.supplier')}:</b> {q.supplier.name}{q.supplier.contact && ` · ${q.supplier.contact}`}{q.supplier.phone && ` · ${q.supplier.phone}`}{q.supplier.wechat && ` · WeChat ${q.supplier.wechat}`}{q.supplier.city && ` · ${q.supplier.city}`}
               <span className="ml-1 text-amber-700/70">({t('lq.chinaOnly')})</span></div>}
             {china && q.createdByName && <div className="mt-1 text-[11px] text-ink-400">{t('lq.by', { who: q.createdByName })}</div>}
+            <QuoteSendBack q={q} onChange={replace} />
             <QuoteFiles quote={q} canEdit={canEdit(q)} onChange={replace} />
             {india && perms.can('quotes.customer') && perms.can('prices.inr') && <CustomerQuote q={q} lead={lead} onChange={replace} onLeadStatus={onLeadStatus} />}
           </li>

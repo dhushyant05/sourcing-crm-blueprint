@@ -1,3 +1,4 @@
+import { LeadSendBack } from '../components/SendBack';
 import { RejectionPanel } from '../components/Rejection';
 import { clsx } from 'clsx';
 import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
@@ -36,9 +37,10 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
   const [only, setOnly] = useState(readFilter);
   useEffect(() => { const h = () => setOnly(readFilter()); window.addEventListener('se:lead-filter', h); return () => window.removeEventListener('se:lead-filter', h); }, []);
   const clearOnly = () => { sessionStorage.removeItem('se.leadFilter'); setOnly(null); };
-  const [unOnly, setUnOnly] = useState(false);
+  const [unOnly, setUnOnly] = useState(false), [backOnly, setBackOnly] = useState(false);
+  const backCount = data?.filter((l) => l.sendBack).length ?? 0;
   const unCount = data?.filter((l) => l.unassignedIndia).length ?? 0;
-  const leads = data?.filter((l) => matches(l, search) && (!unOnly || l.unassignedIndia) && (only ? only.ids.includes(l.id) : view === 'board' ? l.status !== 'CLOSED' : showClosed ? DONE.includes(l.status) : !DONE.includes(l.status)));
+  const leads = data?.filter((l) => matches(l, search) && (!unOnly || l.unassignedIndia) && (!backOnly || !!l.sendBack) && (only ? only.ids.includes(l.id) : view === 'board' ? l.status !== 'CLOSED' : showClosed ? DONE.includes(l.status) : !DONE.includes(l.status)));
   const pick = (v: 'board' | 'table') => { setView(v); localStorage.leadView = v; };
 
   const move = async (id: string, status: LeadStatus) => {
@@ -60,6 +62,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
             ))}
           </div>
           {(unCount > 0 || unOnly) && <button data-testid="unassigned-filter" onClick={() => setUnOnly((v) => !v)} className={clsx('rounded-xl border px-2.5 py-1.5 text-sm', unOnly ? 'border-amber-500 bg-amber-500 text-white' : 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200')}>{t('owner.filter', { n: unCount })}</button>}
+          {(backCount > 0 || backOnly) && <button data-testid="returned-filter" onClick={() => setBackOnly((v) => !v)} className={clsx('rounded-xl border px-2.5 py-1.5 text-sm', backOnly ? 'border-amber-600 bg-amber-600 text-white' : 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200')}>{t('sb.filter', { n: backCount })}</button>}
           <button data-testid="show-closed" onClick={() => { setShowClosed((v) => !v); if (!showClosed) pick('table'); }} className={clsx('rounded-xl border px-2.5 py-1.5 text-sm', showClosed ? 'border-ink-700 bg-ink-800 text-white' : 'border-ink-200 bg-white text-ink-500 dark:border-ink-700 dark:bg-ink-900')}>{showClosed ? t('lost.hideClosed') : t('lost.showClosed', { n: data?.filter((l) => DONE.includes(l.status)).length ?? 0 })}</button>
           <div className="flex rounded-xl border border-ink-200 bg-white p-0.5 dark:border-ink-700 dark:bg-ink-900">
             {([['board', KanbanSquare], ['table', Rows3]] as const).map(([v, I]) => (
@@ -89,7 +92,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       {canDel && <button className="absolute right-2 top-2 rounded-lg p-1 text-rose-600 opacity-60 hover:bg-rose-50 hover:opacity-100 group-hover:opacity-100 dark:hover:bg-rose-500/10" data-testid="lead-card-delete" title={t('del.rowTitle')} aria-label={t('del.rowTitle')} onClick={(e) => { e.stopPropagation(); setToDel([l]); }}><Trash2 size={14} /></button>}
                       <div className="pr-6 text-sm font-medium text-ink-900 dark:text-white">{who(l, perms.customers)}</div>{perms.customers && <div className="mt-1"><RefTag v={l.leadRef} /></div>}
                       <div className="mt-0.5 text-xs text-ink-500">{l.productInterest}</div>
-                      {(l.priority || l.sla || l.rejection?.actionNeeded || l.unassignedIndia) && <div className="mt-2 flex flex-wrap gap-1">{l.unassignedIndia && <UnassignedBadge />}{l.priority && <PriorityBadge />}<SlaChip sla={l.sla} compact />{l.rejection?.actionNeeded && <RejChip />}</div>}
+                      {(l.priority || l.sla || l.rejection?.actionNeeded || l.unassignedIndia || l.sendBack) && <div className="mt-2 flex flex-wrap gap-1">{l.unassignedIndia && <UnassignedBadge />}{l.priority && <PriorityBadge />}<SlaChip sla={l.sla} compact />{l.rejection?.actionNeeded && <RejChip />}{l.sendBack && <SbChip side={l.sendBack.side} />}</div>}
                       <div className="mt-3 flex items-center justify-between text-xs text-ink-500">
                         <span>{t('common.pcs', { n: l.quantity?.toLocaleString() })}</span>
                         <span className="flex items-center gap-1.5" title={l.assignedToName ?? t('assign.queue', { office: l.ownerOffice === 'CHINA' ? t('leads.officeChina') : t('leads.officeIndia') })}>{l.ownerOffice && <span className="text-[10px] uppercase text-ink-400">{l.ownerOffice === 'CHINA' ? '中' : 'IN'}</span>}<Avatar person name={l.assignedToName ?? l.assignedChinaAgent ?? '—'} className="h-6 w-6 text-[10px]" /></span>
@@ -119,7 +122,7 @@ export function Leads({ search, openLead }: { search: string; openLead: (l: Lead
                       <td className="td text-ink-600 dark:text-ink-300">{l.productInterest}</td>
                       <td className="td text-right tabular-nums">{l.quantity?.toLocaleString()}</td>
                       {perms.clientPricing && <td className="td text-right tabular-nums"><Money v={l.targetPrice} c={l.targetCurrency} /></td>}
-                      <td className="td"><Chip value={l.status} />{l.unassignedIndia && <UnassignedBadge />}{l.rejection?.actionNeeded && <RejChip />}{l.priority && <span className="ml-1"><PriorityBadge /></span>}</td>
+                      <td className="td"><Chip value={l.status} />{l.unassignedIndia && <UnassignedBadge />}{l.rejection?.actionNeeded && <RejChip />}{l.sendBack && <SbChip side={l.sendBack.side} />}{l.priority && <span className="ml-1"><PriorityBadge /></span>}</td>
                       <td className="td" data-testid="sla-cell">{l.sla ? <SlaChip sla={l.sla} /> : <span className="text-ink-400">—</span>}</td>
                       <td className="td text-ink-600 dark:text-ink-300">{l.assignedToName ?? l.assignedChinaAgent ?? '—'}</td>
                       <td className="td text-ink-500">{fmtDate(l.createdAt)}</td>
@@ -306,7 +309,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const canTake = !canClaim && !isAdmin && myOffice === owner && !!session?.id && lead?.assignedTo !== session.id;
   return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
-      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.unassignedIndia && <UnassignedBadge />}{lead.rejection?.actionNeeded && <RejChip />}{lead.priority && <PriorityBadge />}<span>{lead.productInterest}</span>{lead.sla && <div className="basis-full"><BigSla sla={lead.sla} /></div>}</div>}
+      subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.unassignedIndia && <UnassignedBadge />}{lead.rejection?.actionNeeded && <RejChip />}{lead.sendBack && <SbChip side={lead.sendBack.side} />}{lead.priority && <PriorityBadge />}<span>{lead.productInterest}</span>{lead.sla && <div className="basis-full"><BigSla sla={lead.sla} /></div>}</div>}
       footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline !border-rose-300 !text-rose-600 hover:!bg-rose-50" data-testid="lead-delete" disabled={busy} onClick={() => setDelOpen(true)}><Trash2 size={15} />{t('del.button')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
@@ -366,6 +369,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
           </>)}
           <Attachments leadId={lead.id} canEdit={perms.customers} />
           <LostActions lead={lead} onChange={(l) => setLead({ ...lead, ...l })} openLead={(l) => setLead(l)} />
+          <LeadSendBack lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
           <RejectionPanel lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
           <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
           <WorkflowPanel lead={lead} onPriority={(on) => setLead({ ...lead, priority: on })} />
@@ -459,6 +463,7 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
   </>);
 }
 
+export function SbChip({ side }: { side: 'INDIA' | 'CHINA' }) { const { t } = useTranslation(); return <span data-testid="sb-chip" className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">{side === 'INDIA' ? t('sb.chipIndia') : t('sb.chipChina')}</span>; }
 export function RejChip() { const { t } = useTranslation(); return <span data-testid="rej-chip" className="ml-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">{t('rej.actionNeeded')}</span>; }
 
 /** India side + super admin: the Customers-directory record this lead belongs to, with a link that opens it. */

@@ -7,6 +7,8 @@ export interface RejectionSummary { count: number; actionNeeded: boolean; revisi
 export const REJECT_REASONS = ['PRICE', 'LEAD_TIME', 'MOQ', 'QUALITY', 'SHIPPING', 'OTHER_SUPPLIER', 'NO_RESPONSE', 'OTHER'];
 export interface Lead {
   rejection?: RejectionSummary | null;
+  /** Open send-back request: `side` is the office that has to act (INDIA = China asked for details; CHINA = India asked for a quote revision). */
+  sendBack?: { side: Office; note: string; at: string; byName: string | null; quoteId: string | null } | null;
   id: string; name: string; clientName?: string; contactPhone?: string; contactEmail?: string;
   productInterest?: string; quantity?: number; targetPrice?: number; targetCurrency?: Currency;
   status: LeadStatus; assignedOffice?: string; assignedChinaAgent?: string; sourceChannel?: string; createdAt: string; updatedAt?: string;
@@ -28,7 +30,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -77,6 +79,7 @@ export interface LeadQuote {
   clientPrice?: number | null; clientCurrency?: string | null; clientNotes?: string | null;
   supplierId?: string | null; supplier?: QuoteSupplier | null; canEdit?: boolean; createdBy?: string; createdByName?: string | null;
   files: Attachment[]; createdAt: string; updatedAt?: string;
+  revision?: number; revRequest?: { note: string; at: string; byName: string | null } | null;
   shipCost?: number | null; shipCurrency?: QuoteCurrency | null; shipTerm?: string | null; shipMode?: string | null; shipPort?: string | null; shipTransit?: string | null;
   status?: QuoteStatus; sentAt?: string | null; decidedAt?: string | null; rejectReason?: string | null; orderId?: string | null;
   cq?: CustomerQuote | null; cqTotals?: { subtotal: number; taxable: number; gst: number; total: number } | null; pdfUrl?: string | null;

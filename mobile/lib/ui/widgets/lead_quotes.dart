@@ -10,6 +10,8 @@ import 'auth_image.dart';
 import 'lead_attachments.dart';
 import 'media_picker.dart';
 import 'se_codes.dart';
+import 'lead_workflow.dart' show askSendBackNote;
+import '../../l10n/web_strings.dart';
 import '../screens/customer_quote_screen.dart';
 
 const quoteCurrencies = [('USD', r'$', 'USD'), ('CNY', '¥', 'RMB'), ('INR', '₹', 'INR')];
@@ -88,6 +90,32 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
     ]);
   }
 
+  Future<void> _sb(Future<LeadQuote> Function() f) async {
+    try { await f(); await _load(); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+  }
+
+  /// Revision request banner + India "Send back to China" / China "Resubmit revision".
+  Widget _revision(LeadQuote q, bool china, bool india) {
+    final rr = q.revRequest;
+    late final repo = context.read<Session>().repo;
+    final open = !['ACCEPTED'].contains(q.status) && q.orderId == null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (rr != null) Container(key: Key('quote-revreq-${q.id}'), margin: const EdgeInsets.only(top: 8), padding: const EdgeInsets.all(8), width: double.infinity,
+          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+          child: Text('${tw(context, 'sb.revisionRequested')}: “${rr['note'] ?? ''}”${rr['byName'] != null ? ' · ${rr['byName']}' : ''}', style: TextStyle(fontSize: 12, color: Colors.amber.shade900))),
+      Wrap(spacing: 8, children: [
+        if (india && open && rr == null) TextButton.icon(key: Key('quote-sb-${q.id}'), icon: const Icon(Icons.reply, size: 16), label: Text(tw(context, 'sb.toChina')), onPressed: () async {
+          final n = await askSendBackNote(context, title: tw(context, 'sb.toChina'));
+          if (n != null) await _sb(() => context.read<Session>().repo.sendBackQuote(q.id, n));
+        }),
+        if (china && rr != null) FilledButton.tonalIcon(key: Key('quote-resubmit-${q.id}'), icon: const Icon(Icons.send, size: 16), label: Text(tw(context, 'sb.resubmit')), onPressed: () async {
+          final n = await askSendBackNote(context, title: tw(context, 'sb.resubmit'), hint: tw(context, 'sb.resubmitHint'), required: false);
+          if (n != null) await _sb(() => repo.resubmitQuote(q.id, n));
+        }),
+      ]),
+    ]);
+  }
+
   Widget _card(LeadQuote q, int i, bool china, bool india) {
     final l = context.l10n, t = Theme.of(context);
     Widget kv(String k, String? v) => Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -95,7 +123,8 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
     return Card(key: Key('quote-${q.id}'), margin: const EdgeInsets.symmetric(vertical: 6), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Text(q.label ?? 'Q${i + 1}', style: t.textTheme.labelSmall?.copyWith(color: t.hintColor)), const SizedBox(width: 6), QuoteStatusChip(q.status)]),
+          Row(children: [Text(q.label ?? 'Q${i + 1}', style: t.textTheme.labelSmall?.copyWith(color: t.hintColor)), const SizedBox(width: 6), QuoteStatusChip(q.status),
+            if (q.revision > 0) Padding(padding: const EdgeInsets.only(left: 6), child: Text(tw(context, 'sb.rev', {'n': q.revision}), key: Key('quote-rev-${q.id}'), style: t.textTheme.labelSmall))]),
           Text(q.product, style: t.textTheme.titleSmall),
           Text('${quoteMoney(q.unitPrice, q.currency)} / ${l.lqUnit}', style: t.textTheme.titleMedium?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600)),
         ])),
@@ -126,6 +155,7 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
           TextButton(key: Key('sell-${q.id}'), onPressed: () => _sell(q), child: Text(l.cqPrepare)),
         ]),
       ),
+      _revision(q, china, india),
     ])));
   }
 }

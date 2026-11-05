@@ -1,3 +1,4 @@
+import '../../l10n/web_strings.dart';
 import '../widgets/live_refresh.dart';
 import 'package:flutter/material.dart';
 import '../widgets/lead_workflow.dart';
@@ -29,7 +30,8 @@ class _LeadsScreenState extends State<LeadsScreen> with LiveRefresh {
   void liveRefresh() => _reload();
   String? _office, _status;
   bool _mine = false;
-  bool _unassigned = false;
+  bool _unassigned = false, _returned = false;
+  int? _backCount;
   int? _unCount;
   String _q = '';
   late Future<List<Lead>> _f;
@@ -112,6 +114,12 @@ class _LeadsScreenState extends State<LeadsScreen> with LiveRefresh {
                   label: Text(_unCount == null ? context.l10n.ownerFilterLabel : context.l10n.ownerFilter(_unCount!)), selected: _unassigned,
                   onSelected: (v) => setState(() => _unassigned = v)),
             ),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(key: const Key('returned-filter'), avatar: Icon(Icons.reply, size: 16, color: Colors.amber.shade900),
+                  label: Text(tw(context, 'sb.filter', {'n': _backCount ?? 0})), selected: _returned,
+                  onSelected: (v) => setState(() => _returned = v)),
+            ),
             for (final o in const ['INDIA', 'CHINA'])
               Padding(
                 padding: const EdgeInsets.only(right: 6),
@@ -137,7 +145,11 @@ class _LeadsScreenState extends State<LeadsScreen> with LiveRefresh {
               builder: (c, all) {
                 final un = all.where((l) => l.unassignedIndia).length;
                 if (un != _unCount) WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() => _unCount = un); });
-                final leads = all.where((l) => (!_unassigned || l.unassignedIndia) && (_status != null || isOpenLead(l)) && (_q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
+                final sa = s.role.code == 'SUPER_ADMIN', mySide = s.role.code.startsWith('CHINA') ? 'CHINA' : 'INDIA';
+                bool back(Lead l) => l.sendBack != null && (sa || l.sendBack!['side'] == mySide);
+                final bc = all.where(back).length;
+                if (bc != _backCount) WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() => _backCount = bc); });
+                final leads = all.where((l) => (!_unassigned || l.unassignedIndia) && (!_returned || back(l)) && (_status != null || isOpenLead(l)) && (_q.isEmpty || [l.leadRef, if (showCustomer) l.clientName, l.productInterest, l.name]
                     .whereType<String>().any((v) => v.toLowerCase().contains(_q)))).toList();
                 return leads.isEmpty
                   ? ListView(children: [SizedBox(height: 120), Center(child: Text(context.l10n.noLeads))])
@@ -159,7 +171,7 @@ class _LeadsScreenState extends State<LeadsScreen> with LiveRefresh {
                             if (l.quantity != null) 'Qty ${l.quantity!.toStringAsFixed(0)}',
                             if (l.pendingSync) 'not synced',
                           ].whereType<String>().join(' · ')),
-                          trailing: l.unassignedIndia ? Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [StatusChip(l.status), const SizedBox(height: 2), const UnassignedBadge()]) : StatusChip(l.status),
+                          trailing: l.sendBack != null ? Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [StatusChip(l.status), const SizedBox(height: 2), SendBackChip(l)]) : l.unassignedIndia ? Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [StatusChip(l.status), const SizedBox(height: 2), const UnassignedBadge()]) : StatusChip(l.status),
                           onTap: l.pendingSync
                               ? null
                               : _sel.isNotEmpty ? () => setState(() => picked ? _sel.remove(l.id) : _sel[l.id] = l.leadRef) : () async {

@@ -87,6 +87,11 @@ export interface Api {
   attachmentUrl(leadId: string, a: Attachment): Promise<string>;
   /** Workflow timeline (role-filtered on the server), progress stage and SLA clock. */
   timeline?(leadId: string): Promise<Timeline>;
+  /** Send-back loop (notes required): China → India for lead details, India → China for a quote revision, and the answers. */
+  sendBackLead?(leadId: string, note: string): Promise<Lead>;
+  resendLead?(leadId: string, note: string): Promise<Lead>;
+  sendBackQuote?(id: string, note: string): Promise<LeadQuote>;
+  resubmitQuote?(id: string, note: string): Promise<LeadQuote>;
   setPriority?(leadId: string, priority: boolean): Promise<{ priority: boolean; sla: Sla | null }>;
   reopenLead?(leadId: string, office: 'INDIA' | 'CHINA'): Promise<Lead>;
   copyLead?(leadId: string): Promise<Lead>;
@@ -264,6 +269,10 @@ export class ServerApi implements Api {
   revertAcceptance(id: string, b: { reason: string; to: 'SENT' | 'DRAFT'; cancelOrder?: boolean; force?: boolean }) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/revert-acceptance`, b); }
   setQuoteStatus(id: string, status: string, reason?: string, reasonCode?: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/status`, { status, reason, reasonCode }); }
   async reviseRejected(leadId: string, b: Record<string, unknown>) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/revise`, b)); }
+  async sendBackLead(leadId: string, note: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/send-back`, { note })); }
+  async resendLead(leadId: string, note: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/resend`, { note })); }
+  sendBackQuote(id: string, note: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/send-back`, { note }); }
+  resubmitQuote(id: string, note: string) { return this.req<LeadQuote>('POST', `/quotes/${encodeURIComponent(id)}/resubmit`, { note }); }
   async closeRejected(leadId: string) { return this.mapLead(await this.req<Raw>('POST', `/leads/${encodeURIComponent(leadId)}/rejection/close`, {})); }
   createOrder(quoteId: string, b: Record<string, unknown>) { return this.req<Order>('POST', `/quotes/${encodeURIComponent(quoteId)}/order`, b); }
   orders() { return this.req<Order[]>('GET', '/orders'); }
