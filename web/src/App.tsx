@@ -13,6 +13,7 @@ import { Login } from './pages/Login';
 import { Team } from './pages/Team';
 import { Landing } from './pages/Landing';
 import { DownloadPage } from './pages/Download';
+import { Portal } from './portal/Portal';
 import type { Lead } from './lib/types';
 
 const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'users', 'settings'];
@@ -46,5 +47,7 @@ function Shell() {
 const isApp = () => /^\/(app|login)(\/|$)/.test(location.pathname) || location.hash.startsWith('#/');
 
 const isDownload = () => /^\/download\/?$/.test(location.pathname);
+// Customer portal at /portal: its own login realm, English only.
+const isPortal = () => /^\/portal(\/|$)/.test(location.pathname);
 
-export default function App() { return <AppProvider>{isDownload() ? <DownloadPage /> : isApp() ? <Shell /> : <Landing />}</AppProvider>; }
+export default function App() { if (isPortal()) return <Portal />; return <AppProvider>{isDownload() ? <DownloadPage /> : isApp() ? <Shell /> : <Landing />}</AppProvider>; }

@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -23,6 +23,14 @@ export interface Api {
   /** The directory customer a lead is linked to (null when unlinked). */
   leadCustomer(leadId: string): Promise<Customer | null>;
   deleteCustomer(id: string): Promise<void>;
+  /** Customer portal logins (India admin / super admin with portal.logins.manage). Optional: the demo API has none. */
+  portalRequests?(status?: string): Promise<PortalLoginRequest[]>;
+  approvePortalRequest?(id: string, customerId?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
+  rejectPortalRequest?(id: string, reason: string): Promise<PortalLoginRequest>;
+  portalLogin?(customerId: string): Promise<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>;
+  issuePortalLogin?(customerId: string, phone?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
+  resetPortalLogin?(customerId: string): Promise<{ login: PortalLogin; tempPassword: string }>;
+  setPortalLoginActive?(customerId: string, active: boolean): Promise<{ login: PortalLogin }>;
   /** Returns the new lead id. */
   createLead(l: NewLead): Promise<string>;
   /** India side: edit lead fields (e.g. summary). */
@@ -234,6 +242,13 @@ export class ServerApi implements Api {
   mergeCustomers(into: string, from: string[]) { return this.req<Customer>('POST', `/customers/${encodeURIComponent(into)}/merge`, { from }); }
   leadCustomer(leadId: string) { return this.req<Customer | null>('GET', `/leads/${encodeURIComponent(leadId)}/customer`); }
   async deleteCustomer(id: string) { await this.req('DELETE', `/customers/${encodeURIComponent(id)}`); }
+  portalRequests(status?: string) { return this.req<PortalLoginRequest[]>('GET', `/portal-admin/login-requests${status ? `?status=${status}` : ''}`); }
+  approvePortalRequest(id: string, customerId?: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/approve`, customerId ? { customerId } : {}); }
+  rejectPortalRequest(id: string, reason: string) { return this.req<PortalLoginRequest>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/reject`, { reason }); }
+  portalLogin(customerId: string) { return this.req<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>('GET', `/customers/${encodeURIComponent(customerId)}/portal-login`); }
+  issuePortalLogin(customerId: string, phone?: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login`, phone ? { phone } : {}); }
+  resetPortalLogin(customerId: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login/reset`, {}); }
+  setPortalLoginActive(customerId: string, active: boolean) { return this.req<{ login: PortalLogin }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login/active`, { active }); }
   async createLead(l: NewLead) {
     const r = await this.req<{ id: string }>('POST', '/records/leads', { ...(l.customerId ? { customerId: l.customerId } : {}),
       name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',

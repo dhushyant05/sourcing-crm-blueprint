@@ -409,7 +409,10 @@
         "cartons": "cartons",
         "containers": "containers"
       },
-      "dcity": "Delivery city"
+      "dcity": "Delivery city",
+      "loginAsk": "Request a customer portal login",
+      "loginHint": "Track your requests and quotes online. Our team checks your details and sends your login to this mobile number.",
+      "loginOk": "Login requested. Our team will contact you on your mobile number with your portal login."
     },
     "footer": "© {{year}} Source Easy · Fortune Engineering, Chennai"
   },
@@ -503,7 +506,11 @@
     "INFO_PROVIDED": "{{by}} added info and re-sent {{ref}}",
     "INFO_PROVIDED_nobody": "Info added on {{ref}}",
     "QUOTE_REVISED": "{{by}} revised the quote for {{ref}}",
-    "QUOTE_REVISED_nobody": "Quote revised for {{ref}}"
+    "QUOTE_REVISED_nobody": "Quote revised for {{ref}}",
+    "LOGIN_REQUEST": "{{ref}}: customer portal login requested",
+    "LOGIN_REQUEST_nobody": "{{ref}}: customer portal login requested",
+    "PORTAL_REQUEST": "{{ref}}: new request from the customer portal",
+    "PORTAL_REQUEST_nobody": "{{ref}}: new request from the customer portal"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -899,7 +906,8 @@
       "staff.manage": "Manage staff (office admin)",
       "settings.sla": "Change SLA settings",
       "customers.view": "View customer directory",
-      "customers.edit": "Add / edit / merge customers"
+      "customers.edit": "Add / edit / merge customers",
+      "portal.logins.manage": "Issue customer portal logins"
     }
   },
   "del": {
@@ -1009,5 +1017,42 @@
     "chipChina": "Revision requested",
     "dash": "leads sent back to your office need action",
     "dashLabel": "Returned for action"
+  },
+  "portal": {
+    "requestsTitle": "Customer portal login requests ({{n}})",
+    "approve": "Approve & issue login",
+    "reject": "Reject",
+    "reason": "Reason (required)",
+    "linkedTo": "customer: {{name}}",
+    "newCustomer": "new customer",
+    "hasLogin": "already has a login",
+    "tempTitle": "Temporary password for {{phone}}",
+    "tempHint": "Send it to the customer yourself (call or WhatsApp). It is shown only once; the customer must change it at first sign-in at sourceeasy.in/portal.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "done": "Done",
+    "loginTitle": "Customer portal login",
+    "active": "Active",
+    "disabled": "Disabled",
+    "tempPending": "temporary password not changed yet",
+    "lastLogin": "Last sign-in",
+    "noLogin": "No portal login.",
+    "issue": "Issue login",
+    "needPhone": "Add a mobile number first",
+    "reset": "Reset password",
+    "disable": "Disable",
+    "enable": "Enable",
+    "audit": "Login history",
+    "act": {
+      "LOGIN_ISSUED": "Login issued",
+      "LOGIN": "Signed in",
+      "PASSWORD_CHANGED": "Password changed",
+      "PASSWORD_RESET": "Password reset",
+      "LOGIN_DISABLED": "Disabled",
+      "LOGIN_ENABLED": "Enabled",
+      "REQUEST_CREATED": "Request raised",
+      "QUOTE_ACCEPTED": "Quote accepted",
+      "QUOTE_REJECTED": "Quote declined"
+    }
   }
 }

@@ -24,6 +24,8 @@ import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, IND
 import { PushStore } from './push.js';
 import { AssignStore, type Assignment, type Office, type NotifKind } from './assign.js';
 import { WorkflowStore, type LeadEvent, type EventKind, type Vis } from './workflow.js';
+import { PortalStore, PortalError, loginView, tempPassword, customerStage, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
+import { phoneKey } from './customers.js';
 
 export interface AppOptions {
   db: Db;
@@ -31,6 +33,8 @@ export interface AppOptions {
   users: UserStore;
   jwtSecret: string;
   jwtTtl?: string;
+  /** Customer portal token lifetime (default 12h). */
+  portalTtl?: string;
   webDir?: string;
   push?: PushStore;
   backupLinks?: { label: string; url: string }[];
@@ -45,7 +49,7 @@ export interface AppOptions {
   slaTickMs?: number;
 }
 
-declare module 'fastify' { interface FastifyRequest { user?: User } interface FastifyInstance { slaTick: () => Promise<{ warn: number; breach: number }> } }
+declare module 'fastify' { interface FastifyRequest { user?: User; customer?: CustomerUser } interface FastifyInstance { slaTick: () => Promise<{ warn: number; breach: number }> } }
 
 export async function buildApp(o: AppOptions) {
   const app = Fastify({ logger: o.logger ?? false, trustProxy: true, bodyLimit: 1 << 20 });
@@ -67,7 +71,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const push = o.push ?? new PushStore(o.db);
-  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed' };
+  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal' };
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
@@ -87,6 +91,7 @@ export async function buildApp(o: AppOptions) {
   // Every order has its shipment.
   for (const x of (await orders.all()).reverse()) await shipFor(x);
   const wf = new WorkflowStore(o.db, o.now ?? Date.now);
+  const portal = new PortalStore(o.db, o.jwtSecret, o.portalTtl ?? '12h');
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
@@ -244,7 +249,7 @@ export async function buildApp(o: AppOptions) {
     if (err instanceof BadImage || err?.code === 'FST_REQ_FILE_TOO_LARGE') return reply.code(400).send({ error: err instanceof BadImage ? err.message : 'Image must be 5 MB or smaller' });
     const status = err instanceof Forbidden ? 403 : err.status ?? err.statusCode ?? 500;
     if (status >= 500) app.log.error(err);
-    reply.code(status).send({ error: status >= 500 && status !== 502 ? 'Internal error' : err.message });
+    reply.code(status).send({ error: status >= 500 && status !== 502 ? 'Internal error' : err.message, ...(status < 500 && err.appCode ? { code: err.appCode } : {}) });
   });
   app.addHook('onSend', async (_req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
@@ -279,6 +284,8 @@ export async function buildApp(o: AppOptions) {
 
   async function auth(req: FastifyRequest, reply: FastifyReply) {
     const h = req.headers.authorization;
+    // Customer portal routes live in a separate realm: only a portal token is accepted there, never a staff one (and vice versa).
+    if (req.routeOptions.url?.startsWith('/api/portal/')) return portalAuth(req, reply);
     if (!h?.startsWith('Bearer ')) return reply.code(401).send({ error: 'Not signed in' });
     try {
       const p = jwt.verify(h.slice(7), o.jwtSecret) as { sub: string; v: number };
@@ -287,6 +294,17 @@ export async function buildApp(o: AppOptions) {
       if (!u || !u.active || o.users.tokenVersion(u.id) !== p.v) return reply.code(401).send({ error: 'Session expired' });
       req.user = u;
     } catch { return reply.code(401).send({ error: 'Session expired' }); }
+  }
+  /** Portal realm: bearer token in the Authorization header only (never in URLs, which end up in logs). */
+  async function portalAuth(req: FastifyRequest, reply: FastifyReply) {
+    const h = req.headers.authorization, t = h?.startsWith('Bearer ') ? h.slice(7) : '';
+    if (!t) return reply.code(401).send({ error: 'Not signed in' });
+    const c = await portal.verifyToken(t);
+    if (!c) return reply.code(401).send({ error: 'Session expired' });
+    req.customer = c;
+    // A temporary password must be changed before anything else.
+    if (c.mustChangePassword && !['/api/portal/me', '/api/portal/me/password'].includes(req.routeOptions.url ?? ''))
+      return reply.code(403).send({ error: 'Please change your temporary password first', code: 'password_change' });
   }
   const ctxOf = async (role: Role): Promise<Ctx> => ({ role });
   const avatars = await new AvatarStore(o.db).load();
@@ -320,6 +338,18 @@ export async function buildApp(o: AppOptions) {
     await o.bus.del(key);
     const body = (req.body ?? {}) as { refresh?: boolean; device?: string };
     return { token: sign(u), user: me(u), ...(body.refresh ? { refreshToken: await issueRefresh(u, body.device) } : {}) };
+  });
+
+  // ---- Customer portal sign-in (phone + password). Separate counters from staff; 5 failures per phone+IP → 10 min lock, 30 per IP per 10 min. ----
+  app.post<{ Body: { phone?: string; password?: string } }>('/api/portal/auth/login', async (req, reply) => {
+    const phone = String(req.body?.phone ?? '').slice(0, 40), password = String(req.body?.password ?? '').slice(0, 200);
+    const pk = phoneKey(phone) ?? 'none', k1 = `se:pfail:${req.ip}|${pk}`, k2 = `se:pip:${req.ip}`;
+    if (Number((await o.bus.get(k1)) ?? 0) >= 5 || Number((await o.bus.get(k2)) ?? 0) >= 30) return reply.code(429).send({ error: 'Too many attempts, try again in a few minutes' });
+    const c = phone && password ? await portal.verify(phone, password) : null;
+    if (!c) { await o.bus.incr(k1, 600); await o.bus.incr(k2, 600); return reply.code(401).send({ error: 'Invalid mobile number or password' }); }
+    await o.bus.del(k1);
+    await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'LOGIN', c.customerId, { ip: req.ip });
+    return { token: portal.sign(c), customer: { name: c.name, phone: c.phone, mustChangePassword: c.mustChangePassword } };
   });
 
   // Long-lived rotating refresh tokens (mobile). Format "<id>.<secret>"; only a SHA-256 of the secret is stored.
@@ -443,7 +473,17 @@ export async function buildApp(o: AppOptions) {
       if (staff.length) await assign.notify(staff, { leadId: String(lead.id), leadRef, product, kind: 'QUEUE', office: 'INDIA', byName: null });
       await liveData({ type: 'lead', id: String(lead.id), leadId: String(lead.id), created: true, at: Date.now() });
     } // India queue; India admins are notified
-    return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length });
+    // Optional: the enquirer asks for a customer portal login (manual approval by India admins / super admin).
+    let loginRequested = false;
+    if (/^(1|true|on|yes)$/i.test(str('requestLogin', 5))) {
+      const r = await portal.request({ leadId: String(lead.id), name, phone: `${code} ${digits}`, email: email || null, company: company || null });
+      if (r) {
+        loginRequested = true;
+        await portal.audit({ id: null, kind: 'PUBLIC' }, 'LOGIN_REQUESTED', r.id, { leadRef });
+        await assign.notify(queueWatchers('INDIA'), { leadId: String(lead.id), leadRef, product, kind: 'LOGIN_REQUEST', office: 'INDIA', byName: null });
+      }
+    }
+    return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length, ...(loginRequested ? { loginRequested } : {}) });
   });
 
   app.register(async (api) => {
@@ -716,7 +756,7 @@ export async function buildApp(o: AppOptions) {
     const leadOf = async (id: string) => { const l = await leadDb.get(id); if (!l) throw Object.assign(new Error('Not found'), { status: 404 }); return l; };
     const refresh = async (u: User, q: Quote) => { const l = await leadOf(q.leadId); return quoteRow(u, (await quotes.get(q.id))!, await decorate(l, await assign.get(q.leadId), userNames()), true); };
     /** Notify about a lead-level event (quote decided, order created/updated). */
-    const tell = async (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'LEAD_CLOSED', office: Office, actor: User) => {
+    const tell = async (recips: (string | null | undefined)[], lead: Rec, kind: 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'LEAD_CLOSED', office: Office, actor: { id: string; name: string }) => {
       const ids = [...new Set(recips.filter((x): x is string => !!x && x !== actor.id && !!o.users.byId(x)?.active))];
       if (ids.length) await assign.notify(ids, { leadId: String(lead.id), leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind, office, byName: actor.name });
     };
@@ -735,8 +775,11 @@ export async function buildApp(o: AppOptions) {
       if (!q.pdfToken) await quotes.setToken(q.id, randomBytes(32).toString('base64url'));
       return { data: await refresh(req.user!, q) };
     });
-    api.post<{ Params: { qid: string }; Body: { status?: string; reason?: string } }>('/api/quotes/:qid/status', async (req) => {
-      const u = req.user!; indiaOnly(u.role); const q = await quoteOf(req), b = req.body ?? {};
+    /**
+     * The one customer-decision flow for a quote, used by India staff and by the customer portal.
+     * `actor` is the staff user (null for a customer); `by` names who decided (notifications, rejection record).
+     */
+    const applyQuoteStatus = async (actor: User | null, by: { id: string; name: string }, q: Quote, b: Rec & { status?: string; reason?: string }) => {
       const st = String(b.status ?? '').toUpperCase() as Quote['status'];
       if (!QUOTE_STATUSES.includes(st)) throw bad('status must be DRAFT, SENT, ACCEPTED or REJECTED');
       if (st !== 'DRAFT' && !q.cq) throw bad('Prepare the customer quote first');
@@ -749,21 +792,28 @@ export async function buildApp(o: AppOptions) {
       await quotes.setStatus(q.id, st, st === 'REJECTED' ? (String(b.reason ?? '').trim() || rcode) : b.reason);
       const lead = await leadOf(q.leadId), qn = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id) + 1;
       if (st !== q.status && st !== 'DRAFT') {
-        await ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', u, { n: qn, ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}), ...(st === 'ACCEPTED' ? { quoteId: q.id, prevLeadStatus, prevQuoteStatus: q.status } : {}) });
+        await ev(q.leadId, st === 'SENT' ? 'CQ_SENT' : st === 'ACCEPTED' ? 'CQ_ACCEPTED' : 'CQ_REJECTED', actor, { n: qn, ...(actor ? {} : { byCustomer: true }), ...(st === 'REJECTED' ? { reasonCode: rcode, reason: String(b.reason ?? '').trim().slice(0, 500) } : {}), ...(st === 'ACCEPTED' ? { quoteId: q.id, prevLeadStatus, prevQuoteStatus: q.status } : {}) });
         await stopClock(q.leadId, 'INDIA'); // sending (or closing) the customer quote is India's next action
       }
       if (st === 'ACCEPTED') {
-        const p = await rejects.pending(q.leadId); if (p) await rejects.resolve(p.id, 'REVISE', u.id, {});
+        const p = await rejects.pending(q.leadId); if (p) await rejects.resolve(p.id, 'REVISE', by.id, {});
         const patch: Rec = { status: 'WON' };
         await leadDb.update(q.leadId, patch); Object.assign(lead, patch);
-        await tell(await chinaPeople(q), lead, 'QUOTE_ACCEPTED', 'CHINA', u);
+        await tell(await chinaPeople(q), lead, 'QUOTE_ACCEPTED', 'CHINA', by);
+        if (!actor) await tell(await indiaPeople(q.leadId), lead, 'QUOTE_ACCEPTED', 'INDIA', by); // India reviews and creates the order (never automatic)
       }
       if (st === 'REJECTED') {
         // Not LOST yet: back to the India owner (raiser) with "Rejected – action needed".
-        await rejects.add(q.leadId, q.id, rcode, b.reason, u.id);
-        await handoff(lead, u, 'INDIA', undefined);
-        await tell(await chinaPeople(q), lead, 'QUOTE_REJECTED', 'CHINA', u);
+        await rejects.add(q.leadId, q.id, rcode, b.reason, by.id);
+        await handoff(lead, actor, 'INDIA', undefined);
+        await tell(await chinaPeople(q), lead, 'QUOTE_REJECTED', 'CHINA', by);
+        if (!actor) await tell(await indiaPeople(q.leadId), lead, 'QUOTE_REJECTED', 'INDIA', by);
       }
+      return quotes.get(q.id);
+    };
+    api.post<{ Params: { qid: string }; Body: { status?: string; reason?: string } }>('/api/quotes/:qid/status', async (req) => {
+      const u = req.user!; indiaOnly(u.role); const q = await quoteOf(req);
+      await applyQuoteStatus(u, u, q, req.body ?? {});
       return { data: await refresh(u, q) };
     });
     // ---- Super admin: undo a customer acceptance recorded by mistake ----
@@ -1657,6 +1707,225 @@ export async function buildApp(o: AppOptions) {
     const EXPORTS: Record<string, string> = { leads: '/api/records/leads', quotes: '/api/quotes', orders: '/api/orders', shipments: '/api/shipments' };
     const cell = (v: unknown): string => { if (v == null) return ''; const x = typeof v === 'object' ? ((v as any).primaryEmail ?? (v as any).primaryPhoneNumber ?? (v as any).primaryLinkUrl ?? ((v as any).amountMicros != null ? `${(v as any).amountMicros / 1e6} ${(v as any).currencyCode ?? ''}`.trim() : JSON.stringify(v))) : String(v);
       return /[",\n\r]/.test(x) || /^[=+\-@]/.test(x) ? `"${(/^[=+\-@]/.test(x) ? "'" : '') + x.replace(/"/g, '""')}"` : x; };
+    // ======================= Customer portal =======================
+    // ---- Staff: manual provisioning (India admin / super admin with portal.logins.manage) ----
+    const portalAdmin = (u: User) => {
+      if (u.role !== 'SUPER_ADMIN' && u.role !== 'INDIA_ADMIN') throw new Forbidden('Only an India admin or the super admin can manage customer logins');
+      need(u, 'portal.logins.manage');
+    };
+    const portalErr = (e: unknown) => { if (e instanceof PortalError) throw Object.assign(new Error(e.message), { status: e.status, appCode: e.code }); if (e instanceof BadCustomer) throw bad(e.message); throw e; };
+    const staffActor = (u: User) => ({ id: u.id, kind: 'STAFF' as const });
+    api.get<{ Querystring: { status?: string } }>('/api/portal-admin/login-requests', async (req) => {
+      portalAdmin(req.user!); await custSync();
+      const st = ['PENDING', 'APPROVED', 'REJECTED'].includes(String(req.query?.status)) ? String(req.query!.status) : undefined, names = userNames();
+      const out = [];
+      for (const r of await portal.requests(st)) {
+        const lead = r.leadId ? await leadDb.get(r.leadId) : null;
+        const suggested = r.customerId ?? (r.leadId ? await customers.customerOf(r.leadId) : null) ?? (await customers.match(r.phone, r.email, r.company));
+        const c = suggested ? await customers.get(suggested) : null;
+        const existing = (await portal.byPhone(r.phone)) ?? (c ? await portal.byCustomer(c.id) : null);
+        out.push({ ...r, leadRef: (lead?.leadRef as string) ?? null, product: (lead?.productInterest as string) ?? null, decidedByName: (r.decidedBy && names.get(r.decidedBy)) || null,
+          customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, hasLogin: !!existing });
+      }
+      return { data: out };
+    });
+    api.post<{ Params: { id: string }; Body: { customerId?: string } }>('/api/portal-admin/login-requests/:id/approve', async (req) => {
+      const u = req.user!; portalAdmin(u); await custSync();
+      const r = await portal.requestById(req.params.id); if (!r) throw Object.assign(new Error('Not found'), { status: 404 });
+      if (r.status !== 'PENDING') throw bad('This request was already handled', 409);
+      let cid = req.body?.customerId ? String(req.body.customerId) : (r.leadId ? await customers.customerOf(r.leadId) : null) ?? (await customers.match(r.phone, r.email, r.company));
+      if (cid && !(await customers.get(cid))) throw bad('Unknown customer');
+      if (!cid) cid = (await customers.add({ name: r.name, company: r.company, phone: r.phone, email: r.email }, u.id).catch(custErr)).id;
+      const pw = tempPassword();
+      const login = await o.db.tx(async (t) => {
+        const l = await portal.create(cid!, { name: r.name, phone: r.phone, email: r.email }, pw, u.id, t);
+        await portal.decide(r.id, 'APPROVED', u.id, { customerId: cid }, t);
+        await portal.audit(staffActor(u), 'LOGIN_ISSUED', cid, { requestId: r.id }, t);
+        return l;
+      }).catch(portalErr);
+      // The temporary password is returned once, for the team to pass on by hand; it is never stored in clear or shown again.
+      return { data: { login: loginView(login), tempPassword: pw } };
+    });
+    api.post<{ Params: { id: string }; Body: { reason?: string } }>('/api/portal-admin/login-requests/:id/reject', async (req) => {
+      const u = req.user!; portalAdmin(u);
+      const reason = String(req.body?.reason ?? '').trim().slice(0, 500); if (!reason) throw bad('A reason is required');
+      const r = await portal.requestById(req.params.id); if (!r) throw Object.assign(new Error('Not found'), { status: 404 });
+      await portal.decide(r.id, 'REJECTED', u.id, { reason }).catch(portalErr);
+      await portal.audit(staffActor(u), 'LOGIN_REJECTED', r.id, { reason });
+      return { data: await portal.requestById(r.id) };
+    });
+    const custOf = async (id: string) => { const c = await customers.get(id); if (!c) throw Object.assign(new Error('Not found'), { status: 404 }); return c; };
+    api.get<{ Params: { id: string } }>('/api/customers/:id/portal-login', async (req) => {
+      const u = req.user!; custOnly(u.role); const c = await custOf(req.params.id);
+      const l = await portal.byCustomer(c.id), names = userNames();
+      const audit = (u.role === 'SUPER_ADMIN' || (u.role === 'INDIA_ADMIN' && can(u, 'portal.logins.manage')))
+        ? (await portal.auditFor(c.id)).map((a) => ({ at: a.at, action: a.action, by: a.actor_kind === 'STAFF' ? (names.get(a.actor_id) ?? null) : a.actor_kind === 'CUSTOMER' ? 'Customer' : null })) : [];
+      return { data: { login: loginView(l), audit } };
+    });
+    api.post<{ Params: { id: string }; Body: { phone?: string; name?: string; email?: string } }>('/api/customers/:id/portal-login', async (req, reply) => {
+      const u = req.user!; portalAdmin(u); const c = await custOf(req.params.id), b = req.body ?? {};
+      const phone = String(b.phone ?? c.phone ?? '').trim(); if (!phoneKey(phone)) throw bad('A mobile number is required for a portal login');
+      const pw = tempPassword();
+      const login = await portal.create(c.id, { name: String(b.name ?? c.name), phone, email: b.email ?? c.email }, pw, u.id).catch(portalErr);
+      await portal.audit(staffActor(u), 'LOGIN_ISSUED', c.id, {});
+      return reply.code(201).send({ data: { login: loginView(login), tempPassword: pw } });
+    });
+    api.post<{ Params: { id: string } }>('/api/customers/:id/portal-login/reset', async (req) => {
+      const u = req.user!; portalAdmin(u); const c = await custOf(req.params.id);
+      const l = await portal.byCustomer(c.id); if (!l) throw Object.assign(new Error('This customer has no portal login'), { status: 404 });
+      const pw = tempPassword(); const nl = await portal.setPassword(l.id, pw, true);
+      await portal.audit(staffActor(u), 'PASSWORD_RESET', c.id, {});
+      return { data: { login: loginView(nl), tempPassword: pw } };
+    });
+    api.post<{ Params: { id: string }; Body: { active?: boolean } }>('/api/customers/:id/portal-login/active', async (req) => {
+      const u = req.user!; portalAdmin(u); const c = await custOf(req.params.id);
+      const l = await portal.byCustomer(c.id); if (!l) throw Object.assign(new Error('This customer has no portal login'), { status: 404 });
+      if (typeof req.body?.active !== 'boolean') throw bad('active must be true or false');
+      const nl = await portal.setActive(l.id, req.body.active);
+      await portal.audit(staffActor(u), req.body.active ? 'LOGIN_ENABLED' : 'LOGIN_DISABLED', c.id, {});
+      return { data: { login: loginView(nl) } };
+    });
+
+    // ---- Customer realm (/api/portal/*): every read is scoped to the signed-in customer's own records ----
+    const me2 = async (c: CustomerUser) => { const cust = await customers.get(c.customerId);
+      return { name: c.name, phone: c.phone, email: c.email, mustChangePassword: c.mustChangePassword, company: cust?.company ?? null, city: cust?.city ?? null }; };
+    api.get('/api/portal/me', async (req) => ({ data: await me2(req.customer!) }));
+    api.post<{ Body: { currentPassword?: string; newPassword?: string } }>('/api/portal/me/password', async (req, reply) => {
+      const c = req.customer!, cur = String(req.body?.currentPassword ?? ''), nw = String(req.body?.newPassword ?? '');
+      if (!(await portal.checkPassword(c.id, cur))) return reply.code(400).send({ error: 'Current password is wrong' });
+      if (nw.length < PORTAL_MIN_PASSWORD) return reply.code(400).send({ error: `Use at least ${PORTAL_MIN_PASSWORD} characters` });
+      if (nw === cur) return reply.code(400).send({ error: 'Choose a new password' });
+      const nc = (await portal.setPassword(c.id, nw, false))!;
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'PASSWORD_CHANGED', c.customerId, {});
+      return { token: portal.sign(nc), data: await me2(nc) };
+    });
+    const notFound = () => Object.assign(new Error('Not found'), { status: 404 });
+    const ownLeadIds = async (c: CustomerUser) => (await o.db.all<{ id: string }>('SELECT id FROM leads WHERE customer_id = ? ORDER BY created_at DESC, id', c.customerId)).map((r) => r.id);
+    const ownLead = async (c: CustomerUser, id: string) => {
+      const r = await o.db.get('SELECT id FROM leads WHERE id = ? AND customer_id = ?', String(id), c.customerId); if (!r) throw notFound();
+      const l = await leadDb.get(r.id); if (!l) throw notFound(); return l;
+    };
+    const PUBLISHED = new Set(['SENT', 'ACCEPTED', 'REJECTED']);
+    /** Customer-safe DTO (an allowlist): never supplier, China staff, internal notes, cost prices, SLA or assignment. */
+    const portalRequest = async (l: Rec, full: boolean) => {
+      const id = String(l.id), a = await assign.get(id), meta = await wf.meta(id);
+      const st = await stageOf(l, (a?.ownerOffice as Office) ?? null), cs = customerStage(st.stage, st.lost || !!meta?.closedAt || String(l.status) === 'CLOSED');
+      const qs = await quotes.list(id), ref = (l.leadRef as string) ?? null;
+      const base = { id, type: 'SOURCING' as const, reference: ref, product: l.productInterest ?? null, quantity: l.quantity ?? null, unit: l.unit ?? null,
+        createdAt: l.createdAt, stage: cs.stage, stageIndex: cs.index, closed: cs.closed, quotesWaiting: qs.filter((q) => q.status === 'SENT' && q.cq).length };
+      if (!full) return base;
+      const tp = l.targetPrice as { amountMicros?: number | null; currencyCode?: string } | undefined;
+      const quoteRows = [];
+      for (const [i, q] of qs.entries()) {
+        if (!PUBLISHED.has(q.status) || !q.cq) continue;
+        let token = q.pdfToken; if (!token) { token = randomBytes(32).toString('base64url'); await quotes.setToken(q.id, token); }
+        quoteRows.push({ id: q.id, label: `${ref ?? 'Quote'}-Q${i + 1}`, product: q.product, status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt,
+          qty: q.cq.qty ?? null, unitPrice: q.cq.unitPrice ?? null, currency: 'INR', total: cqTotals(q.cq).total, moq: q.moq, leadTime: q.leadTime, validity: q.validity,
+          pdfUrl: `/api/public/cq/${token}.pdf`, canDecide: q.status === 'SENT' });
+      }
+      const orderRows = [];
+      for (const x of await orders.byLead(id)) {
+        const sh = await ships.byOrder(x.id);
+        orderRows.push({ id: x.id, product: x.product, qty: x.qty, value: x.qty * x.agreedPrice, currency: 'INR', paymentStatus: x.paymentStatus, createdAt: x.createdAt,
+          shipment: sh ? { reference: sh.ref, status: sh.status, mode: sh.mode, etd: sh.etd, eta: sh.eta, tracking: sh.tracking, container: sh.container, deliveredAt: sh.deliveredAt } : null });
+      }
+      const mine = new Set((await o.db.all<{ file_id: string }>('SELECT file_id FROM portal_files WHERE lead_id = ?', id)).map((r) => r.file_id));
+      return { ...base, deliveryCity: l.deliveryCity ?? null, message: l.enquiryMessage ?? null,
+        targetPrice: tp?.amountMicros != null ? { amount: tp.amountMicros / 1e6, currency: tp.currencyCode || 'INR' } : null,
+        files: uploads.list(id).filter((f) => mine.has(f.id)).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, createdAt: f.createdAt })),
+        quotes: quoteRows, orders: orderRows, timeline: await wf.customerEvents(id) };
+    };
+    api.get('/api/portal/requests', async (req) => {
+      const c = req.customer!, out = [];
+      for (const id of await ownLeadIds(c)) { const l = await leadDb.get(id); if (l) out.push(await portalRequest(l, false)); }
+      return { data: out };
+    });
+    api.get<{ Params: { id: string } }>('/api/portal/requests/:id', async (req) => ({ data: await portalRequest(await ownLead(req.customer!, req.params.id), true) }));
+    api.get<{ Params: { id: string; fid: string } }>('/api/portal/requests/:id/files/:fid', async (req, reply) => {
+      const l = await ownLead(req.customer!, req.params.id), id = String(l.id);
+      if (!(await o.db.get('SELECT 1 FROM portal_files WHERE lead_id = ? AND file_id = ?', id, req.params.fid))) throw notFound();
+      const f = uploads.file(id, req.params.fid); if (!f) throw notFound();
+      return reply.header('content-type', f.meta.mime).header('content-disposition', `inline; filename="${f.meta.name.replace(/[^\w.\- ]/g, '_')}"`)
+        .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').send(createReadStream(f.path));
+    });
+    api.post('/api/portal/requests', async (req, reply) => {
+      const c = req.customer!;
+      const b: Record<string, string> = {}; let files: Staged[] = [];
+      if (req.isMultipart()) { const m = await readMultipart(req, MAX_FILES); if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code }); Object.assign(b, m.fields); files = m.files; }
+      else Object.assign(b, Object.fromEntries(Object.entries((req.body ?? {}) as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])));
+      const reject = (code: number, body: unknown) => { uploads.discard(files); return reply.code(code).send(body); };
+      const str = (k: string, max = 200) => (b[k] ?? '').trim().slice(0, max);
+      const dayKey = `se:preq:${c.id}:${new Date().toISOString().slice(0, 10)}`;
+      if (Number((await o.bus.get(dayKey)) ?? 0) >= 20) return reject(429, { error: 'Too many requests today, please contact Source Easy' });
+      const product = str('product', 1000); if (!product) return reject(400, { error: 'Describe the product you need', code: 'required' });
+      const ref = str('referenceUrl', 500); if (ref && !/^https?:\/\/[^\s]+$/i.test(ref)) return reject(400, { error: 'Reference link must start with http:// or https://', code: 'url' });
+      const currency = ['USD', 'CNY', 'INR'].includes(str('currency', 3)) ? str('currency', 3) : 'INR';
+      const price = Number(str('targetPrice', 20)), qty = Number(str('quantity', 12)), unit = UNITS.includes(str('unit', 12)) ? str('unit', 12) : 'pcs';
+      await o.bus.incr(dayKey, 86400);
+      const cust = await customers.get(c.customerId); if (!cust) return reject(404, { error: 'Not found' });
+      const leadRef = await nextRef(), city = str('deliveryCity', 120) || cust.city || '', msg = str('message', 2000);
+      const digits = String(c.phone).replace(/[^\d+]/g, '');
+      const lead = await leadDb.create({
+        name: `${cust.company || cust.name} — ${product}`.slice(0, 200), clientName: cust.company || cust.name, contactName: c.name, productInterest: product,
+        ...(qty > 0 ? { quantity: qty, unit } : {}), ...(price > 0 ? { targetPrice: { amountMicros: Math.round(price * 1e6), currencyCode: currency } } : {}),
+        contactPhone: { primaryPhoneNumber: digits }, ...(c.email || cust.email ? { contactEmail: { primaryEmail: c.email || cust.email } } : {}),
+        ...(city ? { deliveryCity: city } : {}), ...(ref ? { referenceUrl: { primaryLinkUrl: ref } } : {}), ...(msg ? { enquiryMessage: msg } : {}),
+        leadRef, attachmentCount: files.length, sourceChannel: 'PORTAL', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
+      });
+      const lid = String(lead.id);
+      await o.db.run('UPDATE leads SET customer_id = ?, portal_user_id = ? WHERE id = ?', c.customerId, c.id, lid);
+      if (files.length) {
+        const list = uploads.commit(lid, files); await mediaSync(lid, list);
+        for (const f of list) await o.db.run('INSERT INTO portal_files (lead_id, file_id) VALUES (?,?) ON CONFLICT DO NOTHING', lid, f.id);
+      } else uploads.discard(files);
+      await ev(lid, 'CREATED', null, { channel: 'PORTAL', files: files.length });
+      await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null);
+      const admins = new Set(queueWatchers('INDIA'));
+      const staff = o.users.list().filter((u) => u.active && officeOf(u.role) === 'INDIA' && !admins.has(u.id)).map((u) => u.id);
+      if (staff.length) await assign.notify(staff, { leadId: lid, leadRef, product, kind: 'PORTAL_REQUEST', office: 'INDIA', byName: null });
+      await liveData({ type: 'lead', id: lid, leadId: lid, created: true, at: Date.now() });
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'REQUEST_CREATED', c.customerId, { leadRef });
+      return reply.code(201).send({ data: await portalRequest((await leadDb.get(lid))!, true) });
+    });
+    const ownQuote = async (c: CustomerUser, qid: string) => {
+      const q = await quotes.get(String(qid)); if (!q) throw notFound();
+      await ownLead(c, q.leadId); if (!PUBLISHED.has(q.status) || !q.cq) throw notFound();
+      return q;
+    };
+    api.post<{ Params: { qid: string } }>('/api/portal/quotes/:qid/accept', async (req) => {
+      const c = req.customer!, q = await ownQuote(c, req.params.qid);
+      if (q.status !== 'SENT') throw bad('This quote was already decided', 409);
+      await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'ACCEPTED' });
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'QUOTE_ACCEPTED', c.customerId, { quoteId: q.id });
+      await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });
+      return { data: await portalRequest((await leadDb.get(q.leadId))!, true) };
+    });
+    api.post<{ Params: { qid: string }; Body: { reasonCode?: string; reason?: string } }>('/api/portal/quotes/:qid/reject', async (req) => {
+      const c = req.customer!, q = await ownQuote(c, req.params.qid);
+      if (q.status !== 'SENT') throw bad('This quote was already decided', 409);
+      await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'REJECTED', reasonCode: String(req.body?.reasonCode ?? 'OTHER'), reason: String(req.body?.reason ?? '').slice(0, 500) });
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'QUOTE_REJECTED', c.customerId, { quoteId: q.id });
+      await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });
+      return { data: await portalRequest((await leadDb.get(q.leadId))!, true) };
+    });
+    api.get('/api/portal/reject-reasons', async () => ({ data: REJECT_REASONS }));
+    // Live updates: only "request X changed" for the customer's own requests (ids only; the app refetches through the scoped API).
+    api.get('/api/portal/stream', async (req, reply) => {
+      const c = req.customer!; let own = new Set(await ownLeadIds(c));
+      reply.hijack(); const res = reply.raw;
+      res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+      const send = (e: string, d: unknown) => res.write(`event: ${e}\ndata: ${JSON.stringify(d)}\n\n`);
+      res.write('retry: 3000\n\n'); send('hello', {});
+      const off = onLiveData((d) => { const lid = d.leadId ? String(d.leadId) : null; if (lid && own.has(lid)) send('change', { type: 'request', id: lid }); });
+      const ping = setInterval(() => { void (async () => {
+        const now = await portal.byId(c.id);
+        if (!now || !now.active || now.tokenVersion !== c.tokenVersion) { try { send('revoked', {}); } catch { /* closed */ } res.end(); close(); return; }
+        own = new Set(await ownLeadIds(c)); res.write(': ping\n\n');
+      })().catch(() => undefined); }, 25000);
+      const close = () => { clearInterval(ping); off(); };
+      req.raw.on('close', close); res.on('error', close);
+    });
+
     api.get<{ Params: { kind: string } }>('/api/export/:kind', async (req, reply) => {
       const kind = req.params.kind.replace(/\.csv$/, ''), path = EXPORTS[kind];
       if (!path) throw Object.assign(new Error('Unknown export'), { status: 404 });

@@ -30,7 +30,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -117,3 +117,9 @@ export const CHINA_SHIP = ['PENDING', 'BOOKED'], INDIA_SHIP = ['IN_TRANSIT', 'AR
 export interface PermRow { key: string; group: string; side: 'INDIA' | 'CHINA' | 'ANY'; default: boolean; override: boolean | null; effective: boolean; locked: boolean }
 export interface PermAudit { id: number; perm: string; before: boolean | null; after: boolean | null; changedBy: string | null; changedByName: string | null; changedAt: string }
 export interface PermMatrix { userId: string; role: import('./roles').Role; editable: boolean; permissions: PermRow[]; audit: PermAudit[] }
+
+/** Customer portal login (staff view; never a password). */
+export interface PortalLogin { id: string; customerId: string; phone: string; name: string; email: string | null; active: boolean; mustChangePassword: boolean; lastLoginAt: string | null; createdAt: string }
+export interface PortalLoginRequest { id: string; leadId: string | null; leadRef: string | null; product: string | null; name: string; phone: string; email: string | null; company: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'; reason: string | null; customerId: string | null; decidedByName: string | null; decidedAt: string | null; createdAt: string;
+  customer: { id: string; name: string; company: string | null; phone: string | null } | null; hasLogin: boolean }

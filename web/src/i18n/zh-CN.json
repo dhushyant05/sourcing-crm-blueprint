@@ -409,7 +409,10 @@
         "cartons": "箱",
         "containers": "柜"
       },
-      "dcity": "交货城市"
+      "dcity": "交货城市",
+      "loginAsk": "申请客户门户登录",
+      "loginHint": "在线跟踪您的需求和报价。我们的团队核实后会将登录信息发送到此手机号。",
+      "loginOk": "已申请登录。我们的团队会通过您的手机号联系您并提供门户登录信息。"
     },
     "footer": "© {{year}} Source Easy · Fortune Engineering，金奈"
   },
@@ -503,7 +506,11 @@
     "INFO_PROVIDED": "{{by}} 已补充信息并重新发送 {{ref}}",
     "INFO_PROVIDED_nobody": "{{ref}} 已补充信息",
     "QUOTE_REVISED": "{{by}} 修改了 {{ref}} 的报价",
-    "QUOTE_REVISED_nobody": "{{ref}} 的报价已修改"
+    "QUOTE_REVISED_nobody": "{{ref}} 的报价已修改",
+    "LOGIN_REQUEST": "{{ref}}：申请了客户门户登录",
+    "LOGIN_REQUEST_nobody": "{{ref}}：申请了客户门户登录",
+    "PORTAL_REQUEST": "{{ref}}：客户门户的新需求",
+    "PORTAL_REQUEST_nobody": "{{ref}}：客户门户的新需求"
   },
   "lq": {
     "title": "供应商报价",
@@ -899,7 +906,8 @@
       "staff.manage": "管理员工（办公室管理员）",
       "settings.sla": "修改 SLA 设置",
       "customers.view": "查看客户名录",
-      "customers.edit": "添加 / 编辑 / 合并客户"
+      "customers.edit": "添加 / 编辑 / 合并客户",
+      "portal.logins.manage": "开通客户门户登录"
     }
   },
   "del": {
@@ -1009,5 +1017,42 @@
     "chipChina": "需修改报价",
     "dash": "条退回到您办公室的线索待处理",
     "dashLabel": "已退回待处理"
+  },
+  "portal": {
+    "requestsTitle": "客户门户登录申请（{{n}}）",
+    "approve": "批准并开通登录",
+    "reject": "拒绝",
+    "reason": "原因（必填）",
+    "linkedTo": "客户：{{name}}",
+    "newCustomer": "新客户",
+    "hasLogin": "已有登录",
+    "tempTitle": "{{phone}} 的临时密码",
+    "tempHint": "请亲自发送给客户（电话或 WhatsApp）。仅显示一次；客户首次在 sourceeasy.in/portal 登录时必须修改。",
+    "copy": "复制",
+    "copied": "已复制",
+    "done": "完成",
+    "loginTitle": "客户门户登录",
+    "active": "已启用",
+    "disabled": "已停用",
+    "tempPending": "尚未修改临时密码",
+    "lastLogin": "最近登录",
+    "noLogin": "没有门户登录。",
+    "issue": "开通登录",
+    "needPhone": "请先添加手机号",
+    "reset": "重置密码",
+    "disable": "停用",
+    "enable": "启用",
+    "audit": "登录记录",
+    "act": {
+      "LOGIN_ISSUED": "已开通登录",
+      "LOGIN": "已登录",
+      "PASSWORD_CHANGED": "已修改密码",
+      "PASSWORD_RESET": "已重置密码",
+      "LOGIN_DISABLED": "已停用",
+      "LOGIN_ENABLED": "已启用",
+      "REQUEST_CREATED": "提交了需求",
+      "QUOTE_ACCEPTED": "接受了报价",
+      "QUOTE_REJECTED": "拒绝了报价"
+    }
   }
 }

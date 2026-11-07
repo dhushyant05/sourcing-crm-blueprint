@@ -11,7 +11,7 @@ import type { Bus } from './bus.js';
 
 export type Office = 'INDIA' | 'CHINA';
 export interface Assignment { leadId: string; raisedBy: string | null; assignedTo: string | null; ownerOffice: Office | null; updatedAt: string }
-export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'FOLLOW_UP' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED';
+export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'FOLLOW_UP' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST';
 export interface Notification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: NotifKind; office: Office; byName: string | null; detail?: string | null; createdAt: string; read: boolean }
 export const NOTIF_CHANNEL = 'se:notif';
 

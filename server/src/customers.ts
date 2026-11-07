@@ -62,6 +62,11 @@ export class CustomerStore {
         for (const k of TEXT) if (k !== 'notes' && !v[k] && (sc as any)[k]) v[k] = (sc as any)[k];
         if (sc.notes && sc.notes !== v.notes) v.notes = [v.notes, sc.notes].filter(Boolean).join('\n');
         v.tags = [...new Set([...v.tags, ...sc.tags])];
+        // Portal logins follow the merge (one login per customer): move it over, or refuse when both have one.
+        if (await t.get('SELECT 1 FROM customer_users WHERE customer_id = ?', sid)) {
+          if (await t.get('SELECT 1 FROM customer_users WHERE customer_id = ?', targetId)) throw new BadCustomer('Both customers have a portal login; deactivate one first');
+          await t.run('UPDATE customer_users SET customer_id = ?, updated_at = now() WHERE customer_id = ?', targetId, sid);
+        }
         await t.run('UPDATE leads SET customer_id = ? WHERE customer_id = ?', targetId, sid);
         await t.run('DELETE FROM customers WHERE id = ?', sid);
       }
