@@ -27,7 +27,7 @@ export function EnquiryForm() {
   const l = (k: string, o?: Record<string, unknown>) => t(`landing.contact.${k}`, o);
   const [st, setSt] = useState<'idle' | 'busy' | 'err'>('idle');
   const [msg, setMsg] = useState<string | null>(null);
-  const [done, setDone] = useState<{ ref: string; n: number } | null>(null);
+  const [done, setDone] = useState<{ ref: string; n: number; login?: boolean } | null>(null);
   const [files, setFiles] = useState<Picked[]>([]);
   const [drag, setDrag] = useState(false);
   const pick = useRef<HTMLInputElement>(null), cam = useRef<HTMLInputElement>(null);
@@ -61,7 +61,7 @@ export function EnquiryForm() {
     try {
       const r = await fetch('/api/public/enquiry', { method: 'POST', body: fd });
       const j = await r.json().catch(() => ({}));
-      if (r.ok) { setDone({ ref: j.reference ?? '', n: j.attachments ?? 0 }); setFiles([]); setSt('idle'); return; }
+      if (r.ok) { setDone({ ref: j.reference ?? '', n: j.attachments ?? 0, login: !!j.loginRequested }); setFiles([]); setSt('idle'); return; }
       setSt('err');
       setMsg(r.status === 429 ? l('tooMany') : j.code === 'phone' ? l('badPhone') : j.code === 'type' || r.status === 415 ? l('errType', { name: '' }) : j.code === 'size' ? l('errSize', { name: '' }) : j.code === 'count' ? l('errCount') : l('err'));
     } catch { setSt('err'); setMsg(l('err')); }
@@ -77,6 +77,7 @@ export function EnquiryForm() {
       <p className="text-sm text-ink-500">{l('okRef')}</p>
       <p data-testid="enquiry-ref" className="select-all rounded-xl border border-ink-200 bg-white px-5 py-2 font-mono text-2xl font-semibold tracking-wider text-brand-700">{done.ref}</p>
       {done.n > 0 && <p className="text-sm text-ink-500">{l('okFiles', { n: done.n })}</p>}
+      {done.login && <p data-testid="enquiry-login-requested" className="max-w-md text-sm text-ink-600">{l('loginOk')}</p>}
       <p className="max-w-md text-sm text-ink-600">{l('okBody')}</p>
       <button className="mt-2 min-h-[44px] rounded-xl border border-ink-200 px-5 text-sm font-medium text-ink-700 hover:bg-ink-50" onClick={() => setDone(null)}>{l('another')}</button>
     </div>
@@ -139,6 +140,10 @@ export function EnquiryForm() {
         )}
       </div>
 
+      <label className="flex items-start gap-3 rounded-xl border border-ink-100 p-3 text-sm text-ink-700 sm:col-span-2">
+        <input type="checkbox" name="requestLogin" value="1" data-testid="request-login" className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600" />
+        <span><span className="font-medium text-ink-900">{l('loginAsk')}</span><span className="block text-xs text-ink-500">{l('loginHint')}</span></span>
+      </label>
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <button disabled={st === 'busy'} className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 px-6 font-medium text-white shadow-md transition hover:brightness-110 disabled:opacity-60 sm:w-auto"><Send size={16} />{st === 'busy' ? l('sending') : l('send')}</button>
         {msg && <p role="alert" className={`text-sm ${st === 'err' ? 'text-rose-600' : 'text-amber-600'}`}>{msg}</p>}

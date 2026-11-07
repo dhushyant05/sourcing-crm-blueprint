@@ -28,6 +28,11 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'leads.delete', group: 'leads', side: 'ANY' },
   { key: 'staff.manage', group: 'admin', side: 'ANY' },
   { key: 'settings.sla', group: 'admin', side: 'ANY' },
+  // Issue / reset / disable customer portal logins. Also needs an India admin or super admin role (hard rule in the API).
+  { key: 'portal.logins.manage', group: 'admin', side: 'INDIA' },
+  // Festival / event greetings: edit drafts + upload artwork; publishing is a separate, explicit grant.
+  { key: 'greetings.manage', group: 'admin', side: 'ANY' },
+  { key: 'greetings.publish', group: 'admin', side: 'ANY' },
 ];
 export type Perm = (typeof PERMISSIONS)[number]['key'];
 export const PERM_KEYS = PERMISSIONS.map((p) => p.key);
@@ -38,7 +43,7 @@ const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.
 const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
   INDIA_STAFF, CHINA_STAFF,
-  INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN_EXTRA, 'customers.view', 'customers.edit'],
+  INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN_EXTRA, 'customers.view', 'customers.edit', 'portal.logins.manage', 'greetings.manage'],
   CHINA_ADMIN: [...CHINA_STAFF, ...ADMIN_EXTRA],
   SUPER_ADMIN: [...PERM_KEYS],
 };
