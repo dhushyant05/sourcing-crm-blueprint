@@ -30,7 +30,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -122,4 +122,19 @@ export interface PermMatrix { userId: string; role: import('./roles').Role; edit
 export interface PortalLogin { id: string; customerId: string; phone: string; name: string; email: string | null; active: boolean; mustChangePassword: boolean; lastLoginAt: string | null; createdAt: string }
 export interface PortalLoginRequest { id: string; leadId: string | null; leadRef: string | null; product: string | null; name: string; phone: string; email: string | null; company: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED'; reason: string | null; customerId: string | null; decidedByName: string | null; decidedAt: string | null; createdAt: string;
-  customer: { id: string; name: string; company: string | null; phone: string | null } | null; hasLogin: boolean }
+  customer: { id: string; name: string; company: string | null; phone: string | null } | null; hasLogin: boolean; match: { verified: false; phoneMatches: boolean; otherLeads: number } | null }
+export interface PortalLeadShare { id: string; leadRef: string | null; product: string | null; sourceChannel: string | null; createdAt: string; shared: boolean; sharedAt: string | null }
+/** Shipping Request (SH-YYMM-NNNN), India office view. */
+export interface FreightQuoteStaff { id: string; n: number; label: string; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null;
+  customerNote: string | null; internalCost: number | null; status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'; reasonCode: string | null; reason: string | null; createdAt: string; decidedAt: string | null; createdByName: string | null }
+export interface ShippingRequestStaff {
+  id: string; ref: string; kind: 'SOURCED' | 'FREIGHT_ONLY'; customerId: string; customer: { id: string; name: string; company: string | null; phone: string | null } | null;
+  createdByKind: 'CUSTOMER' | 'STAFF'; leadId: string | null; leadRef: string | null; orderId: string | null; goods: string; quantity: number | null; unit: string | null; packages: number | null;
+  weightKg: number | null; cbm: number | null; shipperName: string | null; shipperPhone: string | null; pickupAddress: string | null; pickupCity: string | null;
+  destCity: string | null; destAddress: string | null; destPincode: string | null; mode: string | null; incoterm: string | null; readyDate: string | null; customerNote: string | null;
+  status: string; question: string | null; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null;
+  assignedTo: string | null; assignedToName: string | null; internalNote: string | null; rejectReason: string | null; createdAt: string; updatedAt: string;
+  progress: { stage: string; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null; shipmentRef: string | null } | null;
+  freightQuotes?: FreightQuoteStaff[]; files?: (Attachment & { customerVisible: boolean })[];
+  events?: { at: string; kind: string; by: string | null; data: Record<string, unknown>; customerVisible: boolean; customerText: string | null }[];
+}

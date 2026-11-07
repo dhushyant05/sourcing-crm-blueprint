@@ -1,46 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { buildApp } from '../src/app.js';
-import { testEnv } from './fixtures.js';
-
-const PW = 'correct-horse-1';
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
-const SUP = { name: 'Ningbo Secret Factory', contact: 'Mr Wang', phone: '+86 138', wechat: 'wx_secret', city: 'Ningbo' };
-function form(fields: Record<string, string>, files: { name: string; data: Buffer; type?: string }[] = []) {
-  const B = '----se' + Math.random().toString(16).slice(2); const parts: Buffer[] = [];
-  for (const [k, v] of Object.entries(fields)) parts.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
-  for (const f of files) parts.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="files"; filename="${f.name}"\r\nContent-Type: ${f.type ?? 'application/octet-stream'}\r\n\r\n`), f.data, Buffer.from('\r\n'));
-  parts.push(Buffer.from(`--${B}--\r\n`));
-  return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${B}` } };
-}
-
-async function setup() {
-  const { db, bus, users } = await testEnv(false);
-  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'portal-')) });
-  const ids: Record<string, string> = {};
-  for (const [e, r] of [['sa', 'SUPER_ADMIN'], ['ia', 'INDIA_ADMIN'], ['is', 'INDIA_STAFF'], ['ca', 'CHINA_ADMIN'], ['cs', 'CHINA_STAFF']] as const) ids[e] = (await users.create(`${e}@x.in`, `Staff ${e}`, r, PW)).id;
-  const tok: Record<string, string> = {};
-  for (const e of Object.keys(ids)) tok[e] = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: `${e}@x.in`, password: PW } })).json().token;
-  const call = (who: string, method: any, url: string, payload?: any) => app.inject({ method, url, payload, headers: { authorization: `Bearer ${tok[who]}` } });
-  const as = (token: string, method: any, url: string, payload?: any, headers: Record<string, string> = {}) => app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}`, ...headers } });
-  let ip = 10;
-  /** Public enquiry with "request a login" ticked (each from its own IP so the enquiry rate limit does not interfere). */
-  const enquire = async (name: string, phone: string, company: string, extra: Record<string, string> = {}) => (await app.inject({ method: 'POST', url: '/api/public/enquiry',
-    remoteAddress: `10.0.0.${ip++}`, payload: { name, phone, product: `${company} widgets`, company, requestLogin: '1', ...extra } })).json();
-  const login = async (phone: string, password: string) => app.inject({ method: 'POST', url: '/api/portal/auth/login', remoteAddress: `10.1.0.${ip++}`, payload: { phone, password } });
-  /** Enquiry → approve → first login → change password; returns a ready portal token. */
-  const customer = async (name: string, phone: string, company: string) => {
-    const e = await enquire(name, phone, company);
-    const req = (await call('ia', 'GET', '/api/portal-admin/login-requests?status=PENDING')).json().data.find((r: any) => r.leadRef === e.reference);
-    const ok = (await call('ia', 'POST', `/api/portal-admin/login-requests/${req.id}/approve`, {})).json().data;
-    const t0 = (await login(phone, ok.tempPassword)).json().token;
-    const ch = (await as(t0, 'POST', '/api/portal/me/password', { currentPassword: ok.tempPassword, newPassword: `${company}-new-pass` })).json();
-    return { token: ch.token as string, ref: e.reference as string, customerId: ok.login.customerId as string, password: `${company}-new-pass` };
-  };
-  return { app, call, as, ids, enquire, login, customer };
-}
+import { PNG, PW, SUP, form, setup } from './portal-helpers.js';
 
 describe('customer portal: login requests and manual provisioning', () => {
   it('enquiry raises a request; only India admin / super admin approve; temp password must be changed; sessions revoke', async () => {
@@ -58,12 +17,14 @@ describe('customer portal: login requests and manual provisioning', () => {
     expect((await call('sa', 'GET', '/api/portal-admin/login-requests?status=PENDING')).json().data).toHaveLength(1);
     // China can never approve, India staff neither.
     expect((await call('is', 'POST', `/api/portal-admin/login-requests/${list[0].id}/approve`, {})).statusCode).toBe(403);
-    const ok = await call('ia', 'POST', `/api/portal-admin/login-requests/${list[0].id}/approve`, {});
+    // Nothing is inferred: the admin must name the verified customer (or create one).
+    expect((await call('ia', 'POST', `/api/portal-admin/login-requests/${list[0].id}/approve`, {})).json().code).toBe('customer_required');
+    const ok = await call('ia', 'POST', `/api/portal-admin/login-requests/${list[0].id}/approve`, { customerId: list[0].customer.id });
     expect(ok.statusCode).toBe(200);
     const { tempPassword, login: lv } = ok.json().data;
     expect(tempPassword).toMatch(/^[A-Za-z2-9]{12}$/);
     expect(JSON.stringify(lv)).not.toMatch(/hash/i);
-    expect((await call('ia', 'POST', `/api/portal-admin/login-requests/${list[0].id}/approve`, {})).statusCode).toBe(409);
+    expect((await call('ia', 'POST', `/api/portal-admin/login-requests/${list[0].id}/approve`, { createNew: true })).statusCode).toBe(409);
     // Wrong password / unknown phone → 401; right one with +91 or spaces works (phone key).
     expect((await login('9876543210', 'nope-nope')).statusCode).toBe(401);
     const l = await login('+91 98765 43210', tempPassword);
@@ -161,7 +122,10 @@ describe('customer portal: realm separation and per-customer isolation', () => {
     expect(d.stage).toBe('QUOTE_READY');
     expect(d.quotes).toHaveLength(1);
     expect(d.quotes[0]).toMatchObject({ label: `${req.reference}-Q1`, status: 'SENT', qty: 500, unitPrice: 240, currency: 'INR', canDecide: true });
-    expect(d.quotes[0].pdfUrl).toMatch(/^\/api\/public\/cq\/[\w-]+\.pdf$/);
+    expect(d.quotes[0].pdfUrl).toBe(`/api/portal/quotes/${q.id}/pdf`);
+    const pdf = await as(A.token, 'GET', d.quotes[0].pdfUrl);
+    expect(pdf.statusCode).toBe(200); expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect((await as(B.token, 'GET', d.quotes[0].pdfUrl)).statusCode).toBe(404);
     expect(d.files.map((f: any) => f.name)).toEqual(['bottle.png']); // staff's internal file is not listed
     const txt = JSON.stringify(d);
     for (const secret of ['Ningbo', 'Mr Wang', 'wx_secret', '7.77', 'CNY', 'internal-note', 'drawing attached', 'Staff cs', 'Staff is', 'internal-costing', 'supplier', 'sla', 'assignedTo'])

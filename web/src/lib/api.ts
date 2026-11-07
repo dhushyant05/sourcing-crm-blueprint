@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -25,7 +25,15 @@ export interface Api {
   deleteCustomer(id: string): Promise<void>;
   /** Customer portal logins (India admin / super admin with portal.logins.manage). Optional: the demo API has none. */
   portalRequests?(status?: string): Promise<PortalLoginRequest[]>;
-  approvePortalRequest?(id: string, customerId?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
+  approvePortalRequest?(id: string, b: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean }): Promise<{ login: PortalLogin; tempPassword: string }>;
+  portalLeads?(customerId: string): Promise<PortalLeadShare[]>;
+  setPortalShare?(leadId: string, shared: boolean): Promise<{ shared: boolean }>;
+  /** Shipping Requests (India office only). */
+  shippingRequests?(status?: string): Promise<ShippingRequestStaff[]>;
+  shippingRequest?(id: string): Promise<ShippingRequestStaff>;
+  srAction?(id: string, action: 'assign' | 'needs-info' | 'reject' | 'cancel' | 'accept' | 'freight-quotes' | 'stage', body?: Record<string, unknown>): Promise<ShippingRequestStaff>;
+  srPatch?(id: string, body: Record<string, unknown>): Promise<ShippingRequestStaff>;
+  srFileUrl?(id: string, fileId: string): Promise<string>;
   rejectPortalRequest?(id: string, reason: string): Promise<PortalLoginRequest>;
   portalLogin?(customerId: string): Promise<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>;
   issuePortalLogin?(customerId: string, phone?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
@@ -243,7 +251,19 @@ export class ServerApi implements Api {
   leadCustomer(leadId: string) { return this.req<Customer | null>('GET', `/leads/${encodeURIComponent(leadId)}/customer`); }
   async deleteCustomer(id: string) { await this.req('DELETE', `/customers/${encodeURIComponent(id)}`); }
   portalRequests(status?: string) { return this.req<PortalLoginRequest[]>('GET', `/portal-admin/login-requests${status ? `?status=${status}` : ''}`); }
-  approvePortalRequest(id: string, customerId?: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/approve`, customerId ? { customerId } : {}); }
+  approvePortalRequest(id: string, b: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean }) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/approve`, b); }
+  portalLeads(customerId: string) { return this.req<PortalLeadShare[]>('GET', `/customers/${encodeURIComponent(customerId)}/portal-leads`); }
+  setPortalShare(leadId: string, shared: boolean) { return this.req<{ shared: boolean }>('POST', `/leads/${encodeURIComponent(leadId)}/portal-share`, { shared }); }
+  shippingRequests(status?: string) { return this.req<ShippingRequestStaff[]>('GET', `/shipping-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`); }
+  shippingRequest(id: string) { return this.req<ShippingRequestStaff>('GET', `/shipping-requests/${encodeURIComponent(id)}`); }
+  srAction(id: string, action: string, body: Record<string, unknown> = {}) { return this.req<ShippingRequestStaff>('POST', `/shipping-requests/${encodeURIComponent(id)}/${action}`, body); }
+  srPatch(id: string, body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('PATCH', `/shipping-requests/${encodeURIComponent(id)}`, body); }
+  async srFileUrl(id: string, fileId: string) {
+    const res = await fetch(`/api/shipping-requests/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
   rejectPortalRequest(id: string, reason: string) { return this.req<PortalLoginRequest>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/reject`, { reason }); }
   portalLogin(customerId: string) { return this.req<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>('GET', `/customers/${encodeURIComponent(customerId)}/portal-login`); }
   issuePortalLogin(customerId: string, phone?: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login`, phone ? { phone } : {}); }

@@ -510,7 +510,11 @@
     "LOGIN_REQUEST": "{{ref}}: customer portal login requested",
     "LOGIN_REQUEST_nobody": "{{ref}}: customer portal login requested",
     "PORTAL_REQUEST": "{{ref}}: new request from the customer portal",
-    "PORTAL_REQUEST_nobody": "{{ref}}: new request from the customer portal"
+    "PORTAL_REQUEST_nobody": "{{ref}}: new request from the customer portal",
+    "SHIP_REQUEST": "{{ref}}: new shipping request",
+    "SHIP_REQUEST_nobody": "{{ref}}: new shipping request",
+    "SHIP_REQUEST_UPDATE": "{{ref}}: shipping request updated by {{by}}",
+    "SHIP_REQUEST_UPDATE_nobody": "{{ref}}: shipping request updated"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -1052,7 +1056,24 @@
       "LOGIN_ENABLED": "Enabled",
       "REQUEST_CREATED": "Request raised",
       "QUOTE_ACCEPTED": "Quote accepted",
-      "QUOTE_REJECTED": "Quote declined"
-    }
+      "QUOTE_REJECTED": "Quote declined",
+      "LEAD_SHARED": "Lead shared to portal",
+      "LEAD_UNSHARED": "Lead hidden from portal",
+      "SHIPPING_REQUEST_CREATED": "Shipping request raised",
+      "FREIGHT_QUOTE_ACCEPTED": "Freight quote accepted",
+      "FREIGHT_QUOTE_REJECTED": "Freight quote declined"
+    },
+    "verifyHint": "Check who this is (e.g. call the number) before linking. Company, phone and email on an enquiry can be typed by anyone.",
+    "useExisting": "Existing customer {{name}} ({{phone}}), verified",
+    "phoneDiffers": "phone differs",
+    "otherLeads": "· has {{n}} other lead(s); none become visible unless you share them",
+    "createNew": "Create a new customer",
+    "shareEnquiry": "Also show enquiry {{ref}} in their portal",
+    "confirmMismatch": "I verified this person, approve anyway",
+    "sharesTitle": "Visible in their portal",
+    "sharesHint": "Only ticked leads are shown to the customer. Linking or matching alone never shares a lead.",
+    "fromPortal": "raised in portal",
+    "visible": "Visible",
+    "internal": "Internal"
   }
 }

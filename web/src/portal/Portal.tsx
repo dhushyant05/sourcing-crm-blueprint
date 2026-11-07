@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { ArrowLeft, Camera, CheckCircle2, ChevronRight, FileText, ImagePlus, LogOut, Package, Plus, RefreshCw, Send, Truck, X } from 'lucide-react';
 import { PortalApi, PortalHttpError, portalToken, type PortalMe, type PortalQuote, type PortalRequest } from './api';
 import { ACCEPT, EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
+import { NewShipping, ShippingDetail, ShippingList } from './Shipping';
+import type { PortalShipping } from './api';
 
 // Customer portal (English only, mobile-first). Separate login from the staff app; every call goes to /api/portal/*.
 const STAGES: [string, string][] = [['RECEIVED', 'Received'], ['SOURCING', 'Sourcing'], ['QUOTE_READY', 'Quote ready'], ['DECIDED', 'Decided'], ['ORDER', 'Order'], ['SHIPPED', 'Shipped'], ['DELIVERED', 'Delivered']];
@@ -17,8 +19,11 @@ const btn = 'inline-flex min-h-[48px] items-center justify-center gap-2 rounded-
 const primary = `${btn} bg-brand-600 text-white hover:bg-brand-700`;
 const ghost = `${btn} border border-ink-200 text-ink-700 hover:bg-ink-50`;
 
-type View = { name: 'home' } | { name: 'new' } | { name: 'request'; id: string };
-const fromHash = (): View => { const m = /^#\/r\/([\w-]+)$/.exec(location.hash); return m ? { name: 'request', id: m[1] } : location.hash === '#/new' ? { name: 'new' } : { name: 'home' }; };
+type View = { name: 'home' } | { name: 'new' } | { name: 'request'; id: string } | { name: 'newShipping' } | { name: 'shipping'; id: string };
+const fromHash = (): View => {
+  const h = location.hash, m = /^#\/r\/([\w-]+)$/.exec(h), s = /^#\/s\/([\w-]+)$/.exec(h);
+  return h === '#/s/new' ? { name: 'newShipping' } : s ? { name: 'shipping', id: s[1] } : m ? { name: 'request', id: m[1] } : h === '#/new' ? { name: 'new' } : { name: 'home' };
+};
 
 function Brand() { return <a href="/" className="flex items-center gap-2"><img src="/brand/mark.png" alt="" className="h-8 w-8 object-contain" /><span className="font-semibold text-ink-900">Source Easy</span><span className="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Customer portal</span></a>; }
 
@@ -82,14 +87,16 @@ function Progress({ r }: { r: PortalRequest }) {
   );
 }
 
-function Home({ list, go }: { list: PortalRequest[] | null; go: (h: string) => void }) {
-  const waiting = (list ?? []).filter((r) => r.quotesWaiting > 0);
+function Home({ list, ships, go }: { list: PortalRequest[] | null; ships: PortalShipping[] | null; go: (h: string) => void }) {
+  const waiting = (list ?? []).filter((r) => r.quotesWaiting > 0), fqWaiting = (ships ?? []).filter((r) => r.quoteWaiting).length, info = (ships ?? []).filter((r) => r.canReply).length;
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink-900">My requests</h1>
-        <button onClick={() => go('#/new')} className={primary} data-testid="portal-new"><Plus size={18} />New request</button>
+        <div className="flex flex-wrap gap-2"><button onClick={() => go('#/new')} className={primary} data-testid="portal-new"><Plus size={18} />Sourcing</button>
+          <button onClick={() => go('#/s/new')} className={ghost} data-testid="portal-new-shipping"><Truck size={18} />Shipping</button></div>
       </div>
+      {(fqWaiting > 0 || info > 0) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" data-testid="portal-shipping-waiting">{[fqWaiting && `${fqWaiting} freight quote${fqWaiting > 1 ? 's' : ''} waiting for your decision`, info && `${info} shipping request${info > 1 ? 's need' : ' needs'} more information`].filter(Boolean).join(' · ')}.</div>}
       {waiting.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" data-testid="portal-waiting">{waiting.length === 1 ? 'A quote is waiting for your decision.' : `${waiting.length} quotes are waiting for your decision.`}</div>}
       {list === null ? <p className="text-sm text-ink-400">Loading…</p> : list.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-ink-200 p-8 text-center text-sm text-ink-500">No requests yet. Tap “New request” to tell us what you need.</div>
@@ -105,6 +112,7 @@ function Home({ list, go }: { list: PortalRequest[] | null; go: (h: string) => v
           ))}
         </ul>
       )}
+      <ShippingList list={ships} go={go} />
     </div>
   );
 }
@@ -170,7 +178,7 @@ function QuoteCard({ q, api, reasons, onChange }: { q: PortalQuote; api: PortalA
       <div className="mt-1 text-sm text-ink-600">{q.qty ?? '—'} × {inr(q.unitPrice)} · <span className="font-semibold text-ink-900">Total {inr(q.total)}</span></div>
       {(q.moq || q.leadTime || q.validity) && <div className="mt-1 text-xs text-ink-400">{[q.moq && `MOQ ${q.moq}`, q.leadTime && `Lead time ${q.leadTime}`, q.validity && `Valid ${q.validity}`].filter(Boolean).join(' · ')}</div>}
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href={q.pdfUrl} target="_blank" rel="noopener" className={ghost}><FileText size={16} />Quote PDF</a>
+        <button type="button" onClick={() => void api.openPath(q.pdfUrl).catch(() => setErr('Could not open the PDF'))} className={ghost}><FileText size={16} />Quote PDF</button>
         {q.canDecide && mode === 'idle' && <><button onClick={() => setMode('accept')} className={primary} data-testid="portal-accept">Accept</button><button onClick={() => setMode('reject')} className={ghost} data-testid="portal-reject">Decline</button></>}
       </div>
       {mode === 'accept' && <div className="mt-3 rounded-xl bg-brand-50 p-3 text-sm">
@@ -219,7 +227,8 @@ export function Portal() {
   const [view, setView] = useState<View>(fromHash), [list, setList] = useState<PortalRequest[] | null>(null), [reasons, setReasons] = useState<string[]>(Object.keys(REASONS)), [flash, setFlash] = useState<string | null>(null);
   api.onAuthError = () => { portalToken.set(null); setSignedIn(false); setMe(null); };
   useEffect(() => { const h = () => setView(fromHash()); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, []);
-  const refresh = useCallback(() => api.requests().then(setList).catch(() => undefined), [api]);
+  const [ships, setShips] = useState<PortalShipping[] | null>(null);
+  const refresh = useCallback(() => Promise.all([api.requests().then(setList), api.shippingList().then(setShips)]).catch(() => undefined), [api]);
   useEffect(() => { if (signedIn) void api.me().then(setMe).catch(() => undefined); }, [api, signedIn]);
   const ready = signedIn && me && !me.mustChangePassword;
   useEffect(() => { if (!ready) return; void refresh(); void api.reasons().then(setReasons).catch(() => undefined); }, [ready, api, refresh]);
@@ -244,7 +253,9 @@ export function Portal() {
       </header>
       <main className="mx-auto max-w-3xl px-4 py-6">
         {flash && <div role="status" className="mb-4 flex items-center gap-2 rounded-xl bg-accent-50 p-3 text-sm text-accent-800"><CheckCircle2 size={16} />{flash}<button className="ml-auto" aria-label="Dismiss" onClick={() => setFlash(null)}><X size={14} /></button></div>}
-        {view.name === 'home' && <Home list={list} go={go} />}
+        {view.name === 'home' && <Home list={list} ships={ships} go={go} />}
+        {view.name === 'newShipping' && <NewShipping api={api} cancel={() => go('#/')} done={(r) => { setFlash(`Shipping request ${r.reference} sent. Our team will review it.`); void refresh(); go(`#/s/${r.id}`); }} />}
+        {view.name === 'shipping' && <ShippingDetail api={api} id={view.id} reasons={reasons} back={() => go('#/')} />}
         {view.name === 'new' && <NewRequest api={api} cancel={() => go('#/')} done={(r) => { setFlash(`Request ${r.reference} sent. Our team will get back to you.`); void refresh(); go(`#/r/${r.id}`); }} />}
         {view.name === 'request' && <Detail api={api} id={view.id} reasons={reasons} back={() => go('#/')} />}
       </main>

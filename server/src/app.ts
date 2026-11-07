@@ -20,6 +20,7 @@ import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
 import { customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
 import { RejectStore, REJECT_REASONS } from './rejections.js';
+import { ShippingStore, SrError, cleanFields, CUSTOMER_FIELDS, SR_OPEN, SR_STAGES, STAGE_LABEL, srKey, type ShippingRequest } from './shipping.js';
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
 import { PushStore } from './push.js';
 import { AssignStore, type Assignment, type Office, type NotifKind } from './assign.js';
@@ -71,7 +72,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const push = o.push ?? new PushStore(o.db);
-  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal' };
+  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated' };
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
@@ -81,6 +82,7 @@ export async function buildApp(o: AppOptions) {
   const customers = new CustomerStore(o.db);
   const orders = new OrderStore(o.db);
   const ships = new ShipmentStore(o.db);
+  const srs = new ShippingStore(o.db);
   const rejects = new RejectStore(o.db);
   /** Shipment fields from the customer quote (falls back to China's shipping offer). */
   const shipFrom = (q: Quote | null) => ({ mode: q?.cq?.shipMode ?? q?.shipMode ?? null, incoterm: q?.cq?.shipTerm ?? q?.shipTerm ?? null,
@@ -950,14 +952,18 @@ export async function buildApp(o: AppOptions) {
     app.get<{ Params: { token: string }; Querystring: { dl?: string } }>('/api/public/cq/:token', async (req, reply) => {
       const q = await quotes.byToken(req.params.token.replace(/\.pdf$/, ''));
       if (!q?.cq) return reply.code(404).send({ error: 'Not found' });
-      const lead = (await leadDb.get(q.leadId)) as any;
-      const i = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id), ref = lead?.leadRef ?? 'SE', label = `${ref}-Q${i + 1}`;
-      const photos = uploads.list(qKey(q.id)).filter((f) => /^image\/(png|jpe?g)$/.test(f.mime)).map((f) => uploads.file(qKey(q.id), f.id)?.path).filter((p): p is string => !!p);
-      const pdf = await customerQuotePdf({ ref, label, product: q.product, customer: lead?.clientName ?? null, cq: q.cq, moq: q.moq, leadTime: q.leadTime,
-        date: new Date(q.sentAt ?? q.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }), photos });
+      const { pdf, label } = await renderCq(q);
       return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `${req.query?.dl ? 'attachment' : 'inline'}; filename="Quotation-${label}.pdf"`)
         .header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(pdf);
     });
+    async function renderCq(q: NonNullable<Awaited<ReturnType<typeof quotes.get>>>) {
+      const lead = (await leadDb.get(q.leadId)) as any;
+      const i = (await quotes.list(q.leadId)).findIndex((x) => x.id === q.id), ref = lead?.leadRef ?? 'SE', label = `${ref}-Q${i + 1}`;
+      const photos = uploads.list(qKey(q.id)).filter((f) => /^image\/(png|jpe?g)$/.test(f.mime)).map((f) => uploads.file(qKey(q.id), f.id)?.path).filter((p): p is string => !!p);
+      const pdf = await customerQuotePdf({ ref, label, product: q.product, customer: lead?.clientName ?? null, cq: q.cq!, moq: q.moq, leadTime: q.leadTime,
+        date: new Date(q.sentAt ?? q.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }), photos });
+      return { pdf, label };
+    }
 
     // ---- Orders (v1) ----
     const viewOrder = async (u: User, ord: Order, lead: Rec | null) => {
@@ -1274,6 +1280,7 @@ export async function buildApp(o: AppOptions) {
       const role = req.user!.role; custOnly(role);
       if (role !== 'SUPER_ADMIN' && role !== 'INDIA_ADMIN') throw new Forbidden('Only an India admin can delete customers');
       if (await customers.leadCount(req.params.id)) throw bad('This customer has leads, merge it into another customer instead', 409);
+      if (await o.db.get('SELECT 1 FROM shipping_requests WHERE customer_id = ? LIMIT 1', req.params.id)) throw bad('This customer has shipping requests, merge it into another customer instead', 409);
       return (await customers.remove(req.params.id)) ? reply.code(204).send() : reply.code(404).send({ error: 'Not found' });
     });
     /** The directory customer a lead is linked to (India + super admin), with its totals; null when unlinked. */
@@ -1721,26 +1728,46 @@ export async function buildApp(o: AppOptions) {
       const out = [];
       for (const r of await portal.requests(st)) {
         const lead = r.leadId ? await leadDb.get(r.leadId) : null;
-        const suggested = r.customerId ?? (r.leadId ? await customers.customerOf(r.leadId) : null) ?? (await customers.match(r.phone, r.email, r.company));
+        // Only a SUGGESTION from spoofable contact details (the enquirer typed them); approval needs an explicit, verified choice.
+        const viaLead = r.leadId ? await customers.customerOf(r.leadId) : null;
+        const suggested = r.customerId ?? viaLead ?? (await customers.match(r.phone, r.email, r.company));
         const c = suggested ? await customers.get(suggested) : null;
+        const phoneMatches = !!c && !!phoneKey(c.phone) && phoneKey(c.phone) === phoneKey(r.phone);
+        const otherLeads = c ? Math.max(0, (await customers.leadCount(c.id)) - (viaLead === c.id ? 1 : 0)) : 0;
         const existing = (await portal.byPhone(r.phone)) ?? (c ? await portal.byCustomer(c.id) : null);
         out.push({ ...r, leadRef: (lead?.leadRef as string) ?? null, product: (lead?.productInterest as string) ?? null, decidedByName: (r.decidedBy && names.get(r.decidedBy)) || null,
-          customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, hasLogin: !!existing });
+          customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, hasLogin: !!existing,
+          match: c ? { verified: false, phoneMatches, otherLeads } : null });
       }
       return { data: out };
     });
-    api.post<{ Params: { id: string }; Body: { customerId?: string } }>('/api/portal-admin/login-requests/:id/approve', async (req) => {
-      const u = req.user!; portalAdmin(u); await custSync();
+    /**
+     * Approve: the India admin must say explicitly WHICH customer this person is (`customerId`, after checking, e.g. by calling the number)
+     * or create a new one (`createNew`). Nothing is inferred from the typed company / phone / email. A different phone on the chosen
+     * customer needs `confirmMismatch`. The enquiry itself becomes visible in the portal only with `shareEnquiry`.
+     */
+    api.post<{ Params: { id: string }; Body: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean } }>('/api/portal-admin/login-requests/:id/approve', async (req) => {
+      const u = req.user!; portalAdmin(u); const b = req.body ?? {};
       const r = await portal.requestById(req.params.id); if (!r) throw Object.assign(new Error('Not found'), { status: 404 });
       if (r.status !== 'PENDING') throw bad('This request was already handled', 409);
-      let cid = req.body?.customerId ? String(req.body.customerId) : (r.leadId ? await customers.customerOf(r.leadId) : null) ?? (await customers.match(r.phone, r.email, r.company));
-      if (cid && !(await customers.get(cid))) throw bad('Unknown customer');
-      if (!cid) cid = (await customers.add({ name: r.name, company: r.company, phone: r.phone, email: r.email }, u.id).catch(custErr)).id;
+      if (!b.customerId && b.createNew !== true) throw Object.assign(new Error('Choose the verified customer for this login, or create a new customer'), { status: 400, appCode: 'customer_required' });
+      let cid: string | null = b.customerId ? String(b.customerId) : null;
+      if (cid) {
+        const c = await customers.get(cid); if (!c) throw bad('Unknown customer');
+        if (phoneKey(c.phone) && phoneKey(c.phone) !== phoneKey(r.phone) && b.confirmMismatch !== true)
+          throw Object.assign(new Error('The requested phone differs from this customer\'s phone; confirm you verified this person'), { status: 409, appCode: 'phone_mismatch' });
+      }
       const pw = tempPassword();
       const login = await o.db.tx(async (t) => {
+        if (!cid) cid = (await customers.add({ name: r.name, company: r.company, phone: r.phone, email: r.email }, u.id, t).catch(custErr)).id;
         const l = await portal.create(cid!, { name: r.name, phone: r.phone, email: r.email }, pw, u.id, t);
         await portal.decide(r.id, 'APPROVED', u.id, { customerId: cid }, t);
-        await portal.audit(staffActor(u), 'LOGIN_ISSUED', cid, { requestId: r.id }, t);
+        await portal.audit(staffActor(u), 'LOGIN_ISSUED', cid, { requestId: r.id, verified: b.createNew === true ? 'new' : 'existing', mismatchConfirmed: !!b.confirmMismatch }, t);
+        if (b.shareEnquiry === true && r.leadId) {
+          await customers.link(r.leadId, cid!, t);
+          await t.run('UPDATE leads SET portal_customer_id = ?, portal_shared_by = ?, portal_shared_at = now() WHERE id = ?', cid, u.id, r.leadId);
+          await portal.audit(staffActor(u), 'LEAD_SHARED', cid, { leadId: r.leadId }, t);
+        }
         return l;
       }).catch(portalErr);
       // The temporary password is returned once, for the team to pass on by hand; it is never stored in clear or shown again.
@@ -1761,6 +1788,24 @@ export async function buildApp(o: AppOptions) {
       const audit = (u.role === 'SUPER_ADMIN' || (u.role === 'INDIA_ADMIN' && can(u, 'portal.logins.manage')))
         ? (await portal.auditFor(c.id)).map((a) => ({ at: a.at, action: a.action, by: a.actor_kind === 'STAFF' ? (names.get(a.actor_id) ?? null) : a.actor_kind === 'CUSTOMER' ? 'Customer' : null })) : [];
       return { data: { login: loginView(l), audit } };
+    });
+    /** Leads linked to this customer (internal CRM link) and whether each is shared to their portal. */
+    api.get<{ Params: { id: string } }>('/api/customers/:id/portal-leads', async (req) => {
+      const u = req.user!; custOnly(u.role); const c = await custOf(req.params.id);
+      const rs = await o.db.all(`SELECT id, lead_ref, product_interest, source_channel, created_at, portal_customer_id, portal_shared_at FROM leads WHERE customer_id = ? ORDER BY created_at DESC LIMIT 200`, c.id);
+      return { data: rs.map((r: any) => ({ id: r.id, leadRef: r.lead_ref, product: r.product_interest, sourceChannel: r.source_channel, createdAt: r.created_at,
+        shared: r.portal_customer_id === c.id, sharedAt: r.portal_customer_id === c.id ? r.portal_shared_at : null })) };
+    });
+    /** Verified share / unshare of one lead with the customer it is linked to (India admin / super admin). */
+    api.post<{ Params: { id: string }; Body: { shared?: boolean } }>('/api/leads/:id/portal-share', async (req) => {
+      const u = req.user!; portalAdmin(u);
+      const r = await o.db.get('SELECT id, customer_id FROM leads WHERE id = ?', req.params.id); if (!r) throw Object.assign(new Error('Not found'), { status: 404 });
+      if (!r.customer_id) throw bad('Link this lead to a customer first');
+      const on = req.body?.shared === true;
+      await o.db.run('UPDATE leads SET portal_customer_id = ?, portal_shared_by = ?, portal_shared_at = ? WHERE id = ?', on ? r.customer_id : null, on ? u.id : null, on ? new Date().toISOString() : null, r.id);
+      await portal.audit(staffActor(u), on ? 'LEAD_SHARED' : 'LEAD_UNSHARED', r.customer_id, { leadId: r.id });
+      await liveData({ type: 'lead', id: r.id, leadId: r.id, at: Date.now() });
+      return { data: { leadId: r.id, customerId: r.customer_id, shared: on } };
     });
     api.post<{ Params: { id: string }; Body: { phone?: string; name?: string; email?: string } }>('/api/customers/:id/portal-login', async (req, reply) => {
       const u = req.user!; portalAdmin(u); const c = await custOf(req.params.id), b = req.body ?? {};
@@ -1800,9 +1845,12 @@ export async function buildApp(o: AppOptions) {
       return { token: portal.sign(nc), data: await me2(nc) };
     });
     const notFound = () => Object.assign(new Error('Not found'), { status: 404 });
-    const ownLeadIds = async (c: CustomerUser) => (await o.db.all<{ id: string }>('SELECT id FROM leads WHERE customer_id = ? ORDER BY created_at DESC, id', c.customerId)).map((r) => r.id);
+    // Ownership: explicitly granted to this customer (portal submission or verified staff share) AND still linked to them. Never from contact matches.
+    const OWN = 'customer_id = ? AND portal_customer_id = customer_id';
+    const ownLeadIds = async (c: CustomerUser) => (await o.db.all<{ id: string }>(`SELECT id FROM leads WHERE ${OWN} ORDER BY created_at DESC, id`, c.customerId)).map((r) => r.id);
+    const isOwnLead = async (c: CustomerUser, id: string) => !!(await o.db.get(`SELECT 1 FROM leads WHERE id = ? AND ${OWN}`, String(id), c.customerId));
     const ownLead = async (c: CustomerUser, id: string) => {
-      const r = await o.db.get('SELECT id FROM leads WHERE id = ? AND customer_id = ?', String(id), c.customerId); if (!r) throw notFound();
+      const r = await o.db.get(`SELECT id FROM leads WHERE id = ? AND ${OWN}`, String(id), c.customerId); if (!r) throw notFound();
       const l = await leadDb.get(r.id); if (!l) throw notFound(); return l;
     };
     const PUBLISHED = new Set(['SENT', 'ACCEPTED', 'REJECTED']);
@@ -1818,10 +1866,9 @@ export async function buildApp(o: AppOptions) {
       const quoteRows = [];
       for (const [i, q] of qs.entries()) {
         if (!PUBLISHED.has(q.status) || !q.cq) continue;
-        let token = q.pdfToken; if (!token) { token = randomBytes(32).toString('base64url'); await quotes.setToken(q.id, token); }
         quoteRows.push({ id: q.id, label: `${ref ?? 'Quote'}-Q${i + 1}`, product: q.product, status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt,
           qty: q.cq.qty ?? null, unitPrice: q.cq.unitPrice ?? null, currency: 'INR', total: cqTotals(q.cq).total, moq: q.moq, leadTime: q.leadTime, validity: q.validity,
-          pdfUrl: `/api/public/cq/${token}.pdf`, canDecide: q.status === 'SENT' });
+          pdfUrl: `/api/portal/quotes/${q.id}/pdf`, canDecide: q.status === 'SENT' });
       }
       const orderRows = [];
       for (const x of await orders.byLead(id)) {
@@ -1873,7 +1920,7 @@ export async function buildApp(o: AppOptions) {
         leadRef, attachmentCount: files.length, sourceChannel: 'PORTAL', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
       });
       const lid = String(lead.id);
-      await o.db.run('UPDATE leads SET customer_id = ?, portal_user_id = ? WHERE id = ?', c.customerId, c.id, lid);
+      await o.db.run('UPDATE leads SET customer_id = ?, portal_customer_id = ?, portal_user_id = ?, portal_shared_at = now() WHERE id = ?', c.customerId, c.customerId, c.id, lid); // owner from the token only
       if (files.length) {
         const list = uploads.commit(lid, files); await mediaSync(lid, list);
         for (const f of list) await o.db.run('INSERT INTO portal_files (lead_id, file_id) VALUES (?,?) ON CONFLICT DO NOTHING', lid, f.id);
@@ -1908,22 +1955,304 @@ export async function buildApp(o: AppOptions) {
       await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });
       return { data: await portalRequest((await leadDb.get(q.leadId))!, true) };
     });
+    // The customer quote PDF through the authenticated portal (no public bearer link is minted for portal users).
+    api.get<{ Params: { qid: string } }>('/api/portal/quotes/:qid/pdf', async (req, reply) => {
+      const q = await ownQuote(req.customer!, req.params.qid);
+      const { pdf, label } = await renderCq(q);
+      return reply.header('content-type', 'application/pdf').header('content-disposition', `inline; filename="Quotation-${label}.pdf"`)
+        .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').send(pdf);
+    });
     api.get('/api/portal/reject-reasons', async () => ({ data: REJECT_REASONS }));
     // Live updates: only "request X changed" for the customer's own requests (ids only; the app refetches through the scoped API).
     api.get('/api/portal/stream', async (req, reply) => {
-      const c = req.customer!; let own = new Set(await ownLeadIds(c));
+      const c = req.customer!;
       reply.hijack(); const res = reply.raw;
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       const send = (e: string, d: unknown) => res.write(`event: ${e}\ndata: ${JSON.stringify(d)}\n\n`);
       res.write('retry: 3000\n\n'); send('hello', {});
-      const off = onLiveData((d) => { const lid = d.leadId ? String(d.leadId) : null; if (lid && own.has(lid)) send('change', { type: 'request', id: lid }); });
+      const off = onLiveData((d) => { void (async () => {
+        const lid = d.leadId ? String(d.leadId) : null;
+        if (lid && (await isOwnLead(c, lid))) send('change', { type: 'request', id: lid });
+        const sid = d.shippingRequestId ? String(d.shippingRequestId) : null;
+        if (sid && (await isOwnShipping(c, sid))) send('change', { type: 'shipping', id: sid });
+      })().catch(() => undefined); });
       const ping = setInterval(() => { void (async () => {
         const now = await portal.byId(c.id);
         if (!now || !now.active || now.tokenVersion !== c.tokenVersion) { try { send('revoked', {}); } catch { /* closed */ } res.end(); close(); return; }
-        own = new Set(await ownLeadIds(c)); res.write(': ping\n\n');
+        res.write(': ping\n\n');
       })().catch(() => undefined); }, 25000);
       const close = () => { clearInterval(ping); off(); };
       req.raw.on('close', close); res.on('error', close);
+    });
+
+
+    // ======================= Shipping Requests (SH-YYMM-NNNN) =======================
+    // India side only (China never sees customers). Ownership = shipping_requests.customer_id, set from the portal token or explicitly by staff.
+    const srErr = (e: unknown): never => { if (e instanceof SrError) throw Object.assign(new Error(e.message), { status: e.status, appCode: e.code }); throw e; };
+    const srIndia = (u: User) => { if (!sides(u.role).india) throw new Forbidden('Only the India office handles shipping requests'); };
+    const srAdmin = (u: User) => u.role === 'SUPER_ADMIN' || u.role === 'INDIA_ADMIN';
+    const srOf = async (id: string) => { const r = await srs.get(String(id)); if (!r) throw Object.assign(new Error('Not found'), { status: 404 }); return r; };
+    const srActor = (u: User) => ({ kind: 'STAFF' as const, id: u.id, name: u.name });
+    const srLive = (r: ShippingRequest) => liveData({ type: 'shipping', id: r.id, shippingRequestId: r.id, at: Date.now() });
+    const srIndiaPeople = () => o.users.list().filter((x) => x.active && sides(x.role).india).map((x) => x.id);
+    const srNotify = async (r: ShippingRequest, kind: 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE', byName: string | null, detail?: string) => {
+      const to = r.assignedTo && kind === 'SHIP_REQUEST_UPDATE' ? [r.assignedTo, ...queueWatchers('INDIA')] : srIndiaPeople();
+      await assign.notify(to, { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind, office: 'INDIA', byName, detail: detail ?? null });
+    };
+    /** Tracking of a SOURCED request comes from its order's Shipment (single source of truth). */
+    const srTracking = async (r: ShippingRequest) => {
+      if (r.kind === 'SOURCED' && r.orderId) { const sh = await ships.byOrder(r.orderId);
+        return sh ? { stage: sh.status, carrier: sh.carrier, tracking: sh.tracking, container: sh.container, etd: sh.etd, eta: sh.eta, deliveredAt: sh.deliveredAt, shipmentRef: sh.ref } : null; }
+      return SR_STAGES.includes(r.status as never) ? { stage: r.status, carrier: r.carrier, tracking: r.tracking, container: r.container, etd: r.etd, eta: r.eta, deliveredAt: r.deliveredAt, shipmentRef: null } : null;
+    };
+    const srFiles = (r: ShippingRequest, only?: Set<string>) => uploads.list(srKey(r.id)).filter((f) => !only || only.has(f.id)).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, createdAt: f.createdAt }));
+    const srLeadRef = async (id: string | null) => (id ? (((await leadDb.get(id)) as Rec | null)?.leadRef as string) ?? null : null);
+    /** Staff DTO (India): everything incl. internal note and internal freight cost. */
+    const srStaff = async (u: User, r: ShippingRequest, full: boolean) => {
+      const names = userNames(), c = await customers.get(r.customerId);
+      const base = { ...r, customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, assignedToName: (r.assignedTo && names.get(r.assignedTo)) || null,
+        leadRef: await srLeadRef(r.leadId), progress: await srTracking(r), canEdit: true };
+      if (!full) return base;
+      const fqs = (await srs.quotes(r.id)).map((q) => ({ ...q, label: `${r.ref}-F${q.n}`, internalCost: can(u, 'prices.inr') ? q.internalCost : null, createdByName: (q.createdBy && names.get(q.createdBy)) || null }));
+      const shared = await srs.customerFileIds(r.id);
+      return { ...base, freightQuotes: fqs, files: srFiles(r).map((f) => ({ ...f, customerVisible: shared.has(f.id) })),
+        events: (await srs.events(r.id)).map((e: any) => ({ at: e.at, kind: e.kind, by: e.actor_kind === 'CUSTOMER' ? 'Customer' : e.actor_name, data: e.data, customerVisible: e.customer_visible, customerText: e.customer_text })) };
+    };
+    /** Customer DTO: an allowlist. Never internal note, internal cost, assignee, reject reason, staff names or other customers. */
+    const srCustomer = async (r: ShippingRequest, full: boolean) => {
+      const base = { id: r.id, type: 'SHIPPING' as const, reference: r.ref, kind: r.kind, status: r.status, goods: r.goods, quantity: r.quantity, unit: r.unit,
+        destCity: r.destCity, createdAt: r.createdAt, leadReference: await srLeadRef(r.leadId), quoteWaiting: false, tracking: await srTracking(r),
+        canCancel: SR_OPEN.includes(r.status as never), canReply: r.status === 'NEEDS_INFO' };
+      const fqs = await srs.quotes(r.id); base.quoteWaiting = fqs.some((q) => q.status === 'SENT');
+      if (!full) return base;
+      return { ...base, packages: r.packages, weightKg: r.weightKg, cbm: r.cbm, shipperName: r.shipperName, shipperPhone: r.shipperPhone, pickupAddress: r.pickupAddress, pickupCity: r.pickupCity,
+        destAddress: r.destAddress, destPincode: r.destPincode, mode: r.mode, incoterm: r.incoterm, readyDate: r.readyDate, customerNote: r.customerNote,
+        question: r.status === 'NEEDS_INFO' ? r.question : null,
+        freightQuotes: fqs.map((q) => ({ id: q.id, label: `${r.ref}-F${q.n}`, amount: q.amount, currency: q.currency, mode: q.mode, incoterm: q.incoterm,
+          transit: q.transit, validUntil: q.validUntil, note: q.customerNote, status: q.status, createdAt: q.createdAt, decidedAt: q.decidedAt, canDecide: q.status === 'SENT' && r.status === 'QUOTED' })),
+        files: srFiles(r, await srs.customerFileIds(r.id)), timeline: await srs.customerEvents(r.id) };
+    };
+    const readSrBody = async (req: FastifyRequest, reply: any): Promise<{ b: Record<string, string>; files: Staged[] } | null> => {
+      const b: Record<string, string> = {}; let files: Staged[] = [];
+      if (req.isMultipart()) { const m = await readMultipart(req, MAX_FILES); if (m.err) { reply.code(m.err.status).send({ error: m.err.error, code: m.err.code }); return null; } Object.assign(b, m.fields); files = m.files; }
+      else Object.assign(b, Object.fromEntries(Object.entries((req.body ?? {}) as Record<string, unknown>).map(([k, v]) => [k, v == null ? '' : String(v)])));
+      return { b, files };
+    };
+    const commitSrFiles = async (r: ShippingRequest, files: Staged[], kind: 'CUSTOMER' | 'STAFF', by: string | null) => {
+      if (!files.length) return 0;
+      const list = uploads.commit(srKey(r.id), files, by); await srs.addFiles(r.id, list.slice(-files.length).map((f) => f.id), kind); return files.length;
+    };
+    /** SOURCED: the order must belong to a lead that is portal-owned by this customer (customer) / linked to this customer (staff). */
+    const sourcedOrder = async (customerId: string, orderId: string, viaPortal: boolean) => {
+      const ord = await orders.get(String(orderId)); if (!ord) throw Object.assign(new Error('Unknown order'), { status: 404 });
+      const ok = await o.db.get(`SELECT 1 FROM leads WHERE id = ? AND customer_id = ?${viaPortal ? ' AND portal_customer_id = customer_id' : ''}`, ord.leadId, customerId);
+      if (!ok) throw Object.assign(new Error('Unknown order'), { status: 404 });
+      if (ord.closedAt) throw bad('This order is already delivered and closed', 409);
+      if (await srs.activeForOrder(ord.id)) throw Object.assign(new Error('This order already has a shipping request'), { status: 409, appCode: 'exists' });
+      return ord;
+    };
+
+    // ---- Staff (India) ----
+    api.get<{ Querystring: { status?: string; customerId?: string } }>('/api/shipping-requests', async (req) => {
+      const u = req.user!; srIndia(u);
+      const list = await srs.list({ status: req.query?.status ? String(req.query.status) : undefined, customerId: req.query?.customerId ? String(req.query.customerId) : undefined });
+      return { data: await Promise.all(list.map((r) => srStaff(u, r, false))) };
+    });
+    api.get<{ Params: { id: string } }>('/api/shipping-requests/:id', async (req) => { const u = req.user!; srIndia(u); return { data: await srStaff(u, await srOf(req.params.id), true) }; });
+    /** Staff raise one on behalf of a customer they name explicitly. */
+    api.post('/api/shipping-requests', async (req, reply) => {
+      const u = req.user!; srIndia(u);
+      const m = await readSrBody(req, reply); if (!m) return; const { b, files } = m;
+      try {
+        const c = await customers.get(String(b.customerId ?? '')); if (!c) throw bad('Choose the customer');
+        const kind = String(b.kind ?? 'FREIGHT_ONLY').toUpperCase();
+        const ord = kind === 'SOURCED' ? await sourcedOrder(c.id, String(b.orderId ?? ''), false) : null;
+        const fields = cleanFields({ ...b, ...(ord && !b.goods ? { goods: ord.product } : {}), ...(ord && !b.quantity ? { quantity: ord.qty } : {}) }, [...CUSTOMER_FIELDS, 'internalNote']);
+        const r = await srs.create({ kind, customerId: c.id, createdByKind: 'STAFF', createdBy: u.id, leadId: ord?.leadId ?? null, orderId: ord?.id ?? null, fields }).catch(srErr);
+        await commitSrFiles(r, files, 'STAFF', u.id);
+        await srs.log(r.id, 'SR_CREATED', srActor(u), { by: 'STAFF' });
+        await srNotify(r, 'SHIP_REQUEST', u.name); await srLive(r);
+        return reply.code(201).send({ data: await srStaff(u, r, true) });
+      } catch (e) { uploads.discard(files); throw e; }
+    });
+    api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id', async (req) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      if (['REJECTED', 'CANCELLED', 'DELIVERED'].includes(r.status)) throw bad('This request is closed', 409);
+      const f = (() => { try { return cleanFields(req.body ?? {}, [...CUSTOMER_FIELDS, 'internalNote']); } catch (e) { return srErr(e); } })();
+      if ('goods' in f && !f.goods) throw bad('Describe the goods to ship');
+      const nr = (await srs.edit(r.id, f))!; await srs.log(r.id, 'SR_EDITED', srActor(u), { fields: Object.keys(f) }); await srLive(nr);
+      return { data: await srStaff(u, nr, true) };
+    });
+    api.post<{ Params: { id: string }; Body: { userId?: string | null } }>('/api/shipping-requests/:id/assign', async (req) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const to = req.body?.userId === undefined ? u.id : req.body.userId ? String(req.body.userId) : null;
+      if (to !== u.id && !srAdmin(u)) throw new Forbidden('Only an India admin can assign to someone else');
+      if (to) { const t = o.users.list().find((x) => x.id === to); if (!t || !t.active || !sides(t.role).india) throw bad('Assign to an active India office user'); }
+      let nr = (await srs.assign(r.id, to))!;
+      if (to && nr.status === 'SUBMITTED') { nr = await srs.setStatus(r.id, ['SUBMITTED'], 'UNDER_REVIEW').catch(srErr); await srs.log(r.id, 'SR_REVIEW', srActor(u)); }
+      await srs.log(r.id, 'SR_ASSIGNED', srActor(u), { to });
+      if (to && to !== u.id) await assign.notify([to], { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind: 'SHIP_REQUEST_UPDATE', office: 'INDIA', byName: u.name, detail: 'Assigned to you' });
+      await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    /** "More info needed": the question is written FOR the customer (it is shown to them verbatim). */
+    api.post<{ Params: { id: string }; Body: { question?: string } }>('/api/shipping-requests/:id/needs-info', async (req) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const q = String(req.body?.question ?? '').trim().slice(0, 1000); if (!q) throw bad('Write the question for the customer');
+      const nr = await srs.setStatus(r.id, ['SUBMITTED', 'UNDER_REVIEW', 'QUOTED'], 'NEEDS_INFO', { question: q }).catch(srErr);
+      if (r.status === 'QUOTED') await o.db.run("UPDATE freight_quotes SET status = 'WITHDRAWN', decided_at = now() WHERE request_id = ? AND status = 'SENT'", r.id);
+      await srs.log(r.id, 'SR_NEEDS_INFO', srActor(u), {}, o.db, `More information needed: ${q}`);
+      await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    api.post<{ Params: { id: string }; Body: { reason?: string } }>('/api/shipping-requests/:id/reject', async (req) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const why = String(req.body?.reason ?? '').trim().slice(0, 500); if (!why) throw bad('A reason is required');
+      const nr = await srs.setStatus(r.id, SR_OPEN, 'REJECTED', { rejectReason: why }).catch(srErr);
+      await o.db.run("UPDATE freight_quotes SET status = 'WITHDRAWN', decided_at = now() WHERE request_id = ? AND status = 'SENT'", r.id);
+      await srs.log(r.id, 'SR_REJECTED', srActor(u), { reason: why }); await srLive(nr);
+      return { data: await srStaff(u, nr, true) };
+    });
+    api.post<{ Params: { id: string } }>('/api/shipping-requests/:id/cancel', async (req) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const nr = await srs.setStatus(r.id, [...SR_OPEN, 'ACCEPTED'], 'CANCELLED').catch(srErr);
+      await o.db.run("UPDATE freight_quotes SET status = 'WITHDRAWN', decided_at = now() WHERE request_id = ? AND status = 'SENT'", r.id);
+      await srs.log(r.id, 'SR_CANCELLED', srActor(u)); await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    /** SOURCED: India accepts (freight is in the order's customer quote). FREIGHT_ONLY is accepted only by the customer accepting a freight quote. */
+    api.post<{ Params: { id: string } }>('/api/shipping-requests/:id/accept', async (req) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      if (r.kind !== 'SOURCED') throw Object.assign(new Error('A freight-only request is accepted when the customer accepts a freight quote'), { status: 409, appCode: 'freight_quote_required' });
+      const nr = await srs.setStatus(r.id, ['SUBMITTED', 'UNDER_REVIEW'], 'ACCEPTED').catch(srErr);
+      await srs.log(r.id, 'SR_ACCEPTED', srActor(u)); await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/freight-quotes', async (req, reply) => {
+      const u = req.user!; srIndia(u); need(u, 'quotes.customer'); const r = await srOf(req.params.id);
+      if (r.kind !== 'FREIGHT_ONLY') throw bad('Freight quotes are for freight-only requests; a sourced shipment is priced in its customer quote', 409);
+      const fq = await o.db.tx(async (t) => {
+        const q = await srs.addQuote(r.id, req.body ?? {}, u.id, t);
+        await srs.setStatus(r.id, ['SUBMITTED', 'UNDER_REVIEW', 'QUOTED'], 'QUOTED', {}, t);
+        return q;
+      }).catch(srErr);
+      await srs.log(r.id, 'FQ_SENT', srActor(u), { n: fq.n, quoteId: fq.id }); const nr = (await srs.get(r.id))!; await srLive(nr);
+      return reply.code(201).send({ data: await srStaff(u, nr, true) });
+    });
+    /** FREIGHT_ONLY tracking (India). Booking needs an ACCEPTED freight quote; stages only move forward. SOURCED requests follow their Shipment. */
+    api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/stage', async (req) => {
+      const u = req.user!; srIndia(u); need(u, 'orders.production'); const r = await srOf(req.params.id), b = req.body ?? {};
+      if (r.kind === 'SOURCED') throw bad('Update the linked shipment instead (Shipping page)', 409);
+      const to = String(b.status ?? '').toUpperCase(); const ti = SR_STAGES.indexOf(to as never); if (ti < 0) throw bad(`Status must be one of ${SR_STAGES.join(', ')}`);
+      if (!(await srs.hasAccepted(r.id))) throw Object.assign(new Error('The customer has not accepted a freight quote yet'), { status: 409, appCode: 'freight_quote_required' });
+      const cur = r.status === 'ACCEPTED' ? -1 : SR_STAGES.indexOf(r.status as never);
+      if (r.status !== 'ACCEPTED' && cur < 0) throw bad('This request cannot be booked in its current state', 409);
+      if (ti < cur || (ti === cur && !Object.keys(b).some((k) => k !== 'status'))) throw bad('Stages only move forward', 409);
+      const extra: Record<string, unknown> = {};
+      for (const k of ['carrier', 'tracking', 'container']) if (k in b) extra[k] = b[k] == null || b[k] === '' ? null : String(b[k]).trim().slice(0, 120);
+      for (const k of ['etd', 'eta', 'deliveredAt']) if (k in b) { const v = b[k] == null || b[k] === '' ? null : String(b[k]); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw bad(`${k} must be YYYY-MM-DD`); extra[k] = v; }
+      if (to === 'DELIVERED' && !extra.deliveredAt && !r.deliveredAt) extra.deliveredAt = new Date().toISOString().slice(0, 10);
+      const nr = await srs.setStatus(r.id, [r.status], to, extra).catch(srErr);
+      if (ti !== cur) await srs.log(r.id, 'SR_STAGE', srActor(u), { status: to }); else await srs.log(r.id, 'SR_TRACKING', srActor(u), extra);
+      await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    api.post<{ Params: { id: string } }>('/api/shipping-requests/:id/files', async (req, reply) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const m = await readSrBody(req, reply); if (!m) return;
+      await commitSrFiles(r, m.files, 'STAFF', u.id); await srs.log(r.id, 'SR_FILE', srActor(u), { n: m.files.length });
+      return { data: await srStaff(u, r, true) };
+    });
+    api.get<{ Params: { id: string; fid: string } }>('/api/shipping-requests/:id/files/:fid', async (req, reply) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const f = uploads.file(srKey(r.id), req.params.fid); if (!f) throw Object.assign(new Error('Not found'), { status: 404 });
+      return reply.header('content-type', f.meta.mime).header('content-disposition', `inline; filename="${f.meta.name.replace(/[^\w.\- ]/g, '_')}"`)
+        .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').send(createReadStream(f.path));
+    });
+
+    // ---- Portal (own customer only; ownership from the token) ----
+    const isOwnShipping = async (c: CustomerUser, id: string) => !!(await o.db.get('SELECT 1 FROM shipping_requests WHERE id = ? AND customer_id = ?', String(id), c.customerId));
+    const ownSr = async (c: CustomerUser, id: string) => { const r = await srs.getOwned(String(id), c.customerId); if (!r) throw notFound(); return r; };
+    const cActor = (c: CustomerUser) => ({ kind: 'CUSTOMER' as const, id: c.id, name: c.name });
+    api.get('/api/portal/shipping-requests', async (req) => ({ data: await Promise.all((await srs.list({ customerId: req.customer!.customerId })).map((r) => srCustomer(r, false))) }));
+    api.get<{ Params: { id: string } }>('/api/portal/shipping-requests/:id', async (req) => ({ data: await srCustomer(await ownSr(req.customer!, req.params.id), true) }));
+    /** Orders of the customer's own (portal-visible) sourcing requests that can still get a shipping request. */
+    api.get('/api/portal/shippable-orders', async (req) => {
+      const out = [];
+      for (const lid of await ownLeadIds(req.customer!)) for (const x of await orders.byLead(lid)) {
+        if (x.closedAt || (await srs.activeForOrder(x.id))) continue;
+        out.push({ id: x.id, leadReference: await srLeadRef(lid), product: x.product, qty: x.qty });
+      }
+      return { data: out };
+    });
+    api.post('/api/portal/shipping-requests', async (req, reply) => {
+      const c = req.customer!;
+      const m = await readSrBody(req, reply); if (!m) return; const { b, files } = m;
+      try {
+        if ('customerId' in b || 'customer_id' in b) throw bad('Unknown field customerId'); // ownership is never taken from the body
+        const dayKey = `se:psr:${c.id}:${new Date().toISOString().slice(0, 10)}`;
+        if (Number((await o.bus.get(dayKey)) ?? 0) >= 20) throw Object.assign(new Error('Too many requests today, please contact Source Easy'), { status: 429 });
+        const kind = String(b.kind ?? 'FREIGHT_ONLY').toUpperCase();
+        const ord = kind === 'SOURCED' ? await sourcedOrder(c.customerId, String(b.orderId ?? ''), true) : null;
+        const fields = (() => { try { return cleanFields({ ...b, ...(ord && !b.goods ? { goods: ord.product } : {}), ...(ord && !b.quantity ? { quantity: ord.qty } : {}) }, CUSTOMER_FIELDS); } catch (e) { return srErr(e); } })();
+        await o.bus.incr(dayKey, 86400);
+        const r = await srs.create({ kind, customerId: c.customerId, createdByKind: 'CUSTOMER', createdBy: c.id, leadId: ord?.leadId ?? null, orderId: ord?.id ?? null, fields }).catch(srErr);
+        await commitSrFiles(r, files, 'CUSTOMER', null);
+        await srs.log(r.id, 'SR_CREATED', cActor(c), { by: 'CUSTOMER', files: files.length });
+        await srNotify(r, 'SHIP_REQUEST', c.name); await srLive(r);
+        await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'SHIPPING_REQUEST_CREATED', c.customerId, { ref: r.ref });
+        return reply.code(201).send({ data: await srCustomer(r, true) });
+      } catch (e) { uploads.discard(files); throw e; }
+    });
+    /** Answer "more info needed" (text + files) → back to India for review. */
+    api.post<{ Params: { id: string } }>('/api/portal/shipping-requests/:id/reply', async (req, reply) => {
+      const c = req.customer!; const r = await ownSr(c, req.params.id);
+      const m = await readSrBody(req, reply); if (!m) return; const { b, files } = m;
+      try {
+        const msg = String(b.message ?? '').trim().slice(0, 2000); if (!msg && !files.length) throw bad('Write a reply or attach a file');
+        const fields = (() => { try { return cleanFields(b, CUSTOMER_FIELDS.filter((k) => k !== 'goods')); } catch (e) { return srErr(e); } })();
+        const nr0 = await srs.setStatus(r.id, ['NEEDS_INFO'], 'UNDER_REVIEW', { question: null }).catch(srErr);
+        const nr = (await srs.edit(nr0.id, fields))!;
+        await commitSrFiles(nr, files, 'CUSTOMER', null);
+        await srs.log(r.id, 'SR_REPLIED', cActor(c), { message: msg, files: files.length, fields: Object.keys(fields) });
+        await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, msg ? msg.slice(0, 200) : 'Customer sent files'); await srLive(nr);
+        return { data: await srCustomer(nr, true) };
+      } catch (e) { uploads.discard(files); throw e; }
+    });
+    api.post<{ Params: { id: string } }>('/api/portal/shipping-requests/:id/cancel', async (req) => {
+      const c = req.customer!; const r = await ownSr(c, req.params.id);
+      const nr = await srs.setStatus(r.id, SR_OPEN, 'CANCELLED').catch(srErr);
+      await o.db.run("UPDATE freight_quotes SET status = 'WITHDRAWN', decided_at = now() WHERE request_id = ? AND status = 'SENT'", r.id);
+      await srs.log(r.id, 'SR_CANCELLED', cActor(c)); await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, 'Cancelled by the customer'); await srLive(nr);
+      return { data: await srCustomer(nr, true) };
+    });
+    api.get<{ Params: { id: string; fid: string } }>('/api/portal/shipping-requests/:id/files/:fid', async (req, reply) => {
+      const r = await ownSr(req.customer!, req.params.id);
+      if (!(await srs.customerFileIds(r.id)).has(req.params.fid)) throw notFound();
+      const f = uploads.file(srKey(r.id), req.params.fid); if (!f) throw notFound();
+      return reply.header('content-type', f.meta.mime).header('content-disposition', `inline; filename="${f.meta.name.replace(/[^\w.\- ]/g, '_')}"`)
+        .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').send(createReadStream(f.path));
+    });
+    const ownFq = async (c: CustomerUser, qid: string) => {
+      const q = await srs.quote(String(qid)); if (!q) throw notFound();
+      const r = await ownSr(c, q.requestId); return { q, r };
+    };
+    api.post<{ Params: { qid: string } }>('/api/portal/freight-quotes/:qid/accept', async (req) => {
+      const c = req.customer!; const { q, r } = await ownFq(c, req.params.qid);
+      if (q.status !== 'SENT' || r.status !== 'QUOTED') throw Object.assign(new Error('This freight quote was already decided'), { status: 409, appCode: 'decided' });
+      await o.db.tx(async (t) => { await srs.decideQuote(q.id, 'ACCEPTED', {}, t); await srs.setStatus(r.id, ['QUOTED'], 'ACCEPTED', {}, t); }).catch(srErr);
+      await srs.log(r.id, 'FQ_ACCEPTED', cActor(c), { n: q.n, quoteId: q.id });
+      const nr = (await srs.get(r.id))!;
+      await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, `Freight quote ${r.ref}-F${q.n} accepted, ready to book`); await srLive(nr);
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'FREIGHT_QUOTE_ACCEPTED', c.customerId, { quoteId: q.id });
+      return { data: await srCustomer(nr, true) };
+    });
+    api.post<{ Params: { qid: string }; Body: { reasonCode?: string; reason?: string } }>('/api/portal/freight-quotes/:qid/reject', async (req) => {
+      const c = req.customer!; const { q, r } = await ownFq(c, req.params.qid);
+      if (q.status !== 'SENT' || r.status !== 'QUOTED') throw Object.assign(new Error('This freight quote was already decided'), { status: 409, appCode: 'decided' });
+      const code = String(req.body?.reasonCode ?? 'OTHER').toUpperCase().slice(0, 20), why = String(req.body?.reason ?? '').trim().slice(0, 500);
+      if (!(REJECT_REASONS as readonly string[]).includes(code)) throw bad('Choose a reason');
+      await o.db.tx(async (t) => { await srs.decideQuote(q.id, 'REJECTED', { code, reason: why || null }, t); await srs.setStatus(r.id, ['QUOTED'], 'UNDER_REVIEW', {}, t); }).catch(srErr);
+      await srs.log(r.id, 'FQ_REJECTED', cActor(c), { n: q.n, quoteId: q.id, reasonCode: code, reason: why || null });
+      const nr = (await srs.get(r.id))!;
+      await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, `Freight quote ${r.ref}-F${q.n} declined${why ? `: ${why.slice(0, 120)}` : ''}`); await srLive(nr);
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'FREIGHT_QUOTE_REJECTED', c.customerId, { quoteId: q.id });
+      return { data: await srCustomer(nr, true) };
     });
 
     api.get<{ Params: { kind: string } }>('/api/export/:kind', async (req, reply) => {

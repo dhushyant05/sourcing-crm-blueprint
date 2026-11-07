@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useApp } from '../lib/store';
-import type { PortalLogin, PortalLoginRequest } from '../lib/types';
+import type { PortalLeadShare, PortalLogin, PortalLoginRequest } from '../lib/types';
 
 /** India admin / super admin with portal.logins.manage. */
 export function usePortalAdmin() {
@@ -32,9 +32,14 @@ export function LoginRequests({ onChanged }: { onChanged?: () => void }) {
   const [issued, setIssued] = useState<{ phone: string; pw: string } | null>(null), [rejecting, setRejecting] = useState<string | null>(null), [reason, setReason] = useState('');
   const load = useCallback(() => api.portalRequests!('PENDING').then(setList).catch((e) => setErr((e as Error).message)), [api]);
   useEffect(() => { void load(); }, [load]);
-  const approve = async (r: PortalLoginRequest) => {
+  const [approving, setApproving] = useState<string | null>(null), [choice, setChoice] = useState<'existing' | 'new'>('new'), [share, setShare] = useState(false), [mismatch, setMismatch] = useState(false);
+  const open = (r: PortalLoginRequest) => { setApproving(r.id); setChoice(r.customer && r.match?.phoneMatches ? 'existing' : 'new'); setShare(false); setMismatch(false); setErr(null); };
+  const approve = async (r: PortalLoginRequest, confirmMismatch = false) => {
     setErr(null);
-    try { const x = await api.approvePortalRequest!(r.id, r.customer?.id); setIssued({ phone: x.login.phone, pw: x.tempPassword }); await load(); onChanged?.(); } catch (e) { setErr((e as Error).message); }
+    try {
+      const x = await api.approvePortalRequest!(r.id, { ...(choice === 'existing' && r.customer ? { customerId: r.customer.id } : { createNew: true }), shareEnquiry: share, confirmMismatch });
+      setIssued({ phone: x.login.phone, pw: x.tempPassword }); setApproving(null); await load(); onChanged?.();
+    } catch (e) { if ((e as { body?: { code?: string } }).body?.code === 'phone_mismatch') setMismatch(true); setErr((e as Error).message); }
   };
   const reject = async (id: string) => { setErr(null); try { await api.rejectPortalRequest!(id, reason); setRejecting(null); setReason(''); await load(); } catch (e) { setErr((e as Error).message); } };
   if (!list?.length && !issued && !err) return null;
@@ -49,8 +54,20 @@ export function LoginRequests({ onChanged }: { onChanged?: () => void }) {
               <div className="text-xs text-ink-500">{r.leadRef ?? '—'} · {r.product ?? ''} · {when(r.createdAt)}{r.customer ? ` · ${t('portal.linkedTo', { name: r.customer.name })}` : ` · ${t('portal.newCustomer')}`}{r.hasLogin ? ` · ${t('portal.hasLogin')}` : ''}</div></div>
             {rejecting === r.id ? <div className="flex flex-wrap gap-2"><input className="input !py-1 text-xs" placeholder={t('portal.reason')} value={reason} onChange={(e) => setReason(e.target.value)} />
               <button className="btn-ghost !py-1 text-xs text-rose-600" disabled={!reason.trim()} onClick={() => void reject(r.id)}>{t('portal.reject')}</button><button className="btn-ghost !py-1 text-xs" onClick={() => setRejecting(null)}>{t('common.cancel')}</button></div>
-              : <div className="flex gap-2"><button data-testid="portal-approve" className="btn-primary !py-1 text-xs" disabled={r.hasLogin} onClick={() => void approve(r)}><KeyRound size={13} />{t('portal.approve')}</button>
+              : approving !== r.id && <div className="flex gap-2"><button data-testid="portal-approve" className="btn-primary !py-1 text-xs" disabled={r.hasLogin} onClick={() => open(r)}><KeyRound size={13} />{t('portal.approve')}</button>
                 <button className="btn-ghost !py-1 text-xs" onClick={() => setRejecting(r.id)}>{t('portal.reject')}</button></div>}
+            {approving === r.id && <div className="w-full space-y-2 rounded-lg bg-ink-50 p-3 text-xs dark:bg-ink-800/50" data-testid="portal-approve-form">
+              <p className="font-medium text-ink-700 dark:text-ink-200">{t('portal.verifyHint')}</p>
+              {r.customer && <label className="flex items-start gap-2"><input type="radio" checked={choice === 'existing'} onChange={() => setChoice('existing')} />
+                <span>{t('portal.useExisting', { name: r.customer.name, phone: r.customer.phone ?? '—' })}{r.match && !r.match.phoneMatches && <b className="ml-1 text-rose-600">{t('portal.phoneDiffers')}</b>}
+                  {r.match && r.match.otherLeads > 0 && <span className="ml-1 text-ink-500">{t('portal.otherLeads', { n: r.match.otherLeads })}</span>}</span></label>}
+              <label className="flex items-center gap-2"><input type="radio" checked={choice === 'new'} onChange={() => setChoice('new')} />{t('portal.createNew')}</label>
+              {r.leadRef && <label className="flex items-center gap-2"><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} data-testid="portal-share-enquiry" />{t('portal.shareEnquiry', { ref: r.leadRef })}</label>}
+              <div className="flex flex-wrap gap-2">
+                {mismatch ? <button className="btn-primary !py-1 text-xs" onClick={() => void approve(r, true)}>{t('portal.confirmMismatch')}</button>
+                  : <button className="btn-primary !py-1 text-xs" data-testid="portal-approve-confirm" onClick={() => void approve(r)}>{t('portal.approve')}</button>}
+                <button className="btn-ghost !py-1 text-xs" onClick={() => setApproving(null)}>{t('common.cancel')}</button></div>
+            </div>}
           </li>
         ))}
       </ul>
@@ -64,8 +81,10 @@ export function PortalLoginCard({ customerId, phone }: { customerId: string; pho
   const { api } = useApp(); const { t } = useTranslation(); const admin = usePortalAdmin();
   const [st, setSt] = useState<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] } | null>(null);
   const [issued, setIssued] = useState<{ phone: string; pw: string } | null>(null), [err, setErr] = useState<string | null>(null);
-  const load = useCallback(() => api.portalLogin?.(customerId).then(setSt).catch(() => setSt(null)), [api, customerId]);
+  const [leads, setLeads] = useState<PortalLeadShare[]>([]);
+  const load = useCallback(() => Promise.all([api.portalLogin?.(customerId).then(setSt).catch(() => setSt(null)), api.portalLeads?.(customerId).then(setLeads).catch(() => setLeads([]))]), [api, customerId]);
   useEffect(() => { void load(); }, [load]);
+  const toggle = async (id: string, on: boolean) => { setErr(null); try { await api.setPortalShare!(id, on); await load(); } catch (e) { setErr((e as Error).message); } };
   if (!api.portalLogin || !st) return null;
   const run = async (f: () => Promise<{ login: PortalLogin; tempPassword?: string }>) => {
     setErr(null); try { const x = await f(); if (x.tempPassword) setIssued({ phone: x.login.phone, pw: x.tempPassword }); await load(); } catch (e) { setErr((e as Error).message); }
@@ -83,6 +102,12 @@ export function PortalLoginCard({ customerId, phone }: { customerId: string; pho
         {l && <button className="btn-ghost !py-1 text-xs" onClick={() => void run(() => api.resetPortalLogin!(customerId))}><KeyRound size={13} />{t('portal.reset')}</button>}
         {l && <button className="btn-ghost !py-1 text-xs" onClick={() => void run(() => api.setPortalLoginActive!(customerId, !l.active))}>{l.active ? <><ShieldOff size={13} />{t('portal.disable')}</> : <><ShieldCheck size={13} />{t('portal.enable')}</>}</button>}
       </div>}
+      {leads.length > 0 && <div className="mt-3" data-testid="portal-shares"><div className="text-xs font-medium text-ink-600 dark:text-ink-300">{t('portal.sharesTitle')}</div>
+        <p className="text-[11px] text-ink-500">{t('portal.sharesHint')}</p>
+        <ul className="mt-1 space-y-1 text-xs">{leads.map((x) => <li key={x.id} className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate"><span className="font-mono">{x.leadRef}</span> · {x.product}{x.sourceChannel === 'PORTAL' ? ` · ${t('portal.fromPortal')}` : ''}</span>
+          {admin ? <label className="flex shrink-0 items-center gap-1"><input type="checkbox" checked={x.shared} onChange={(e) => void toggle(x.id, e.target.checked)} data-testid={`portal-share-${x.id}`} />{t('portal.visible')}</label>
+            : <span className="shrink-0">{x.shared ? t('portal.visible') : t('portal.internal')}</span>}</li>)}</ul></div>}
       {admin && st.audit.length > 0 && <details className="mt-2 text-xs text-ink-500"><summary className="cursor-pointer">{t('portal.audit')}</summary>
         <ul className="mt-1 space-y-0.5">{st.audit.slice(0, 20).map((a, i) => <li key={i}>{when(a.at)} · {t(`portal.act.${a.action}`, { defaultValue: a.action })}{a.by ? ` · ${a.by}` : ''}</li>)}</ul></details>}
       {err && <p className="mt-2 text-sm text-rose-600">{err}</p>}

@@ -510,7 +510,11 @@
     "LOGIN_REQUEST": "{{ref}}：申请了客户门户登录",
     "LOGIN_REQUEST_nobody": "{{ref}}：申请了客户门户登录",
     "PORTAL_REQUEST": "{{ref}}：客户门户的新需求",
-    "PORTAL_REQUEST_nobody": "{{ref}}：客户门户的新需求"
+    "PORTAL_REQUEST_nobody": "{{ref}}：客户门户的新需求",
+    "SHIP_REQUEST": "{{ref}}：新运输申请",
+    "SHIP_REQUEST_nobody": "{{ref}}：新运输申请",
+    "SHIP_REQUEST_UPDATE": "{{ref}}：{{by}} 更新了运输申请",
+    "SHIP_REQUEST_UPDATE_nobody": "{{ref}}：运输申请已更新"
   },
   "lq": {
     "title": "供应商报价",
@@ -1052,7 +1056,24 @@
       "LOGIN_ENABLED": "已启用",
       "REQUEST_CREATED": "提交了需求",
       "QUOTE_ACCEPTED": "接受了报价",
-      "QUOTE_REJECTED": "拒绝了报价"
-    }
+      "QUOTE_REJECTED": "拒绝了报价",
+      "LEAD_SHARED": "已共享线索到门户",
+      "LEAD_UNSHARED": "已从门户隐藏线索",
+      "SHIPPING_REQUEST_CREATED": "提交了运输申请",
+      "FREIGHT_QUOTE_ACCEPTED": "接受了运费报价",
+      "FREIGHT_QUOTE_REJECTED": "拒绝了运费报价"
+    },
+    "verifyHint": "关联前请先核实身份（例如致电该号码）。询价单上的公司、电话和邮箱任何人都可以填写。",
+    "useExisting": "现有客户 {{name}}（{{phone}}），已核实",
+    "phoneDiffers": "电话不一致",
+    "otherLeads": "· 另有 {{n}} 条线索；除非您共享，否则不会显示",
+    "createNew": "新建客户",
+    "shareEnquiry": "同时在其门户中显示询价 {{ref}}",
+    "confirmMismatch": "我已核实此人，仍然批准",
+    "sharesTitle": "在其门户中可见",
+    "sharesHint": "只有勾选的线索会显示给客户。仅关联或匹配不会共享线索。",
+    "fromPortal": "门户提交",
+    "visible": "可见",
+    "internal": "内部"
   }
 }
