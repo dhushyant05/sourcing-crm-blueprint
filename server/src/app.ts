@@ -2,6 +2,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import jwt from 'jsonwebtoken';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
@@ -17,9 +18,11 @@ import { CustomerStore, BadCustomer, NO_STATS } from './customers.js';
 import type { UserStore, User } from './users.js';
 import { QuoteStore, QUOTE_STATUSES, cqTotals, type Quote } from './quotes.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
-import { customerQuotePdf } from './pdf.js';
+import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
 import { RejectStore, REJECT_REASONS } from './rejections.js';
+import { Notifier, httpEmailFromEnv, customerFcmFromEnv, type TemplateKey } from './notify.js';
+import { GreetingStore, GreetingError, cleanGreeting, publishProblems, greetingDto, grKey, sniffImage, GREETING_IMAGE_BYTES, SURFACES } from './greetings.js';
 import { ShippingStore, SrError, cleanFields, CUSTOMER_FIELDS, SR_OPEN, SR_STAGES, STAGE_LABEL, srKey, type ShippingRequest } from './shipping.js';
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
 import { PushStore } from './push.js';
@@ -36,6 +39,8 @@ export interface AppOptions {
   jwtTtl?: string;
   /** Customer portal token lifetime (default 12h). */
   portalTtl?: string;
+  /** Customer notifications (email + customer-app push). Defaults to env-configured adapters, which stay disabled without config. */
+  notifier?: Notifier;
   webDir?: string;
   push?: PushStore;
   backupLinks?: { label: string; url: string }[];
@@ -94,6 +99,22 @@ export async function buildApp(o: AppOptions) {
   for (const x of (await orders.all()).reverse()) await shipFor(x);
   const wf = new WorkflowStore(o.db, o.now ?? Date.now);
   const portal = new PortalStore(o.db, o.jwtSecret, o.portalTtl ?? '12h');
+  const notifier = o.notifier ?? new Notifier(o.db, httpEmailFromEnv(), customerFcmFromEnv());
+  const greetings = new GreetingStore(o.db);
+  /** Enqueue a customer notification only for an active portal login that OWNS the subject (lead shared to it, or its own shipping request). */
+  const notifyCustomer = async (customerId: string | null | undefined, t: TemplateKey, vars: Record<string, unknown>, dedupe: string) => {
+    if (!customerId) return;
+    const u = await o.db.get('SELECT id, name FROM customer_users WHERE customer_id = ? AND active', customerId); if (!u) return;
+    await notifier.enqueue(u.id, t, { name: u.name, ...vars }, dedupe);
+    void notifier.dispatch().catch(() => undefined);
+  };
+  const LEAD_NOTIFY: Partial<Record<string, TemplateKey>> = { CQ_SENT: 'QUOTE_READY', ORDER_CREATED: 'ORDER_CONFIRMED', SHIPPED: 'SHIPPED', COMPLETED: 'DELIVERED' };
+  const notifyLead = async (leadId: string, kind: string, data: Record<string, unknown>) => {
+    const t = LEAD_NOTIFY[kind]; if (!t) return;
+    const r = await o.db.get('SELECT customer_id, lead_ref FROM leads WHERE id = ? AND portal_customer_id = customer_id', leadId); if (!r) return;
+    const n = Number(data.n), label = Number.isInteger(n) && n > 0 ? `${r.lead_ref}-Q${n}` : r.lead_ref;
+    await notifyCustomer(r.customer_id, t, { reference: r.lead_ref, label }, `${leadId}:${kind}:${Number.isInteger(n) ? n : ''}`);
+  };
   const officeOf = (r: Role): Office | null => (r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null);
   const staffOf = (office: Office) => o.users.list().filter((u) => u.active && officeOf(u.role) === office);
   const bad = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
@@ -122,7 +143,11 @@ export async function buildApp(o: AppOptions) {
   };
   const actorOf = (u: User | null) => (u ? { id: u.id, name: u.name, office: officeOf(u.role) ?? ('ADMIN' as const) } : null);
   /** Log a timeline event. */
-  const ev = (leadId: string, kind: EventKind, actor: User | null, data: Record<string, unknown> = {}, vis: Vis = 'ALL') => wf.log(leadId, kind, actorOf(actor), data, vis);
+  const ev = async (leadId: string, kind: EventKind, actor: User | null, data: Record<string, unknown> = {}, vis: Vis = 'ALL') => {
+    const r = await wf.log(leadId, kind, actorOf(actor), data, vis);
+    await notifyLead(leadId, kind, data).catch(() => undefined);
+    return r;
+  };
   const userNames = () => new Map(o.users.list().map((u) => [u.id, u.name]));
   /**
    * Hands a lead to an office. `to` = specific member, null = office queue, undefined = default
@@ -2101,6 +2126,7 @@ export async function buildApp(o: AppOptions) {
       const nr = await srs.setStatus(r.id, ['SUBMITTED', 'UNDER_REVIEW', 'QUOTED'], 'NEEDS_INFO', { question: q }).catch(srErr);
       if (r.status === 'QUOTED') await o.db.run("UPDATE freight_quotes SET status = 'WITHDRAWN', decided_at = now() WHERE request_id = ? AND status = 'SENT'", r.id);
       await srs.log(r.id, 'SR_NEEDS_INFO', srActor(u), {}, o.db, `More information needed: ${q}`);
+      await notifyCustomer(r.customerId, 'NEEDS_INFO', { reference: r.ref }, `${r.id}:NEEDS_INFO:${Date.now()}`);
       await srLive(nr); return { data: await srStaff(u, nr, true) };
     });
     api.post<{ Params: { id: string }; Body: { reason?: string } }>('/api/shipping-requests/:id/reject', async (req) => {
@@ -2132,7 +2158,8 @@ export async function buildApp(o: AppOptions) {
         await srs.setStatus(r.id, ['SUBMITTED', 'UNDER_REVIEW', 'QUOTED'], 'QUOTED', {}, t);
         return q;
       }).catch(srErr);
-      await srs.log(r.id, 'FQ_SENT', srActor(u), { n: fq.n, quoteId: fq.id }); const nr = (await srs.get(r.id))!; await srLive(nr);
+      await srs.log(r.id, 'FQ_SENT', srActor(u), { n: fq.n, quoteId: fq.id });
+      await notifyCustomer(r.customerId, 'FREIGHT_QUOTE_READY', { reference: r.ref, label: `${r.ref}-F${fq.n}` }, `${r.id}:FQ:${fq.n}`); const nr = (await srs.get(r.id))!; await srLive(nr);
       return reply.code(201).send({ data: await srStaff(u, nr, true) });
     });
     /** FREIGHT_ONLY tracking (India). Booking needs an ACCEPTED freight quote; stages only move forward. SOURCED requests follow their Shipment. */
@@ -2150,6 +2177,7 @@ export async function buildApp(o: AppOptions) {
       if (to === 'DELIVERED' && !extra.deliveredAt && !r.deliveredAt) extra.deliveredAt = new Date().toISOString().slice(0, 10);
       const nr = await srs.setStatus(r.id, [r.status], to, extra).catch(srErr);
       if (ti !== cur) await srs.log(r.id, 'SR_STAGE', srActor(u), { status: to }); else await srs.log(r.id, 'SR_TRACKING', srActor(u), extra);
+      if (ti !== cur && (to === 'IN_TRANSIT' || to === 'DELIVERED')) await notifyCustomer(r.customerId, to === 'DELIVERED' ? 'DELIVERED' : 'SHIPPED', { reference: r.ref }, `${r.id}:${to}`);
       await srLive(nr); return { data: await srStaff(u, nr, true) };
     });
     api.post<{ Params: { id: string } }>('/api/shipping-requests/:id/files', async (req, reply) => {
@@ -2165,6 +2193,28 @@ export async function buildApp(o: AppOptions) {
         .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').send(createReadStream(f.path));
     });
 
+    const fqPdf = async (r: ShippingRequest, q: { n: number; amount: number; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null; customerNote: string | null; createdAt: string }) => {
+      const c = await customers.get(r.customerId);
+      return freightQuotePdf({ label: `${r.ref}-F${q.n}`, ref: r.ref, customer: c?.company || c?.name || null, goods: r.goods, quantity: r.quantity != null ? `${r.quantity} ${r.unit ?? ''}`.trim() : null,
+        packages: r.packages, weightKg: r.weightKg, cbm: r.cbm, from: [r.pickupCity].filter(Boolean).join(', ') || null, to: [r.destCity, r.destPincode].filter(Boolean).join(' ') || null,
+        amount: q.amount, mode: q.mode, incoterm: q.incoterm, transit: q.transit, validUntil: q.validUntil, note: q.customerNote,
+        date: new Date(q.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) });
+    };
+    const sendPdf = (reply: any, pdf: Buffer, name: string) => reply.header('content-type', 'application/pdf').header('content-disposition', `inline; filename="${name.replace(/[^\w.\- ]/g, '_')}.pdf"`)
+      .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').send(pdf);
+    api.get<{ Params: { id: string; qid: string } }>('/api/shipping-requests/:id/freight-quotes/:qid/pdf', async (req, reply) => {
+      const u = req.user!; srIndia(u); const r = await srOf(req.params.id); const q = await srs.quote(req.params.qid);
+      if (!q || q.requestId !== r.id) throw Object.assign(new Error('Not found'), { status: 404 });
+      return sendPdf(reply, await fqPdf(r, q), `Freight-quote-${r.ref}-F${q.n}`);
+    });
+    /** Orders of one customer that can still get a shipping request (staff create screen). */
+    api.get<{ Params: { id: string } }>('/api/customers/:id/shippable-orders', async (req) => {
+      const u = req.user!; srIndia(u);
+      const out = [];
+      for (const l of await o.db.all<{ id: string; lead_ref: string }>('SELECT id, lead_ref FROM leads WHERE customer_id = ? ORDER BY created_at DESC', req.params.id))
+        for (const x of await orders.byLead(l.id)) if (!x.closedAt && !(await srs.activeForOrder(x.id))) out.push({ id: x.id, leadReference: l.lead_ref, product: x.product, qty: x.qty });
+      return { data: out };
+    });
     // ---- Portal (own customer only; ownership from the token) ----
     const isOwnShipping = async (c: CustomerUser, id: string) => !!(await o.db.get('SELECT 1 FROM shipping_requests WHERE id = ? AND customer_id = ?', String(id), c.customerId));
     const ownSr = async (c: CustomerUser, id: string) => { const r = await srs.getOwned(String(id), c.customerId); if (!r) throw notFound(); return r; };
@@ -2232,6 +2282,11 @@ export async function buildApp(o: AppOptions) {
       const q = await srs.quote(String(qid)); if (!q) throw notFound();
       const r = await ownSr(c, q.requestId); return { q, r };
     };
+    /** Branded freight-quote PDF: only the owning customer (withdrawn quotes included, for their records). */
+    api.get<{ Params: { qid: string } }>('/api/portal/freight-quotes/:qid/pdf', async (req, reply) => {
+      const { q, r } = await ownFq(req.customer!, req.params.qid);
+      return sendPdf(reply, await fqPdf(r, q), `Freight-quote-${r.ref}-F${q.n}`);
+    });
     api.post<{ Params: { qid: string } }>('/api/portal/freight-quotes/:qid/accept', async (req) => {
       const c = req.customer!; const { q, r } = await ownFq(c, req.params.qid);
       if (q.status !== 'SENT' || r.status !== 'QUOTED') throw Object.assign(new Error('This freight quote was already decided'), { status: 409, appCode: 'decided' });
@@ -2253,6 +2308,129 @@ export async function buildApp(o: AppOptions) {
       await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, `Freight quote ${r.ref}-F${q.n} declined${why ? `: ${why.slice(0, 120)}` : ''}`); await srLive(nr);
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'FREIGHT_QUOTE_REJECTED', c.customerId, { quoteId: q.id });
       return { data: await srCustomer(nr, true) };
+    });
+
+
+    // ======================= Greetings (festival / event banners) =======================
+    const grErr = (e: unknown): never => { if (e instanceof GreetingError) throw Object.assign(new Error(e.message), { status: e.status, appCode: e.code }); throw e; };
+    const grOf = async (id: string) => { const g = await greetings.get(String(id)); if (!g) throw Object.assign(new Error('Not found'), { status: 404 }); return g; };
+    const grStaff = (g: Awaited<ReturnType<typeof greetings.get>> & {}) => { const names = userNames();
+      return { ...g, createdByName: (g.createdBy && names.get(g.createdBy)) || null, updatedByName: (g.updatedBy && names.get(g.updatedBy)) || null, publishedByName: (g.publishedBy && names.get(g.publishedBy)) || null,
+        preview: greetingDto(g, '/api/greetings'), problems: publishProblems(g) }; };
+    const sendImg = (reply: any, f: { meta: { mime: string }; path: string }, cache: string) => reply.header('content-type', f.meta.mime).header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox").header('cache-control', cache).send(createReadStream(f.path));
+    const grImage = (g: { imageDesktop: string | null; imageMobile: string | null; id: string }, kind: string) => {
+      const fid = kind === 'mobile' ? g.imageMobile ?? g.imageDesktop : kind === 'desktop' ? g.imageDesktop : null; if (!fid) return null;
+      return uploads.file(grKey(g.id), fid);
+    };
+    api.get('/api/greetings', async (req) => { need(req.user!, 'greetings.manage'); return { data: (await greetings.list()).map(grStaff) }; });
+    api.get<{ Params: { id: string } }>('/api/greetings/:id', async (req) => {
+      need(req.user!, 'greetings.manage'); const g = await grOf(req.params.id); const names = userNames();
+      const audit = (await greetings.auditFor(g.id)).map((a: any) => ({ at: a.at, action: a.action, by: (a.actor_id && names.get(a.actor_id)) || null, detail: a.detail }));
+      return { data: { ...grStaff(g), audit } };
+    });
+    api.post<{ Body: Record<string, unknown> }>('/api/greetings', async (req, reply) => {
+      const u = req.user!; need(u, 'greetings.manage');
+      const v = (() => { try { return cleanGreeting(req.body ?? {}); } catch (e) { return grErr(e); } })();
+      const g = await greetings.create(v, u.id).catch(grErr); await greetings.audit(g.id, u.id, 'CREATED', { fields: Object.keys(v) });
+      return reply.code(201).send({ data: grStaff(g) });
+    });
+    api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/greetings/:id', async (req) => {
+      const u = req.user!; need(u, 'greetings.manage'); const g = await grOf(req.params.id);
+      if (g.status === 'PUBLISHED') throw Object.assign(new Error('Unpublish this greeting before editing it'), { status: 409, appCode: 'published' });
+      const v = (() => { try { return cleanGreeting(req.body ?? {}, g); } catch (e) { return grErr(e); } })();
+      const ng = (await greetings.update(g.id, v, u.id))!; await greetings.audit(g.id, u.id, 'EDITED', { fields: Object.keys(v) });
+      return { data: grStaff(ng) };
+    });
+    /** Artwork upload: one PNG/JPEG/WebP (≤ 2 MB, sniffed) for `kind` desktop|mobile, stored under this greeting only. */
+    api.post<{ Params: { id: string; kind: string } }>('/api/greetings/:id/image/:kind', async (req, reply) => {
+      const u = req.user!; need(u, 'greetings.manage'); const g = await grOf(req.params.id), kind = req.params.kind;
+      if (kind !== 'desktop' && kind !== 'mobile') throw bad('Kind must be desktop or mobile');
+      if (g.status === 'PUBLISHED') throw Object.assign(new Error('Unpublish this greeting before changing its artwork'), { status: 409, appCode: 'published' });
+      if (!req.isMultipart()) throw bad('Upload the image as multipart form data');
+      const m = await readMultipart(req, 1); if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
+      const f = m.files[0]; if (!f) throw bad('Choose an image');
+      try {
+        if (f.size > GREETING_IMAGE_BYTES) throw Object.assign(new Error('Image too large (max 2 MB)'), { status: 413, appCode: 'size' });
+        const data = await readFile(f.path), mime = sniffImage(data);
+        if (!mime) throw Object.assign(new Error('Only PNG, JPEG or WebP images are allowed'), { status: 415, appCode: 'type' });
+        const list = uploads.save(grKey(g.id), [{ name: `${kind}.${mime.split('/')[1]}`, mime, data }]), nf = list[list.length - 1];
+        const old = kind === 'desktop' ? g.imageDesktop : g.imageMobile; if (old) uploads.remove(grKey(g.id), old);
+        const ng = (await greetings.update(g.id, kind === 'desktop' ? { imageDesktop: nf.id } : { imageMobile: nf.id }, u.id))!;
+        await greetings.audit(g.id, u.id, 'IMAGE_UPLOADED', { kind, size: data.length, mime });
+        return { data: grStaff(ng) };
+      } finally { uploads.discard(m.files); }
+    });
+    api.delete<{ Params: { id: string; kind: string } }>('/api/greetings/:id/image/:kind', async (req) => {
+      const u = req.user!; need(u, 'greetings.manage'); const g = await grOf(req.params.id), kind = req.params.kind;
+      if (g.status === 'PUBLISHED') throw Object.assign(new Error('Unpublish this greeting before changing its artwork'), { status: 409, appCode: 'published' });
+      const old = kind === 'desktop' ? g.imageDesktop : kind === 'mobile' ? g.imageMobile : null; if (old) uploads.remove(grKey(g.id), old);
+      const ng = (await greetings.update(g.id, kind === 'desktop' ? { imageDesktop: null } : { imageMobile: null }, u.id))!;
+      await greetings.audit(g.id, u.id, 'IMAGE_REMOVED', { kind }); return { data: grStaff(ng) };
+    });
+    api.get<{ Params: { id: string; kind: string } }>('/api/greetings/:id/image/:kind', async (req, reply) => {
+      need(req.user!, 'greetings.manage'); const f = grImage(await grOf(req.params.id), req.params.kind); if (!f) throw Object.assign(new Error('Not found'), { status: 404 });
+      return sendImg(reply, f, 'private, no-store');
+    });
+    api.post<{ Params: { id: string } }>('/api/greetings/:id/publish', async (req) => {
+      const u = req.user!; need(u, 'greetings.publish'); const g = await grOf(req.params.id);
+      const p = publishProblems(g); if (p.length) throw Object.assign(new Error(p.join('; ')), { status: 400, appCode: 'incomplete' });
+      const ng = await greetings.setStatus(g.id, ['DRAFT', 'UNPUBLISHED'], 'PUBLISHED', u.id).catch(grErr);
+      await greetings.audit(g.id, u.id, 'PUBLISHED', { version: ng.version, startsAt: ng.startsAt, endsAt: ng.endsAt, surfaces: ng.surfaces });
+      return { data: grStaff(ng) };
+    });
+    api.post<{ Params: { id: string } }>('/api/greetings/:id/unpublish', async (req) => {
+      const u = req.user!; need(u, 'greetings.publish'); const g = await grOf(req.params.id);
+      const ng = await greetings.setStatus(g.id, ['PUBLISHED'], 'UNPUBLISHED', u.id).catch(grErr);
+      await greetings.audit(g.id, u.id, 'UNPUBLISHED', {}); return { data: grStaff(ng) };
+    });
+    api.delete<{ Params: { id: string } }>('/api/greetings/:id', async (req, reply) => {
+      const u = req.user!; need(u, 'greetings.manage'); const g = await grOf(req.params.id);
+      if (g.status === 'PUBLISHED') throw Object.assign(new Error('Unpublish this greeting before deleting it'), { status: 409, appCode: 'published' });
+      await greetings.remove(g.id); uploads.removeAll(grKey(g.id)); await greetings.audit(g.id, u.id, 'DELETED', { name: g.name });
+      return reply.code(204).send();
+    });
+    // Delivery. Public: website only. Portal (token): PORTAL web or APP. Drafts / unpublished / outside the window are never returned.
+    const feed = async (surface: string, base: string) => (await greetings.live(surface)).map((g) => greetingDto(g, base));
+    app.get<{ Querystring: { surface?: string } }>('/api/public/greetings', async (req, reply) => {
+      if ((req.query?.surface ?? 'PUBLIC').toUpperCase() !== 'PUBLIC') return reply.code(400).send({ error: 'Only the PUBLIC surface is public' });
+      return reply.header('cache-control', 'public, max-age=60').send({ data: await feed('PUBLIC', '/api/public/greetings'), at: new Date().toISOString() });
+    });
+    app.get<{ Params: { id: string; kind: string } }>('/api/public/greetings/:id/image/:kind', async (req, reply) => {
+      const g = await greetings.get(req.params.id);
+      if (!g || !g.surfaces.includes('PUBLIC') || !(await greetings.isLive(g.id))) return reply.code(404).send({ error: 'Not found' });
+      const f = grImage(g, req.params.kind); if (!f) return reply.code(404).send({ error: 'Not found' });
+      return sendImg(reply, f, 'public, max-age=300');
+    });
+    api.get<{ Querystring: { surface?: string } }>('/api/portal/greetings', async (req, reply) => {
+      const s = String(req.query?.surface ?? 'PORTAL').toUpperCase(); if (s !== 'PORTAL' && s !== 'APP') throw bad('Surface must be PORTAL or APP');
+      return reply.header('cache-control', 'private, max-age=60').send({ data: await feed(s, '/api/portal/greetings'), at: new Date().toISOString() });
+    });
+    api.get<{ Params: { id: string; kind: string } }>('/api/portal/greetings/:id/image/:kind', async (req, reply) => {
+      const g = await greetings.get(req.params.id);
+      if (!g || !(g.surfaces.includes('PORTAL') || g.surfaces.includes('APP')) || !(await greetings.isLive(g.id))) throw notFound();
+      const f = grImage(g, req.params.kind); if (!f) throw notFound();
+      return sendImg(reply, f, 'private, max-age=300');
+    });
+
+    // ======================= Customer notification preferences / devices / outbox =======================
+    api.get('/api/portal/me/notifications', async (req) => ({ data: { ...(await notifier.prefs(req.customer!.id)), emailAvailable: notifier.email.enabled, pushAvailable: notifier.push.enabled } }));
+    api.put<{ Body: { email?: boolean; push?: boolean } }>('/api/portal/me/notifications', async (req) => {
+      const b = req.body ?? {}, p: { email?: boolean; push?: boolean } = {};
+      if (typeof b.email === 'boolean') p.email = b.email; if (typeof b.push === 'boolean') p.push = b.push;
+      const n = await notifier.setPrefs(req.customer!.id, p); await portal.audit({ id: req.customer!.id, kind: 'CUSTOMER' }, 'NOTIFY_PREFS', req.customer!.customerId, n);
+      return { data: { ...n, emailAvailable: notifier.email.enabled, pushAvailable: notifier.push.enabled } };
+    });
+    /** Customer app registers its FCM token (separate from staff device tokens). */
+    api.post<{ Body: { token?: string; platform?: string } }>('/api/portal/me/devices', async (req, reply) => {
+      try { await notifier.registerDevice(req.customer!.id, String(req.body?.token ?? ''), req.body?.platform); } catch { throw bad('Invalid token'); }
+      return reply.code(204).send();
+    });
+    api.delete<{ Body: { token?: string } }>('/api/portal/me/devices', async (req, reply) => { await notifier.unregisterDevice(req.customer!.id, req.body?.token ? String(req.body.token) : undefined); return reply.code(204).send(); });
+    /** Super admin: what would have been sent (status / reason only; nothing goes out unless an adapter is configured). */
+    api.get('/api/notification-outbox', async (req) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Super admin only');
+      return { data: { email: notifier.email.enabled, push: notifier.push.enabled, rows: (await notifier.list()).map((r) => ({ id: r.id, channel: r.channel, template: r.template, reference: r.vars.reference, label: r.vars.label, status: r.status, reason: r.reason, createdAt: r.createdAt, processedAt: r.processedAt })) } };
     });
 
     api.get<{ Params: { kind: string } }>('/api/export/:kind', async (req, reply) => {
