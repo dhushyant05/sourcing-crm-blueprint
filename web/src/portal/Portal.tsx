@@ -3,7 +3,8 @@ import { ArrowLeft, Camera, CheckCircle2, ChevronRight, FileText, ImagePlus, Log
 import { PortalApi, PortalHttpError, portalToken, type PortalMe, type PortalQuote, type PortalRequest } from './api';
 import { ACCEPT, EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
 import { NewShipping, ShippingDetail, ShippingList } from './Shipping';
-import type { PortalShipping } from './api';
+import type { PortalShipping, PortalNotifyPrefs } from './api';
+import { PortalGreeting } from '../greetings/Portal';
 
 // Customer portal (English only, mobile-first). Separate login from the staff app; every call goes to /api/portal/*.
 const STAGES: [string, string][] = [['RECEIVED', 'Received'], ['SOURCING', 'Sourcing'], ['QUOTE_READY', 'Quote ready'], ['DECIDED', 'Decided'], ['ORDER', 'Order'], ['SHIPPED', 'Shipped'], ['DELIVERED', 'Delivered']];
@@ -19,10 +20,10 @@ const btn = 'inline-flex min-h-[48px] items-center justify-center gap-2 rounded-
 const primary = `${btn} bg-brand-600 text-white hover:bg-brand-700`;
 const ghost = `${btn} border border-ink-200 text-ink-700 hover:bg-ink-50`;
 
-type View = { name: 'home' } | { name: 'new' } | { name: 'request'; id: string } | { name: 'newShipping' } | { name: 'shipping'; id: string };
+type View = { name: 'home' } | { name: 'new' } | { name: 'request'; id: string } | { name: 'newShipping' } | { name: 'shipping'; id: string } | { name: 'alerts' };
 const fromHash = (): View => {
   const h = location.hash, m = /^#\/r\/([\w-]+)$/.exec(h), s = /^#\/s\/([\w-]+)$/.exec(h);
-  return h === '#/s/new' ? { name: 'newShipping' } : s ? { name: 'shipping', id: s[1] } : m ? { name: 'request', id: m[1] } : h === '#/new' ? { name: 'new' } : { name: 'home' };
+  return h === '#/alerts' ? { name: 'alerts' } : h === '#/s/new' ? { name: 'newShipping' } : s ? { name: 'shipping', id: s[1] } : m ? { name: 'request', id: m[1] } : h === '#/new' ? { name: 'new' } : { name: 'home' };
 };
 
 function Brand() { return <a href="/" className="flex items-center gap-2"><img src="/brand/mark.png" alt="" className="h-8 w-8 object-contain" /><span className="font-semibold text-ink-900">Source Easy</span><span className="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Customer portal</span></a>; }
@@ -221,6 +222,25 @@ function Detail({ api, id, back, reasons }: { api: PortalApi; id: string; back: 
   );
 }
 
+function NotifyPrefs({ api, back }: { api: PortalApi; back: () => void }) {
+  const [p, setP] = useState<PortalNotifyPrefs | null>(null), [err, setErr] = useState<string | null>(null);
+  useEffect(() => { void api.notificationPrefs().then(setP).catch((e) => setErr((e as Error).message)); }, [api]);
+  const set = (k: 'email' | 'push', v: boolean) => api.setNotificationPrefs({ [k]: v }).then(setP).catch((e) => setErr((e as Error).message));
+  const row = (k: 'email' | 'push', title: string, sub: string) => p && <label className="flex items-start gap-3 rounded-xl border border-ink-100 bg-white p-4">
+    <input type="checkbox" className="mt-1 h-5 w-5" checked={p[k]} onChange={(e) => void set(k, e.target.checked)} data-testid={`pref-${k}`} />
+    <span><span className="block font-medium text-ink-900">{title}</span><span className="block text-sm text-ink-500">{sub}</span></span></label>;
+  return (
+    <div className="space-y-4">
+      <button onClick={back} className="inline-flex items-center gap-1 text-sm text-ink-500"><ArrowLeft size={16} />Back</button>
+      <h1 className="text-xl font-semibold text-ink-900">Alerts</h1>
+      <p className="text-sm text-ink-500">We tell you when a quote is ready, an order is confirmed, or a shipment moves. Messages never include passwords.</p>
+      {row('email', 'Email updates', p && !p.emailAvailable ? 'Email updates are not switched on yet. Your choice is saved for when they are.' : 'Sent to the email on your account.')}
+      {row('push', 'App notifications', 'On the Source Easy customer app (coming soon).')}
+      {err && <p role="alert" className="text-sm text-rose-600">{err}</p>}
+    </div>
+  );
+}
+
 export function Portal() {
   const api = useMemo(() => new PortalApi(), []);
   const [signedIn, setSignedIn] = useState(!!portalToken.get()), [me, setMe] = useState<PortalMe | null>(null), [pw, setPw] = useState(false);
@@ -248,12 +268,14 @@ export function Portal() {
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3"><Brand />
           <div className="flex items-center gap-1 text-sm"><span className="hidden text-ink-500 sm:inline">{me.company || me.name}</span>
             <button onClick={() => void refresh()} aria-label="Refresh" className="grid h-10 w-10 place-items-center rounded-lg text-ink-500 hover:bg-ink-50"><RefreshCw size={18} /></button>
+            <button onClick={() => go('#/alerts')} className="rounded-lg px-2 py-2 text-ink-600 hover:bg-ink-50" data-testid="portal-alerts">Alerts</button>
             <button onClick={() => setPw(true)} className="rounded-lg px-2 py-2 text-ink-600 hover:bg-ink-50">Password</button>
             <button onClick={() => { api.logout(); setSignedIn(false); setMe(null); }} aria-label="Sign out" className="grid h-10 w-10 place-items-center rounded-lg text-ink-500 hover:bg-ink-50" data-testid="portal-logout"><LogOut size={18} /></button></div></div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-6">
         {flash && <div role="status" className="mb-4 flex items-center gap-2 rounded-xl bg-accent-50 p-3 text-sm text-accent-800"><CheckCircle2 size={16} />{flash}<button className="ml-auto" aria-label="Dismiss" onClick={() => setFlash(null)}><X size={14} /></button></div>}
-        {view.name === 'home' && <Home list={list} ships={ships} go={go} />}
+        {view.name === 'home' && <><PortalGreeting api={api} /><Home list={list} ships={ships} go={go} /></>}
+        {view.name === 'alerts' && <NotifyPrefs api={api} back={() => go('#/')} />}
         {view.name === 'newShipping' && <NewShipping api={api} cancel={() => go('#/')} done={(r) => { setFlash(`Shipping request ${r.reference} sent. Our team will review it.`); void refresh(); go(`#/s/${r.id}`); }} />}
         {view.name === 'shipping' && <ShippingDetail api={api} id={view.id} reasons={reasons} back={() => go('#/')} />}
         {view.name === 'new' && <NewRequest api={api} cancel={() => go('#/')} done={(r) => { setFlash(`Request ${r.reference} sent. Our team will get back to you.`); void refresh(); go(`#/r/${r.id}`); }} />}

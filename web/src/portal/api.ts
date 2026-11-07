@@ -18,6 +18,7 @@ export interface PortalShipping { id: string; type: 'SHIPPING'; reference: strin
   destAddress?: string | null; destPincode?: string | null; mode?: string | null; incoterm?: string | null; readyDate?: string | null; customerNote?: string | null; question?: string | null;
   freightQuotes?: PortalFreightQuote[]; files?: PortalFile[]; timeline?: { at: string; kind: string; text: string }[] }
 export interface PortalShippableOrder { id: string; leadReference: string | null; product: string; qty: number }
+export interface PortalNotifyPrefs { email: boolean; push: boolean; emailAvailable: boolean; pushAvailable: boolean }
 export class PortalHttpError extends Error { status: number; code?: string; constructor(msg: string, status: number, code?: string) { super(msg); this.status = status; this.code = code; } }
 
 const KEY = 'se.portal.token';
@@ -61,6 +62,17 @@ export class PortalApi {
   shippableOrders() { return this.call<{ data: PortalShippableOrder[] }>('GET', '/shippable-orders').then((r) => r.data); }
   acceptFreight(qid: string) { return this.call<{ data: PortalShipping }>('POST', `/freight-quotes/${encodeURIComponent(qid)}/accept`, {}).then((r) => r.data); }
   rejectFreight(qid: string, reasonCode: string, reason: string) { return this.call<{ data: PortalShipping }>('POST', `/freight-quotes/${encodeURIComponent(qid)}/reject`, { reasonCode, reason }).then((r) => r.data); }
+  greetings() { return this.call<{ data: import('../greetings/Banner').Greeting[] }>('GET', '/greetings?surface=PORTAL').then((r) => r.data); }
+  /** Authenticated image → blob URL (portal greeting artwork is not public). */
+  async blobUrl(path: string) {
+    if (!path.startsWith('/api/portal/')) throw new PortalHttpError('Bad link', 400);
+    const res = await fetch(path, { headers: { authorization: `Bearer ${portalToken.get()}` } });
+    if (!res.ok) throw new PortalHttpError('Could not load', res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+  notificationPrefs() { return this.call<{ data: PortalNotifyPrefs }>('GET', '/me/notifications').then((r) => r.data); }
+  setNotificationPrefs(p: { email?: boolean; push?: boolean }) { return this.call<{ data: PortalNotifyPrefs }>('PUT', '/me/notifications', p).then((r) => r.data); }
+  freightPdf(qid: string) { return this.openPath(`/api/portal/freight-quotes/${encodeURIComponent(qid)}/pdf`); }
   /** Opens one of the customer's own uploads (fetched with the token, shown as a blob URL). */
   openFile(requestId: string, f: PortalFile, kind: 'requests' | 'shipping-requests' = 'requests') { return this.openPath(`/api/portal/${kind}/${encodeURIComponent(requestId)}/files/${encodeURIComponent(f.id)}`); }
   /** Opens an authenticated portal document (quote PDF, file) as a blob URL; never a public link. */

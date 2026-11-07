@@ -145,6 +145,7 @@ function FreightCard({ q, api, reasons, onChange }: { q: PortalFreightQuote; api
       <div className="mt-1 text-lg font-semibold text-ink-900">{inr(q.amount)}</div>
       <div className="text-xs text-ink-500">{[q.mode && MODES.find(([k]) => k === q.mode)?.[1], q.incoterm, q.transit && `Transit ${q.transit}`, q.validUntil && `Valid until ${day(q.validUntil)}`].filter(Boolean).join(' · ')}</div>
       {q.note && <p className="mt-2 whitespace-pre-line text-sm text-ink-700">{q.note}</p>}
+      <button type="button" onClick={() => void api.freightPdf(q.id).catch(() => setErr('Could not open the PDF'))} className={`${ghost} mt-3`} data-testid="fq-pdf">Freight quote PDF</button>
       {q.canDecide && mode === 'idle' && <div className="mt-3 flex gap-2"><button onClick={() => setMode('accept')} className={primary} data-testid="fq-accept">Accept</button><button onClick={() => setMode('reject')} className={ghost} data-testid="fq-reject">Decline</button></div>}
       {mode === 'accept' && <div className="mt-3 rounded-xl bg-brand-50 p-3 text-sm"><p className="text-ink-700">Accept {q.label} for {inr(q.amount)}? Source Easy will then book the shipment.</p>
         <div className="mt-2 flex gap-2"><button disabled={busy} onClick={() => run(() => api.acceptFreight(q.id))} className={primary} data-testid="fq-accept-confirm">Yes, accept</button><button onClick={() => setMode('idle')} className={ghost}>Cancel</button></div></div>}

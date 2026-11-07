@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff, GreetingStaff } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -34,6 +34,18 @@ export interface Api {
   srAction?(id: string, action: 'assign' | 'needs-info' | 'reject' | 'cancel' | 'accept' | 'freight-quotes' | 'stage', body?: Record<string, unknown>): Promise<ShippingRequestStaff>;
   srPatch?(id: string, body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   srFileUrl?(id: string, fileId: string): Promise<string>;
+  srFqPdfUrl?(id: string, qid: string): Promise<string>;
+  createShippingRequest?(body: Record<string, unknown>): Promise<ShippingRequestStaff>;
+  shippableOrders?(customerId: string): Promise<{ id: string; leadReference: string | null; product: string; qty: number }[]>;
+  /** Greetings (greetings.manage / greetings.publish). */
+  greetings?(): Promise<GreetingStaff[]>;
+  greeting?(id: string): Promise<GreetingStaff>;
+  saveGreeting?(body: Record<string, unknown>, id?: string): Promise<GreetingStaff>;
+  deleteGreeting?(id: string): Promise<void>;
+  greetingAction?(id: string, action: 'publish' | 'unpublish'): Promise<GreetingStaff>;
+  uploadGreetingImage?(id: string, kind: 'desktop' | 'mobile', file: File): Promise<GreetingStaff>;
+  removeGreetingImage?(id: string, kind: 'desktop' | 'mobile'): Promise<GreetingStaff>;
+  greetingImageUrl?(path: string): Promise<string>;
   rejectPortalRequest?(id: string, reason: string): Promise<PortalLoginRequest>;
   portalLogin?(customerId: string): Promise<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>;
   issuePortalLogin?(customerId: string, phone?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
@@ -258,6 +270,28 @@ export class ServerApi implements Api {
   shippingRequest(id: string) { return this.req<ShippingRequestStaff>('GET', `/shipping-requests/${encodeURIComponent(id)}`); }
   srAction(id: string, action: string, body: Record<string, unknown> = {}) { return this.req<ShippingRequestStaff>('POST', `/shipping-requests/${encodeURIComponent(id)}/${action}`, body); }
   srPatch(id: string, body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('PATCH', `/shipping-requests/${encodeURIComponent(id)}`, body); }
+  srFqPdfUrl(id: string, qid: string) { return this.blob(`/api/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}/pdf`); }
+  createShippingRequest(body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('POST', '/shipping-requests', body); }
+  shippableOrders(customerId: string) { return this.req<{ id: string; leadReference: string | null; product: string; qty: number }[]>('GET', `/customers/${encodeURIComponent(customerId)}/shippable-orders`); }
+  greetings() { return this.req<GreetingStaff[]>('GET', '/greetings'); }
+  greeting(id: string) { return this.req<GreetingStaff>('GET', `/greetings/${encodeURIComponent(id)}`); }
+  saveGreeting(body: Record<string, unknown>, id?: string) { return this.req<GreetingStaff>(id ? 'PATCH' : 'POST', id ? `/greetings/${encodeURIComponent(id)}` : '/greetings', body); }
+  async deleteGreeting(id: string) { await this.req('DELETE', `/greetings/${encodeURIComponent(id)}`); }
+  greetingAction(id: string, action: 'publish' | 'unpublish') { return this.req<GreetingStaff>('POST', `/greetings/${encodeURIComponent(id)}/${action}`, {}); }
+  async uploadGreetingImage(id: string, kind: 'desktop' | 'mobile', file: File) {
+    const fd = new FormData(); fd.append('files', file, file.name);
+    const res = await fetch(`/api/greetings/${encodeURIComponent(id)}/image/${kind}`, { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });
+    const j = await res.json().catch(() => ({})); if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j); return j.data as GreetingStaff;
+  }
+  removeGreetingImage(id: string, kind: 'desktop' | 'mobile') { return this.req<GreetingStaff>('DELETE', `/greetings/${encodeURIComponent(id)}/image/${kind}`); }
+  greetingImageUrl(path: string) { if (!path.startsWith('/api/greetings/')) return Promise.reject(new HttpError('Bad link', 400)); return this.blob(path); }
+  private async blob(path: string) {
+    const res = await fetch(path, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
   async srFileUrl(id: string, fileId: string) {
     const res = await fetch(`/api/shipping-requests/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, { headers: { authorization: `Bearer ${this.token}` } });
     if (res.status === 401) this.onAuthError();

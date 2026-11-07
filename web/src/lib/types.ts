@@ -138,3 +138,12 @@ export interface ShippingRequestStaff {
   freightQuotes?: FreightQuoteStaff[]; files?: (Attachment & { customerVisible: boolean })[];
   events?: { at: string; kind: string; by: string | null; data: Record<string, unknown>; customerVisible: boolean; customerText: string | null }[];
 }
+
+/** Staff view of a greeting banner (GET /api/greetings). `preview` is the customer-safe DTO with staff image URLs. */
+export interface GreetingStaff {
+  id: string; name: string; status: 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED'; layout: 'IMAGE' | 'CLASSIC' | 'FESTIVE' | 'MINIMAL'; theme: 'BRAND' | 'GOLD' | 'NIGHT' | 'ROSE';
+  heading: string | null; message: string | null; altText: string | null; linkPath: string | null; linkLabel: string | null; imageDesktop: string | null; imageMobile: string | null;
+  surfaces: ('PUBLIC' | 'PORTAL' | 'APP')[]; startsAt: string; endsAt: string; priority: number; dismissible: boolean; version: number;
+  createdByName: string | null; updatedByName: string | null; publishedByName: string | null; publishedAt: string | null; createdAt: string; updatedAt: string;
+  preview: import('../greetings/Banner').Greeting; problems: string[]; audit?: { at: string; action: string; by: string | null; detail: unknown }[];
+}
