@@ -10,7 +10,7 @@ export interface PortalRequest { id: string; type: 'SOURCING'; reference: string
   deliveryCity?: string | null; message?: string | null; targetPrice?: { amount: number; currency: string } | null;
   files?: PortalFile[]; quotes?: PortalQuote[]; orders?: PortalOrder[]; timeline?: { at: string; kind: string; text: string }[] }
 export interface PortalTracking { stage: string; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null; shipmentRef: string | null }
-export interface PortalFreightQuote { id: string; label: string; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null;
+export interface PortalFreightQuote { id: string; label: string; version: number; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null;
   note: string | null; status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'; createdAt: string; decidedAt: string | null; canDecide: boolean }
 export interface PortalShipping { id: string; type: 'SHIPPING'; reference: string; kind: 'SOURCED' | 'FREIGHT_ONLY'; status: string; goods: string; quantity: number | null; unit: string | null;
   destCity: string | null; createdAt: string; leadReference: string | null; quoteWaiting: boolean; tracking: PortalTracking | null; canCancel: boolean; canReply: boolean;
@@ -64,7 +64,8 @@ export class PortalApi {
   replyShipping(id: string, fd: FormData) { return this.call<{ data: PortalShipping }>('POST', `/shipping-requests/${encodeURIComponent(id)}/reply`, fd).then((r) => r.data); }
   cancelShipping(id: string) { return this.call<{ data: PortalShipping }>('POST', `/shipping-requests/${encodeURIComponent(id)}/cancel`, {}).then((r) => r.data); }
   shippableOrders() { return this.call<{ data: PortalShippableOrder[] }>('GET', '/shippable-orders').then((r) => r.data); }
-  acceptFreight(qid: string) { return this.call<{ data: PortalShipping }>('POST', `/freight-quotes/${encodeURIComponent(qid)}/accept`, {}).then((r) => r.data); }
+  /** Echoes exactly what the customer was shown; the server refuses (409 stale) if the quote changed since. */
+  acceptFreight(q: Pick<PortalFreightQuote, 'id' | 'version' | 'amount' | 'currency'>) { return this.call<{ data: PortalShipping }>('POST', `/freight-quotes/${encodeURIComponent(q.id)}/accept`, { version: q.version, amount: q.amount, currency: q.currency }).then((r) => r.data); }
   rejectFreight(qid: string, reasonCode: string, reason: string) { return this.call<{ data: PortalShipping }>('POST', `/freight-quotes/${encodeURIComponent(qid)}/reject`, { reasonCode, reason }).then((r) => r.data); }
   greetings() { return this.call<{ data: import('../greetings/Banner').Greeting[] }>('GET', '/greetings?surface=PORTAL').then((r) => r.data); }
   /** Authenticated image → blob URL (portal greeting artwork is not public). */

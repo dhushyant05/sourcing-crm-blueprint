@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { setup } from './portal-helpers.js';
+import { setup, acceptFq, seenFq } from './portal-helpers.js';
 
 // Super-admin edit / delete / revert of freight (shipping) quotes.
 describe('freight quote super-admin controls', () => {
@@ -30,7 +30,7 @@ describe('freight quote super-admin controls', () => {
     await call('sa', 'PATCH', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { internalCost: 40000, reason: 'cost fix' });
     expect((await fq()).timeline.filter((x: any) => x.text === 'Freight quote F1 updated')).toHaveLength(1);
     // The customer accepts the corrected amount; an accepted quote cannot be edited or deleted without a revert.
-    expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`)).json().data.status).toBe('ACCEPTED');
+    expect((await acceptFq(as, A.token, q.id)).json().data.status).toBe('ACCEPTED');
     expect((await call('sa', 'PATCH', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { amount: 1, reason: 'late change' })).json().code).toBe('accepted');
     expect((await call('sa', 'DELETE', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { reason: 'gone', confirm: true })).json().code).toBe('accepted');
   });
@@ -38,7 +38,7 @@ describe('freight quote super-admin controls', () => {
   it('revert: accepted → sent again (request back to QUOTED), needs reason + confirm, blocked once booked, never rolls stages back', async () => {
     const { call, as, A, id, fq } = await start();
     const q = (await fq()).freightQuotes[0];
-    await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`);
+    await acceptFq(as, A.token, q.id);
     expect((await call('ia', 'POST', `/api/shipping-requests/${id}/freight-quotes/${q.id}/revert`, { reason: 'wrong', confirm: true })).statusCode).toBe(403);
     expect((await call('sa', 'POST', `/api/shipping-requests/${id}/freight-quotes/${q.id}/revert`, { reason: 'wrong' })).json().code).toBe('confirm');
     const rv = await call('sa', 'POST', `/api/shipping-requests/${id}/freight-quotes/${q.id}/revert`, { reason: 'Customer accepted by mistake (internal)', confirm: true });
@@ -52,7 +52,7 @@ describe('freight quote super-admin controls', () => {
     // Twice is idempotent-safe: second revert is refused.
     expect((await call('sa', 'POST', `/api/shipping-requests/${id}/freight-quotes/${q.id}/revert`, { reason: 'again', confirm: true })).json().code).toBe('state');
     // Accept again, China books → revert/delete are blocked with a reason, and the booking stays.
-    await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`);
+    await acceptFq(as, A.token, q.id);
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'BOOKED', carrier: 'COSCO' })).json().data.status).toBe('BOOKED');
     const blocked = await call('sa', 'POST', `/api/shipping-requests/${id}/freight-quotes/${q.id}/revert`, { reason: 'too late', confirm: true });
     expect(blocked.json().code).toBe('booked'); expect(blocked.json().error).toMatch(/not rolled back/);
@@ -63,7 +63,7 @@ describe('freight quote super-admin controls', () => {
   it('revert racing China booking: exactly one wins, never an unaccepted booked request', async () => {
     const { call, as, A, id, fq } = await start();
     const q = (await fq()).freightQuotes[0];
-    await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`);
+    await acceptFq(as, A.token, q.id);
     const [rv, bk] = await Promise.all([
       call('sa', 'POST', `/api/shipping-requests/${id}/freight-quotes/${q.id}/revert`, { reason: 'race', confirm: true }),
       call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'BOOKED' }),
@@ -84,7 +84,7 @@ describe('freight quote super-admin controls', () => {
     const d = await fq();
     expect(d).toMatchObject({ status: 'UNDER_REVIEW', freightQuotes: [], quoteWaiting: false });
     expect(d.timeline.at(-1).text).toBe('Freight quote F1 withdrawn'); expect(JSON.stringify(d)).not.toContain('wrong customer');
-    expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`)).statusCode).toBe(404);
+    expect((await acceptFq(as, A.token, q.id)).statusCode).toBe(404);
     expect((await as(A.token, 'GET', `/api/portal/freight-quotes/${q.id}/pdf`)).statusCode).toBe(404);
     expect((await call('sa', 'GET', `/api/shipping-requests/${id}/freight-quotes/${q.id}/pdf`)).statusCode).toBe(404);
     expect((await call('sa', 'DELETE', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { reason: 'again', confirm: true })).statusCode).toBe(404);
@@ -92,5 +92,36 @@ describe('freight quote super-admin controls', () => {
     const n2 = (await call('is', 'POST', `/api/shipping-requests/${id}/freight-quotes`, { amount: 52000 })).json().data.freightQuotes;
     expect(n2.map((x: any) => x.label.slice(-2))).toEqual(['F2']);
     expect((await call('sa', 'GET', `/api/shipping-requests/${id}`)).json().data.events.some((e: any) => e.kind === 'FQ_DELETED' && e.data.reason === 'wrong customer quote')).toBe(true);
+  });
+
+  it('version handshake: legacy/no-echo accept fails closed; a stale displayed price is refused; internal-cost-only edit keeps the version', async () => {
+    const { call, as, A, id, fq } = await start();
+    const q = (await fq()).freightQuotes[0];
+    expect(q.version).toBe(1);
+    const legacy = await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`, {});
+    expect(legacy.statusCode).toBe(409); expect(legacy.json().code).toBe('update_required');
+    expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`)).json().code).toBe('update_required');
+    const shown = await seenFq(as, A.token, q.id);
+    await call('sa', 'PATCH', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { internalCost: 39000, reason: 'cost only' });
+    expect((await fq()).freightQuotes[0].version).toBe(1); // representation unchanged → no re-review
+    await call('sa', 'PATCH', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { amount: 61000, reason: 'price up' });
+    const stale = await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`, shown);
+    expect(stale.statusCode).toBe(409); expect(stale.json().code).toBe('stale');
+    // Tampered echo (right version, wrong amount) is refused too.
+    expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`, { ...shown, version: 2 })).json().code).toBe('stale');
+    const d = await fq(); expect(d.freightQuotes[0]).toMatchObject({ version: 2, amount: 61000, status: 'SENT', canDecide: true });
+    expect((await acceptFq(as, A.token, q.id)).json().data.freightQuotes[0]).toMatchObject({ status: 'ACCEPTED', amount: 61000 });
+  });
+
+  for (const order of ['edit-first', 'accept-first'] as const) it(`edit vs accept race (${order}, concurrent): the accepted amount is always the one the customer saw`, async () => {
+    const { call, as, A, id, fq } = await start();
+    const q = (await fq()).freightQuotes[0]; const shown = await seenFq(as, A.token, q.id);
+    const edit = () => call('sa', 'PATCH', `/api/shipping-requests/${id}/freight-quotes/${q.id}`, { amount: 99000, reason: 'race' });
+    const acc = () => as(A.token, 'POST', `/api/portal/freight-quotes/${q.id}/accept`, shown);
+    const [e, a] = order === 'edit-first' ? await Promise.all([edit(), acc()]) : (await Promise.all([acc(), edit()])).reverse();
+    expect([e.statusCode, a.statusCode].filter((c) => c === 200)).toHaveLength(1);
+    const s = (await call('sa', 'GET', `/api/shipping-requests/${id}`)).json().data.freightQuotes[0];
+    if (s.status === 'ACCEPTED') { expect(s.amount).toBe(50000); expect(e.statusCode).toBe(409); }
+    else { expect(s).toMatchObject({ status: 'SENT', amount: 99000 }); expect(a.json().code).toBe('stale'); }
   });
 });

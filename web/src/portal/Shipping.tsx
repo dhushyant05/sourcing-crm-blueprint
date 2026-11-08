@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Camera, ChevronRight, ImagePlus, Send, Ship, X } from 'lucide-react';
 import type { PortalApi, PortalFreightQuote, PortalShippableOrder, PortalShipping } from './api';
+import { PortalHttpError } from './api';
 import { ACCEPT, EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
 
 // Customer portal: Shipping Requests (SH-YYMM-NNNN). English only, mobile-first.
@@ -134,9 +135,9 @@ export function NewShipping({ api, done, cancel }: { api: PortalApi; done: (r: P
   );
 }
 
-function FreightCard({ q, api, reasons, onChange }: { q: PortalFreightQuote; api: PortalApi; reasons: string[]; onChange: (r: PortalShipping) => void }) {
+function FreightCard({ q, api, reasons, onChange, reload }: { q: PortalFreightQuote; api: PortalApi; reasons: string[]; onChange: (r: PortalShipping) => void; reload: () => void }) {
   const [mode, setMode] = useState<'idle' | 'accept' | 'reject'>('idle'), [code, setCode] = useState('PRICE'), [why, setWhy] = useState(''), [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false);
-  const run = async (f: () => Promise<PortalShipping>) => { setBusy(true); setErr(null); try { onChange(await f()); setMode('idle'); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); } };
+  const run = async (f: () => Promise<PortalShipping>) => { setBusy(true); setErr(null); try { onChange(await f()); setMode('idle'); } catch (x) { setErr((x as Error).message); if ((x as PortalHttpError).status === 409) { setMode('idle'); reload(); } } finally { setBusy(false); } };
   const tone = q.status === 'ACCEPTED' ? 'bg-accent-50 text-accent-700' : q.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : q.status === 'WITHDRAWN' ? 'bg-ink-100 text-ink-500' : 'bg-amber-50 text-amber-800';
   return (
     <div className="rounded-xl border border-ink-100 p-4" data-testid={`portal-fq-${q.id}`}>
@@ -148,7 +149,7 @@ function FreightCard({ q, api, reasons, onChange }: { q: PortalFreightQuote; api
       <button type="button" onClick={() => void api.freightPdf(q.id).catch(() => setErr('Could not open the PDF'))} className={`${ghost} mt-3`} data-testid="fq-pdf">Freight quote PDF</button>
       {q.canDecide && mode === 'idle' && <div className="mt-3 flex gap-2"><button onClick={() => setMode('accept')} className={primary} data-testid="fq-accept">Accept</button><button onClick={() => setMode('reject')} className={ghost} data-testid="fq-reject">Decline</button></div>}
       {mode === 'accept' && <div className="mt-3 rounded-xl bg-brand-50 p-3 text-sm"><p className="text-ink-700">Accept {q.label} for {inr(q.amount)}? Source Easy will then book the shipment.</p>
-        <div className="mt-2 flex gap-2"><button disabled={busy} onClick={() => run(() => api.acceptFreight(q.id))} className={primary} data-testid="fq-accept-confirm">Yes, accept</button><button onClick={() => setMode('idle')} className={ghost}>Cancel</button></div></div>}
+        <div className="mt-2 flex gap-2"><button disabled={busy} onClick={() => run(() => api.acceptFreight(q))} className={primary} data-testid="fq-accept-confirm">Yes, accept</button><button onClick={() => setMode('idle')} className={ghost}>Cancel</button></div></div>}
       {mode === 'reject' && <div className="mt-3 space-y-2 rounded-xl bg-ink-50 p-3 text-sm">
         <select value={code} onChange={(e) => setCode(e.target.value)} className={field} aria-label="Reason">{reasons.map((r) => <option key={r} value={r}>{REASONS[r] ?? r}</option>)}</select>
         <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} placeholder="Anything we should know? (optional)" className={`${field} py-3`} />
@@ -192,7 +193,7 @@ export function ShippingDetail({ api, id, back, reasons }: { api: PortalApi; id:
         <button disabled={busy} className={primary}><Send size={16} />{busy ? 'Sending…' : 'Send'}</button>
       </form>}
       {!!r.freightQuotes?.length && <section className="space-y-3"><h2 className="font-semibold text-ink-900">Freight quotes</h2>
-        {[...r.freightQuotes].reverse().map((q) => <FreightCard key={q.id} q={q} api={api} reasons={reasons} onChange={setR} />)}</section>}
+        {[...r.freightQuotes].reverse().map((q) => <FreightCard key={q.id} q={q} api={api} reasons={reasons} onChange={setR} reload={() => void load()} />)}</section>}
       {t && <section className="rounded-2xl border border-ink-100 bg-white p-4 text-sm"><h2 className="mb-2 font-semibold text-ink-900">Tracking</h2>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
           <dt className="text-ink-500">Stage</dt><dd>{SR_STATUS[t.stage] ?? t.stage}</dd>

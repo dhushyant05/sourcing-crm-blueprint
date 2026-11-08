@@ -2099,7 +2099,7 @@ export async function buildApp(o: AppOptions) {
       return { ...base, packages: r.packages, weightKg: r.weightKg, cbm: r.cbm, shipperName: r.shipperName, shipperPhone: r.shipperPhone, pickupAddress: r.pickupAddress, pickupCity: r.pickupCity,
         destAddress: r.destAddress, destPincode: r.destPincode, mode: r.mode, incoterm: r.incoterm, readyDate: r.readyDate, customerNote: r.customerNote,
         question: r.status === 'NEEDS_INFO' ? r.question : null,
-        freightQuotes: fqs.map((q) => ({ id: q.id, label: `${r.ref}-F${q.n}`, amount: q.amount, currency: q.currency, mode: q.mode, incoterm: q.incoterm,
+        freightQuotes: fqs.map((q) => ({ id: q.id, label: `${r.ref}-F${q.n}`, version: q.customerRev, amount: q.amount, currency: q.currency, mode: q.mode, incoterm: q.incoterm,
           transit: q.transit, validUntil: q.validUntil, note: q.customerNote, status: q.status, createdAt: q.createdAt, decidedAt: q.decidedAt, canDecide: q.status === 'SENT' && r.status === 'QUOTED' })),
         files: srFiles(r, await srs.customerFileIds(r.id)), timeline: await srs.customerEvents(r.id) };
     };
@@ -2227,7 +2227,7 @@ export async function buildApp(o: AppOptions) {
       if (q.status !== 'SENT') throw Object.assign(new Error('Only an outstanding (sent) quote can be edited; send a new quote instead'), { status: 409, appCode: 'state' });
       const patch = Object.fromEntries(Object.entries(b).filter(([k]) => ['amount', 'mode', 'incoterm', 'transit', 'validUntil', 'customerNote', 'internalCost'].includes(k)));
       const res = await o.db.tx((t) => srs.editQuote(q.id, patch, reason, u.id, t)).catch(srErr);
-      const customerFacing = res.fields.some((k) => k !== 'internal_cost');
+      const customerFacing = res.quote.customerRev !== q.customerRev;
       await srs.log(r.id, 'FQ_REVISED', srActor(u), { n: q.n, quoteId: q.id, revision: res.quote.revision, fields: res.fields, reason }, undefined, customerFacing ? undefined : null);
       const nr = (await srs.get(r.id))!; await srLive(nr); return { data: await srStaff(u, nr, true) };
     });
@@ -2435,10 +2435,14 @@ export async function buildApp(o: AppOptions) {
       const { q, r } = await ownFq(req.customer!, req.params.qid);
       return sendPdf(reply, await fqPdf(r, q), `Freight-quote-${r.ref}-F${q.n}`);
     });
-    api.post<{ Params: { qid: string } }>('/api/portal/freight-quotes/:qid/accept', async (req) => {
+    api.post<{ Params: { qid: string }; Body: { version?: unknown; amount?: unknown; currency?: unknown } }>('/api/portal/freight-quotes/:qid/accept', async (req) => {
       const c = req.customer!; const { q, r } = await ownFq(c, req.params.qid);
       if (q.status !== 'SENT' || r.status !== 'QUOTED') throw Object.assign(new Error('This freight quote was already decided'), { status: 409, appCode: 'decided' });
-      await o.db.tx(async (t) => { await srs.decideQuote(q.id, 'ACCEPTED', {}, t); await srs.setStatus(r.id, ['QUOTED'], 'ACCEPTED', {}, t); }).catch(srErr);
+      // Fail closed: clients that do not echo what they displayed (e.g. customer app 1.0.0) cannot accept; they are told to update/refresh.
+      const b = req.body ?? {}, version = Number(b.version), amount = Number(b.amount), currency = typeof b.currency === 'string' ? b.currency : '';
+      if (!Number.isInteger(version) || !Number.isFinite(amount) || !currency)
+        throw Object.assign(new Error('Please update the Source Easy app (or refresh the page) and review the latest quote before accepting.'), { status: 409, appCode: 'update_required' });
+      await o.db.tx(async (t) => { await srs.decideQuote(q.id, 'ACCEPTED', {}, t, { version, amount, currency }); await srs.setStatus(r.id, ['QUOTED'], 'ACCEPTED', {}, t); }).catch(srErr);
       await srs.log(r.id, 'FQ_ACCEPTED', cActor(c), { n: q.n, quoteId: q.id });
       const nr = (await srs.get(r.id))!;
       await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, `Freight quote ${r.ref}-F${q.n} accepted, ready to book`); await srLive(nr);

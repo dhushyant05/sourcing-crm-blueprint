@@ -56,7 +56,7 @@ export interface ShippingRequest {
   createdAt: string; updatedAt: string;
 }
 export interface FreightQuote { id: string; requestId: string; n: number; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null;
-  validUntil: string | null; customerNote: string | null; internalCost: number | null; status: string; reasonCode: string | null; reason: string | null; createdBy: string | null; createdAt: string; decidedAt: string | null; revision: number }
+  validUntil: string | null; customerNote: string | null; internalCost: number | null; status: string; reasonCode: string | null; reason: string | null; createdBy: string | null; createdAt: string; decidedAt: string | null; revision: number; customerRev: number }
 
 const num = (v: unknown) => (v == null || v === '' ? null : Number(v));
 const d10 = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
@@ -68,7 +68,7 @@ const row = (r: any): ShippingRequest => ({ id: r.id, ref: r.ref, kind: r.kind, 
   createdAt: r.created_at, updatedAt: r.updated_at });
 const fq = (r: any): FreightQuote => ({ id: r.id, requestId: r.request_id, n: Number(r.n), amount: Number(r.amount), currency: r.currency, mode: r.mode, incoterm: r.incoterm, transit: r.transit,
   validUntil: d10(r.valid_until), customerNote: r.customer_note, internalCost: num(r.internal_cost), status: r.status, reasonCode: r.reason_code, reason: r.reason, createdBy: r.created_by,
-  createdAt: r.created_at, decidedAt: r.decided_at , revision: Number(r.revision ?? 1) });
+  createdAt: r.created_at, decidedAt: r.decided_at , revision: Number(r.revision ?? 1), customerRev: Number(r.customer_rev ?? 1) });
 
 const str = (v: unknown, max = 200) => { const t = v == null ? '' : String(v).trim(); return t ? t.slice(0, max) : null; };
 const pos = (v: unknown, what: string, int = false) => {
@@ -171,9 +171,15 @@ export class ShippingStore {
     if ('validUntil' in b) v.valid_until = date(b.validUntil, 'Valid until');
     if ('customerNote' in b) v.customer_note = str(b.customerNote, 1000);
     if ('internalCost' in b) v.internal_cost = pos(b.internalCost, 'Internal cost');
-    const ks = Object.keys(v); if (!ks.length) throw new SrError('Nothing to change', 400, 'required');
+    // Row lock first: a concurrent customer accept either commits before us (then status is no longer SENT and we refuse)
+    // or waits and then fails its version check because customer_rev moved.
+    const cur: any = await db.get("SELECT * FROM freight_quotes WHERE id = ? AND status = 'SENT' AND deleted_at IS NULL FOR UPDATE", id);
+    if (!cur) throw new SrError('Only an outstanding (sent) freight quote can be edited; revert an accepted one first', 409, 'state');
+    const same = (a: unknown, b: unknown) => (a == null ? null : String(Number.isFinite(Number(a)) && a !== '' ? Number(a) : a)) === (b == null ? null : String(Number.isFinite(Number(b)) && b !== '' ? Number(b) : b));
+    const ks = Object.keys(v).filter((k) => !same(cur[k], v[k])); if (!ks.length) throw new SrError('Nothing to change', 400, 'required');
+    const customerFacing = ks.some((k) => k !== 'internal_cost');
     await this.snapshot(db, id, 'EDIT', reason, by);
-    const n = await db.run(`UPDATE freight_quotes SET ${ks.map((k) => `${k} = ?`).join(', ')}, revision = revision + 1 WHERE id = ? AND status = 'SENT' AND deleted_at IS NULL`, ...ks.map((k) => v[k]), id);
+    const n = await db.run(`UPDATE freight_quotes SET ${ks.map((k) => `${k} = ?`).join(', ')}, revision = revision + 1${customerFacing ? ', customer_rev = customer_rev + 1' : ''} WHERE id = ? AND status = 'SENT' AND deleted_at IS NULL`, ...ks.map((k) => v[k]), id);
     if (!n) throw new SrError('Only an outstanding (sent) freight quote can be edited; revert an accepted one first', 409, 'state');
     return { quote: fq(await db.get('SELECT * FROM freight_quotes WHERE id = ?', id)), fields: ks };
   }
@@ -200,9 +206,15 @@ export class ShippingStore {
       id, requestId, n, amount, v.mode, v.incoterm, v.transit, v.validUntil, v.customerNote, v.internalCost, by);
     return fq(await db.get('SELECT * FROM freight_quotes WHERE id = ?', id));
   }
-  async decideQuote(id: string, status: 'ACCEPTED' | 'REJECTED', why: { code?: string | null; reason?: string | null } = {}, db: Db = this.db) {
-    const n = await db.run("UPDATE freight_quotes SET status = ?, reason_code = ?, reason = ?, decided_at = now() WHERE id = ? AND status = 'SENT'", status, why.code ?? null, why.reason ?? null, id);
-    if (!n) throw new SrError('This freight quote was already decided or withdrawn', 409, 'decided');
+  /** `seen` (required for ACCEPTED): the customer-visible version, amount and currency the customer was shown. Compare-and-set in one UPDATE. */
+  async decideQuote(id: string, status: 'ACCEPTED' | 'REJECTED', why: { code?: string | null; reason?: string | null } = {}, db: Db = this.db, seen?: { version: number; amount: number; currency: string }) {
+    if (status === 'ACCEPTED' && !seen) throw new SrError('Please refresh and review the latest quote', 409, 'update_required');
+    const extra = seen ? ' AND customer_rev = ? AND amount = ? AND currency = ?' : '';
+    const n = await db.run(`UPDATE freight_quotes SET status = ?, reason_code = ?, reason = ?, decided_at = now() WHERE id = ? AND status = 'SENT' AND deleted_at IS NULL${extra}`, status, why.code ?? null, why.reason ?? null, id, ...(seen ? [seen.version, seen.amount, seen.currency] : []));
+    if (!n) {
+      if (seen && await db.get("SELECT 1 FROM freight_quotes WHERE id = ? AND status = 'SENT' AND deleted_at IS NULL", id)) throw new SrError('This quote was updated. Please review the new amount and terms before accepting.', 409, 'stale');
+      throw new SrError('This freight quote was already decided or withdrawn', 409, 'decided');
+    }
   }
   async hasAccepted(requestId: string) { return !!(await this.db.get("SELECT 1 FROM freight_quotes WHERE request_id = ? AND status = 'ACCEPTED'", requestId)); }
   // ---- files ----

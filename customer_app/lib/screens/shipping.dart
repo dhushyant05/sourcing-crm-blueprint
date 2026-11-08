@@ -60,7 +60,7 @@ class _ShippingDetailScreenState extends State<ShippingDetailScreen> {
   Future<void> _run(Future<Json> Function() f, [String? ok]) async {
     setState(() => _busy = true);
     try { final r = await f(); if (mounted) { setState(() => _r = r); if (ok != null) toast(context, ok); } }
-    on PortalError catch (e) { if (mounted) toast(context, e.message); }
+    on PortalError catch (e) { if (mounted) toast(context, e.message); if (e.status == 409) unawaited(_load()); }
     catch (_) { if (mounted) toast(context, 'Could not reach Source Easy.'); }
     finally { if (mounted) setState(() => _busy = false); }
   }
@@ -132,7 +132,7 @@ class _ShippingDetailScreenState extends State<ShippingDetailScreen> {
               final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Accept freight quote?'),
                   content: Text('Accept ${q['label']} for ${inr(q['amount'])}? Source Easy will then book the shipment.'),
                   actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(key: const Key('fq-accept-confirm'), onPressed: () => Navigator.pop(c, true), child: const Text('Yes, accept'))]));
-              if (ok == true) await _run(() => widget.api.acceptFreight('${q['id']}'), 'Freight quote accepted');
+              if (ok == true) await _run(() => widget.api.acceptFreight(q), 'Freight quote accepted');
             }, child: const Text('Accept')),
             OutlinedButton(key: const Key('fq-reject'), onPressed: _busy ? null : () async {
               final d = await declineDialog(context, _reasons);
