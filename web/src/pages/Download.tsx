@@ -21,7 +21,7 @@ export function AppDownloadButton({ variant = 'light', className = '' }: { varia
   }[variant];
   return (
     <a href={DOWNLOAD_PAGE} data-testid="android-download" className={`inline-flex min-h-[36px] items-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium transition ${cls} ${className}`}>
-      <Smartphone size={16} />{t('download.button')}
+      <Smartphone size={16} />{t('download.staffButton')}
     </a>
   );
 }

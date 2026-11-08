@@ -415,7 +415,16 @@
       "loginHint": "在线跟踪您的需求和报价。我们的团队核实后会将登录信息发送到此手机号。",
       "loginOk": "已申请登录。我们的团队会通过您的手机号联系您并提供门户登录信息。"
     },
-    "footer": "© {{year}} Source Easy · Fortune Engineering，金奈"
+    "footer": "© {{year}} Source Easy · Fortune Engineering，金奈",
+    "customer": {
+      "portal": "客户门户",
+      "title": "已经是 Source Easy 客户？",
+      "sub": "登录客户门户，提交并跟踪采购和运输请求、报价及订单。",
+      "login": "登录客户门户",
+      "apk": "客户安卓应用（APK）",
+      "apkNote": "从 sourceeasy.in 直接下载 APK（未上架 Google Play）。安卓系统可能会要求允许从浏览器安装。",
+      "footerNav": "客户与员工链接"
+    }
   },
   "download": {
     "button": "下载安卓应用",
@@ -438,7 +447,8 @@
     ],
     "safety": "请仅从 Source Easy 官方网站的本页面下载应用。由于不是来自 Play 商店，安卓可能会提示风险，这是正常的。",
     "scan": "用手机扫码",
-    "scanHint": "在安卓手机上打开本页面"
+    "scanHint": "在安卓手机上打开本页面",
+    "staffButton": "员工安卓应用"
   },
   "assign": {
     "raisedBy": "提交人",
