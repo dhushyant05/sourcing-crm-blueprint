@@ -145,5 +145,5 @@ export interface GreetingStaff {
   heading: string | null; message: string | null; altText: string | null; linkPath: string | null; linkLabel: string | null; imageDesktop: string | null; imageMobile: string | null;
   surfaces: ('PUBLIC' | 'PORTAL' | 'APP')[]; startsAt: string; endsAt: string; priority: number; dismissible: boolean; version: number;
   createdByName: string | null; updatedByName: string | null; publishedByName: string | null; publishedAt: string | null; createdAt: string; updatedAt: string;
-  preview: import('../greetings/Banner').Greeting; problems: string[]; audit?: { at: string; action: string; by: string | null; detail: unknown }[];
+  preview: import('../greetings/Banner').Greeting; problems: string[]; problemCodes?: string[]; audit?: { at: string; action: string; by: string | null; detail: unknown }[];
 }

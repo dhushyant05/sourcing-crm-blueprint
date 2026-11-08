@@ -3,12 +3,19 @@ import { useTranslation } from 'react-i18next';
 import { Eye, Monitor, Plus, Smartphone, Trash2, Upload } from 'lucide-react';
 import { useApp } from '../lib/store';
 import type { GreetingStaff } from '../lib/types';
+import { HttpError } from '../lib/api';
 import { SlideOver } from '../components/ui';
 import { GreetingBanner } from '../greetings/Banner';
 
 // Admin: festival / event greeting banners for the public site, the customer portal and the customer app.
 // Plain text + uploaded PNG/JPEG/WebP only (no HTML / SVG / scripts). Times are entered and shown in IST.
 const LAYOUTS = ['FESTIVE', 'CLASSIC', 'MINIMAL', 'IMAGE'] as const, THEMES = ['BRAND', 'GOLD', 'NIGHT', 'ROSE'] as const, SURFACES = ['PUBLIC', 'PORTAL', 'APP'] as const;
+// Server validation messages → translated keys (fallback: by error code, then the server text).
+const MSG: Record<string, string> = { 'Link must be a path on our site, like /portal': 'link', 'Name is required': 'name', 'Unknown layout': 'layout', 'Unknown theme': 'theme',
+  'Choose where to show it: PUBLIC, PORTAL, APP': 'surfaces', 'Priority must be 0–100': 'priority', 'End must be after start': 'window', 'This greeting changed, refresh and try again': 'state',
+  'Unpublish this greeting before editing it': 'published' };
+const errKey = (e: unknown) => { const m = (e as Error).message; const code = e instanceof HttpError ? String(e.body?.code ?? '') : '';
+  return MSG[m] ? `gr.err.${MSG[m]}` : code && ['published', 'incomplete', 'size', 'type', 'state', 'invalid', 'required'].includes(code) ? `gr.err.${code}` : null; };
 const toIst = (iso: string) => new Date(new Date(iso).getTime() + 5.5 * 3600e3).toISOString().slice(0, 16);
 const showIst = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) + ' IST' : '—');
 
@@ -53,7 +60,7 @@ function Editor({ id, onClose, onChanged }: { id: string | null; onClose: () => 
     if (g) void Promise.all([get(g.preview.imageDesktop), get(g.preview.imageMobile)]).then(([desktop, mobile]) => { if (live) setImg({ desktop, mobile }); });
     return () => { live = false; urls.forEach((u) => URL.revokeObjectURL(u)); }; }, [api, g]);
   const locked = g?.status === 'PUBLISHED';
-  const run = async (fn: () => Promise<GreetingStaff | void>) => { setBusy(true); setErr(null); try { const x = await fn(); if (x) { const full = await api.greeting!(x.id); fill(full); onChanged(x.id); } else onChanged(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  const run = async (fn: () => Promise<GreetingStaff | void>) => { setBusy(true); setErr(null); try { const x = await fn(); if (x) { const full = await api.greeting!(x.id); fill(full); onChanged(x.id); } else onChanged(); } catch (e) { const k = errKey(e); setErr(k ? t(k) : (e as Error).message); } finally { setBusy(false); } };
   const body = () => ({ ...f, priority: Number(f.priority) || 0, linkPath: f.linkPath || null, linkLabel: f.linkLabel || null });
   const set = (k: string) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
   const upload = (kind: 'desktop' | 'mobile') => (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; e.target.value = ''; if (file && g) void run(() => api.uploadGreetingImage!(g.id, kind, file)); };
@@ -91,7 +98,7 @@ function Editor({ id, onClose, onChanged }: { id: string | null; onClose: () => 
           <div className="ml-auto flex gap-1">{(['desktop', 'mobile'] as const).map((v) => <button key={v} className={view === v ? 'btn-primary !py-1 text-xs' : 'btn-ghost !py-1 text-xs'} onClick={() => setView(v)}>{t(`gr.img.${v}`)}</button>)}</div></div>
           <div className={view === 'mobile' ? 'mx-auto w-[360px] max-w-full' : ''} data-testid="gr-preview"><GreetingBanner g={preview} img={img} preview={view} onClose={() => undefined} /></div>
           <p className="text-[11px] text-ink-500">{t('gr.previewHint')}</p></div>
-        {g && !!g.problems.length && g.status !== 'PUBLISHED' && <ul className="list-disc pl-5 text-xs text-amber-800 dark:text-amber-200" data-testid="gr-problems">{g.problems.map((p) => <li key={p}>{p}</li>)}</ul>}
+        {g && !!g.problems.length && g.status !== 'PUBLISHED' && <ul className="list-disc pl-5 text-xs text-amber-800 dark:text-amber-200" data-testid="gr-problems">{g.problems.map((p, i) => <li key={p}>{t(`gr.problem.${g.problemCodes?.[i] ?? 'other'}`, { defaultValue: p })}</li>)}</ul>}
         {g && <div className="flex flex-wrap gap-2">
           {g.status !== 'PUBLISHED' && (perms.can('greetings.publish') ? <button disabled={busy || !!g.problems.length} className="btn-primary" onClick={() => { if (confirm(t('gr.publishConfirm'))) void run(() => api.greetingAction!(g.id, 'publish')); }} data-testid="gr-publish">{t('gr.publish')}</button>
             : <span className="text-xs text-ink-500">{t('gr.needPublish')}</span>)}

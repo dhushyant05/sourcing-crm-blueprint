@@ -46,6 +46,7 @@ export interface Api {
   uploadGreetingImage?(id: string, kind: 'desktop' | 'mobile', file: File): Promise<GreetingStaff>;
   removeGreetingImage?(id: string, kind: 'desktop' | 'mobile'): Promise<GreetingStaff>;
   greetingImageUrl?(path: string): Promise<string>;
+  notificationOutbox?(): Promise<{ email: boolean; push: boolean; rows: { id: string; channel: string; template: string; reference?: string; label?: string; status: string; reason: string | null; createdAt: string; processedAt: string | null }[] }>;
   rejectPortalRequest?(id: string, reason: string): Promise<PortalLoginRequest>;
   portalLogin?(customerId: string): Promise<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>;
   issuePortalLogin?(customerId: string, phone?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
@@ -285,6 +286,7 @@ export class ServerApi implements Api {
     if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j); return j.data as GreetingStaff;
   }
   removeGreetingImage(id: string, kind: 'desktop' | 'mobile') { return this.req<GreetingStaff>('DELETE', `/greetings/${encodeURIComponent(id)}/image/${kind}`); }
+  notificationOutbox() { return this.req('GET', '/notification-outbox'); }
   greetingImageUrl(path: string) { if (!path.startsWith('/api/greetings/')) return Promise.reject(new HttpError('Bad link', 400)); return this.blob(path); }
   private async blob(path: string) {
     const res = await fetch(path, { headers: { authorization: `Bearer ${this.token}` } });

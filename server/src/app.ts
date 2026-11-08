@@ -22,7 +22,7 @@ import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
 import { RejectStore, REJECT_REASONS } from './rejections.js';
 import { Notifier, httpEmailFromEnv, customerFcmFromEnv, type TemplateKey } from './notify.js';
-import { GreetingStore, GreetingError, cleanGreeting, publishProblems, greetingDto, grKey, sniffImage, GREETING_IMAGE_BYTES, SURFACES } from './greetings.js';
+import { GreetingStore, GreetingError, cleanGreeting, publishProblems, problemCodes, greetingDto, grKey, sniffImage, GREETING_IMAGE_BYTES, SURFACES } from './greetings.js';
 import { ShippingStore, SrError, cleanFields, CUSTOMER_FIELDS, SR_OPEN, SR_STAGES, STAGE_LABEL, srKey, type ShippingRequest } from './shipping.js';
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
 import { PushStore } from './push.js';
@@ -2316,7 +2316,7 @@ export async function buildApp(o: AppOptions) {
     const grOf = async (id: string) => { const g = await greetings.get(String(id)); if (!g) throw Object.assign(new Error('Not found'), { status: 404 }); return g; };
     const grStaff = (g: Awaited<ReturnType<typeof greetings.get>> & {}) => { const names = userNames();
       return { ...g, createdByName: (g.createdBy && names.get(g.createdBy)) || null, updatedByName: (g.updatedBy && names.get(g.updatedBy)) || null, publishedByName: (g.publishedBy && names.get(g.publishedBy)) || null,
-        preview: greetingDto(g, '/api/greetings'), problems: publishProblems(g) }; };
+        preview: greetingDto(g, '/api/greetings'), problems: publishProblems(g), problemCodes: problemCodes(g) }; };
     const sendImg = (reply: any, f: { meta: { mime: string }; path: string }, cache: string) => reply.header('content-type', f.meta.mime).header('x-content-type-options', 'nosniff')
       .header('content-security-policy', "default-src 'none'; sandbox").header('cache-control', cache).send(createReadStream(f.path));
     const grImage = (g: { imageDesktop: string | null; imageMobile: string | null; id: string }, kind: string) => {

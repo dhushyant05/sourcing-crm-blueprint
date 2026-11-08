@@ -69,6 +69,10 @@ export function cleanGreeting(b: Record<string, unknown>, cur?: Greeting) {
   return v;
 }
 /** What publishing requires (checked on the server). */
+/** Stable codes for the publish checks (the web shows them in EN / 中文). */
+export const PROBLEM_CODES: Record<string, string> = { 'An IMAGE greeting needs the desktop artwork': 'needDesktop', 'Describe the artwork (alt text)': 'needAlt', 'A heading is required': 'needHeading',
+  'The end date is in the past': 'ended', 'Add a label for the link': 'needLinkLabel' };
+export const problemCodes = (g: Greeting) => publishProblems(g).map((m) => PROBLEM_CODES[m] ?? 'other');
 export function publishProblems(g: Greeting): string[] {
   const p: string[] = [];
   if (g.layout === 'IMAGE' && !g.imageDesktop) p.push('An IMAGE greeting needs the desktop artwork');

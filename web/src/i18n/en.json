@@ -1158,7 +1158,15 @@
     "save": "Save",
     "sourcedTrack": "Tracking for this request follows the order's shipment on the Shipping page.",
     "rejectTitle": "Reject (reason stays internal)",
-    "reason": "Reason",
+    "reason": {
+      "PRICE": "Price too high",
+      "QUALITY": "Quality / specification",
+      "LEAD_TIME": "Delivery time",
+      "MOQ": "Minimum quantity",
+      "SUPPLIER": "Other source",
+      "NO_NEED": "No longer needed",
+      "OTHER": "Other reason"
+    },
     "rejectBtn": "Reject request",
     "internalNote": "Internal note",
     "saveNote": "Save note",
@@ -1194,7 +1202,13 @@
     "destPincode": "PIN code",
     "customerNoteEn": "Note the customer sees (English)",
     "newHint": "The request is shown to the customer in the portal. Internal notes are never shown.",
-    "create": "Create request"
+    "create": "Create request",
+    "fqSt": {
+      "SENT": "Sent",
+      "ACCEPTED": "Accepted",
+      "REJECTED": "Declined",
+      "WITHDRAWN": "Replaced"
+    }
   },
   "gr": {
     "title": "Greetings",
@@ -1275,6 +1289,47 @@
       "PUBLISHED": "Published",
       "UNPUBLISHED": "Unpublished",
       "DELETED": "Deleted"
+    },
+    "problem": {
+      "needDesktop": "Artwork-only greetings need the desktop image",
+      "needAlt": "Describe the artwork (alt text)",
+      "needHeading": "A heading is required",
+      "ended": "The end time is in the past",
+      "needLinkLabel": "Add a label for the link",
+      "other": "Not ready to publish"
+    },
+    "err": {
+      "link": "Links must be a path on this site, like /portal",
+      "name": "A name is required",
+      "layout": "Unknown layout",
+      "theme": "Unknown colours",
+      "surfaces": "Choose where to show it",
+      "priority": "Priority must be 0–100",
+      "window": "The end must be after the start",
+      "state": "This greeting changed. Refresh and try again.",
+      "published": "Unpublish this greeting before editing it",
+      "incomplete": "Not ready to publish yet. See the list above.",
+      "size": "The image is larger than 2 MB",
+      "type": "Only PNG, JPEG or WebP images",
+      "invalid": "Please check the fields",
+      "required": "Please fill in the required fields"
+    }
+  },
+  "outbox": {
+    "title": "Customer notification outbox",
+    "intro": "Super admin only. Shows what would be sent to customers. Sending is off until a provider is configured.",
+    "email": "Email",
+    "push": "App push",
+    "on": "configured",
+    "off": "not configured",
+    "none": "Nothing queued.",
+    "col": {
+      "at": "Time",
+      "channel": "Channel",
+      "template": "Template",
+      "customer": "Reference",
+      "status": "Status",
+      "reason": "Reason"
     }
   }
 }
