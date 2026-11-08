@@ -425,7 +425,7 @@ export async function buildApp(o: AppOptions) {
   const mediaSync = async (key: string, list: Attachment[]) => {
     await o.db.tx(async (t) => {
       await t.run('DELETE FROM lead_media WHERE owner_key = ?', key);
-      for (const a of list) await t.run('INSERT INTO lead_media (id, owner_key, name, mime, size, created_at) VALUES (?,?,?,?,?,?)', a.id, key, a.name, a.mime, a.size, a.createdAt);
+      for (const a of list) await t.run('INSERT INTO lead_media (id, owner_key, name, mime, size, created_at) VALUES (?,?,?,?,?,?)', a.id, key, a.name, a.mime, a.size, Number.isFinite(Date.parse(a.createdAt)) ? a.createdAt : new Date().toISOString()); // mirror only; bad legacy timestamps must not break syncing
       if (!key.startsWith('q_')) await t.run('UPDATE leads SET attachment_count = ?, updated_at = now() WHERE id = ?', list.length, key);
     });
   };
@@ -2036,7 +2036,7 @@ export async function buildApp(o: AppOptions) {
     /** SLA (lead settings, normal hours): runs while India owes a response (SUBMITTED / UNDER_REVIEW); stops on any India answer or close. */
     const SR_SLA_OPEN = ['SUBMITTED', 'UNDER_REVIEW'];
     const srSlaSync = async (id: string) => {
-      const x = await o.db.get('SELECT status, assigned_to, sla_started_at, sla_due_at, sla_breached FROM shipping_requests WHERE id = ?', id); if (!x) return;
+      const x = await o.db.get('SELECT status, assigned_to, sla_started_at, sla_due_at, sla_breached FROM shipping_requests WHERE id = ? AND deleted_at IS NULL', id); if (!x) return;
       const running = !!x.sla_started_at, owes = SR_SLA_OPEN.includes(x.status);
       if (owes && !running) {
         const mins = (await wf.sla()).normalMinutes, now = Date.now();
@@ -2050,7 +2050,7 @@ export async function buildApp(o: AppOptions) {
     };
     srSlaTick = async () => {
       const wm = (await wf.sla()).warnMinutes, now = Date.now(); let warn = 0, breach = 0;
-      for (const x of await o.db.all('SELECT id, ref, goods, assigned_to, sla_started_at, sla_due_at, sla_warned, sla_breached FROM shipping_requests WHERE sla_due_at IS NOT NULL AND NOT sla_breached')) {
+      for (const x of await o.db.all('SELECT id, ref, goods, assigned_to, sla_started_at, sla_due_at, sla_warned, sla_breached FROM shipping_requests WHERE sla_due_at IS NOT NULL AND NOT sla_breached AND deleted_at IS NULL')) {
         const due = new Date(x.sla_due_at).getTime(), start = new Date(x.sla_started_at).getTime();
         const kind = now >= due ? 'SHIP_SLA_BREACH' : !x.sla_warned && now >= warnAt(start, due, wm) ? 'SHIP_SLA_WARN' : null; if (!kind) continue;
         const n = await o.db.run(kind === 'SHIP_SLA_BREACH' ? 'UPDATE shipping_requests SET sla_breached = true, sla_warned = true WHERE id = ? AND NOT sla_breached' : 'UPDATE shipping_requests SET sla_warned = true WHERE id = ? AND NOT sla_warned', x.id);
@@ -2209,6 +2209,24 @@ export async function buildApp(o: AppOptions) {
       await notifyCustomer(r.customerId, 'FREIGHT_QUOTE_READY', { reference: r.ref, label: `${r.ref}-F${fq.n}` }, `${r.id}:FQ:${fq.n}`); const nr = (await srs.get(r.id))!; await srLive(nr);
       return reply.code(201).send({ data: await srStaff(u, nr, true) });
     });
+    // ---- Super admin only: soft delete a whole shipping request (history, quotes, files, linked lead/order untouched). ----
+    // Only before acceptance (or after it was rejected/cancelled). Accepted/booked/moving requests are refused with the reason.
+    api.delete<{ Params: { id: string }; Body: { reason?: unknown; confirm?: unknown; ref?: unknown } }>('/api/shipping-requests/:id', async (req) => {
+      const u = req.user!; if (u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can delete a shipping request');
+      const r = await srOf(req.params.id), b = req.body ?? {};
+      if (b.confirm !== true || String(b.ref ?? '') !== r.ref) throw Object.assign(new Error(`Please confirm by giving the request reference ${r.ref}`), { status: 400, appCode: 'confirm' });
+      const reason = String(b.reason ?? '').trim().slice(0, 500); if (reason.length < 3) throw bad('A reason is required');
+      const why = (st: string) => st === 'ACCEPTED' ? 'The customer accepted a freight quote: revert that acceptance first, or cancel the request'
+        : (SR_STAGES as readonly string[]).includes(st) ? `This shipment is ${st.replace(/_/g, ' ').toLowerCase()}; shipments that are booked or moving are never deleted` : 'This request cannot be deleted in its current state';
+      if (!ShippingStore.DELETABLE.includes(r.status)) throw Object.assign(new Error(why(r.status)), { status: 409, appCode: 'blocked' });
+      if (!(await srs.softDelete(r.id, u.id, reason))) {
+        const now = await o.db.get('SELECT status, deleted_at FROM shipping_requests WHERE id = ?', r.id);
+        throw Object.assign(new Error(now?.deleted_at ? 'Already deleted' : why(now?.status)), { status: 409, appCode: now?.deleted_at ? 'deleted' : 'blocked' });
+      }
+      await srs.log(r.id, 'SR_DELETED', srActor(u), { reason, status: r.status }, undefined, null); // staff-only history line
+      await liveData({ type: 'shipping', id: r.id, shippingRequestId: r.id, at: Date.now() });
+      return { data: { id: r.id, ref: r.ref, deleted: true } };
+    });
     // ---- Super admin only: edit / delete / revert a freight (shipping) quote. Role check, never a grantable permission. ----
     // Booking safety: once China/India moved the request past ACCEPTED (booked, in transit…), the accepted quote is locked —
     // nothing here cancels a shipment or rolls stages back. Every action needs a reason (+ confirm for delete/revert), is atomic
@@ -2365,7 +2383,7 @@ export async function buildApp(o: AppOptions) {
       return { data: out };
     });
     // ---- Portal (own customer only; ownership from the token) ----
-    const isOwnShipping = async (c: CustomerUser, id: string) => !!(await o.db.get('SELECT 1 FROM shipping_requests WHERE id = ? AND customer_id = ?', String(id), c.customerId));
+    const isOwnShipping = async (c: CustomerUser, id: string) => !!(await o.db.get('SELECT 1 FROM shipping_requests WHERE id = ? AND customer_id = ? AND deleted_at IS NULL', String(id), c.customerId));
     const ownSr = async (c: CustomerUser, id: string) => { const r = await srs.getOwned(String(id), c.customerId); if (!r) throw notFound(); return r; };
     const cActor = (c: CustomerUser) => ({ kind: 'CUSTOMER' as const, id: c.id, name: c.name });
     api.get('/api/portal/shipping-requests', async (req) => ({ data: await Promise.all((await srs.list({ customerId: req.customer!.customerId })).map((r) => srCustomer(r, false))) }));
@@ -2565,7 +2583,7 @@ export async function buildApp(o: AppOptions) {
     const storageCtx = async () => {
       const leadsM = new Map((await o.db.all('SELECT id, lead_ref FROM leads')).map((r: any) => [String(r.id), r.lead_ref as string | null]));
       const qM = new Map((await o.db.all('SELECT id, lead_id FROM quotes')).map((r: any) => [qKey(r.id), { id: r.id as string, leadId: r.lead_id as string }]));
-      const srM = new Map((await o.db.all('SELECT id, ref FROM shipping_requests')).map((r: any) => [srKey(r.id), { id: r.id as string, ref: r.ref as string }]));
+      const srM = new Map((await o.db.all('SELECT id, ref, deleted_at FROM shipping_requests')).map((r: any) => [srKey(r.id), { id: r.id as string, ref: r.ref as string, deleted: !!r.deleted_at }]));
       const srf = new Map((await o.db.all('SELECT request_id, file_id, customer_visible FROM shipping_request_files')).map((r: any) => [`${srKey(r.request_id)}/${r.file_id}`, !!r.customer_visible]));
       const grM = new Map((await o.db.all('SELECT id, name, status, image_desktop, image_mobile FROM greetings')).map((r: any) => [grKey(r.id), r]));
       return (f: StoredFile): { places: Place[]; blocked: string | null; record: string | null } => {
@@ -2580,6 +2598,7 @@ export async function buildApp(o: AppOptions) {
         if (f.owner === 'SHIPPING') {
           const r = srM.get(f.key); if (!r) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
           const vis = srf.get(`${f.key}/${f.id}`);
+          if (r.deleted) { places.push({ kind: 'DELETED_SHIPPING_FILE', ref: r.ref, recordId: r.id }); return { places, blocked: null, record: r.id }; }
           places.push({ kind: 'SHIPPING_FILE', ref: r.ref, recordId: r.id, customerVisible: !!vis });
           if (vis) places.push({ kind: 'CUSTOMER_PORTAL', ref: r.ref, recordId: r.id, customerVisible: true });
           return { places, blocked: null, record: r.id };
@@ -2596,7 +2615,17 @@ export async function buildApp(o: AppOptions) {
       const q = req.query, all = inventory(uploads.root), ctx = await storageCtx();
       const type = ['image', 'video', 'document'].includes(q.type ?? '') ? q.type : null, owner = ['LEAD', 'QUOTE', 'SHIPPING', 'GREETING'].includes(q.owner ?? '') ? q.owner : null;
       const search = String(q.q ?? '').trim().toLowerCase().slice(0, 100);
-      const rows = all.map((f) => ({ ...f, ...ctx(f) }))
+      // Upload age: from the file's recorded upload time only (server clock). Unknown/invalid/future times never count as old.
+      let days: number | null = null;
+      if (q.olderThanDays != null && q.olderThanDays !== '') {
+        if (!/^\d{1,5}$/.test(q.olderThanDays) || Number(q.olderThanDays) < 1 || Number(q.olderThanDays) > 3650) throw Object.assign(new Error('Days must be a whole number from 1 to 3650'), { status: 400, appCode: 'invalid' });
+        days = Number(q.olderThanDays);
+      }
+      const now = Date.now(), cutoff = days != null ? now - days * 86_400_000 : null;
+      const uploadedAt = (f: StoredFile) => { const t = Date.parse(f.createdAt); return Number.isFinite(t) && t <= now ? t : null; };
+      const unknownAge = all.filter((f) => uploadedAt(f) == null).length;
+      const rows = all.map((f) => { const t = uploadedAt(f); return { ...f, ...ctx(f), ageDays: t == null ? null : Math.floor((now - t) / 86_400_000) }; })
+        .filter((f) => (cutoff == null || (uploadedAt(f) ?? Infinity) < cutoff))
         .filter((f) => (!type || f.type === type) && (!owner || f.owner === owner) && (!search || f.name.toLowerCase().includes(search) || f.places.some((p) => (p.ref ?? '').toLowerCase().includes(search))))
         .sort((a, b) => b.size - a.size || a.key.localeCompare(b.key) || a.id.localeCompare(b.id));
       const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200), offset = Math.max(Number(q.offset) || 0, 0);
@@ -2605,7 +2634,8 @@ export async function buildApp(o: AppOptions) {
       let disk: ReturnType<typeof diskOf> | null = null; try { disk = diskOf(uploads.root); } catch { /* unsupported fs */ }
       return { data: {
         disk, uploads: { files: all.length, bytes: all.reduce((n, f) => n + f.size, 0), missing: all.filter((f) => f.missing).length, byType },
-        total: rows.length, offset, limit, items: rows.slice(offset, offset + limit),
+        total: rows.length, totalBytes: rows.reduce((n, f) => n + f.size, 0), offset, limit, items: rows.slice(offset, offset + limit),
+        serverTime: new Date(now).toISOString(), olderThanDays: days, cutoff: cutoff != null ? new Date(cutoff).toISOString() : null, unknownAge,
       } };
     });
     api.get<{ Params: { key: string; fid: string } }>('/api/storage/files/:key/:fid', async (req, reply) => {

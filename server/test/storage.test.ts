@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PNG, form, pngOf, setup } from './portal-helpers.js';
@@ -125,5 +125,34 @@ describe('storage manager (super admin)', () => {
     ]);
     expect(r.json().data.results.map((x: any) => x.ok)).toEqual([true, true, false]);
     expect((await call('sa', 'GET', `/api/leads/${lead}/attachments`)).json().data.map((x: any) => x.name)).toEqual(['new.png']);
+  });
+
+  it('older-than-days: upload-age cutoff on server time, boundary, validation, unknown ages never old, combines with filters/pagination, never deletes by itself', async () => {
+    const { call, up, lead, list, uploadsDir } = await start();
+    await up(`/api/leads/${lead}/attachments`, ['old.png', 'edge.png', 'new.png', 'bad.png', 'future.png', 'none.png', 'oldpdf.pdf'].map((n) => ({ name: n, data: n.endsWith('.pdf') ? Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(100)]) : PNG, type: n.endsWith('.pdf') ? 'application/pdf' : 'image/png' })));
+    const mf = join(uploadsDir, lead, 'manifest.json'), m = JSON.parse(readFileSync(mf, 'utf8')), D = 86_400_000, now = Date.now();
+    const at: Record<string, string | undefined> = { 'old.png': new Date(now - 10 * D).toISOString(), 'edge.png': new Date(now - 3 * D + 120_000).toISOString(), 'new.png': new Date(now).toISOString(),
+      'bad.png': 'not-a-date', 'future.png': new Date(now + 5 * D).toISOString(), 'none.png': undefined, 'oldpdf.pdf': new Date(now - 30 * D).toISOString() };
+    for (const a of m) { if (at[a.name] === undefined) delete a.createdAt; else a.createdAt = at[a.name]; }
+    writeFileSync(mf, JSON.stringify(m));
+    const names = (d: any) => d.items.map((x: any) => x.name).sort();
+    const d3 = await list('?olderThanDays=3');
+    expect(names(d3)).toEqual(['old.png', 'oldpdf.pdf']); // edge (3 days minus 2 min) is NOT older than 3 days
+    expect(d3.unknownAge).toBe(3); expect(d3.olderThanDays).toBe(3);
+    expect(Date.parse(d3.serverTime) - Date.parse(d3.cutoff)).toBe(3 * D);
+    expect(d3.items.find((x: any) => x.name === 'old.png').ageDays).toBe(10);
+    expect((await list('?olderThanDays=2')).items.map((x: any) => x.name)).toContain('edge.png');
+    expect(names(await list('?olderThanDays=3&type=image'))).toEqual(['old.png']);
+    expect(names(await list('?olderThanDays=3&q=pdf'))).toEqual(['oldpdf.pdf']);
+    const pg = await list('?olderThanDays=3&limit=1'); expect(pg.total).toBe(2); expect(pg.items).toHaveLength(1);
+    expect((await list('?olderThanDays=3650')).total).toBe(0);
+    for (const bad of ['0', '-1', '1.5', 'abc', '3651', '1e3', '99999']) expect((await call('sa', 'GET', `/api/storage?olderThanDays=${bad}`)).statusCode).toBe(400);
+    expect((await list()).uploads.files).toBe(7); // filtering deleted nothing
+    // Deleting still needs the explicit per-file confirm payload; an age query alone deletes nothing.
+    expect((await call('sa', 'POST', '/api/storage/delete', { olderThanDays: 3, confirm: true })).statusCode).toBe(400);
+    const f = d3.items.find((x: any) => x.name === 'old.png');
+    const dr = (await del(call, f)).json().data.results[0]; expect(dr.code ?? 'ok').toBe('ok');
+    expect(existsSync(join(uploadsDir, f.key, f.id))).toBe(false);
+    expect((await list()).uploads.files).toBe(6);
   });
 });

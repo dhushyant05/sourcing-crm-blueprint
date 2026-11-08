@@ -104,16 +104,16 @@ export class ShippingStore {
     const r = await db.get<{ n: number }>('INSERT INTO ref_counters (yymm, n) VALUES (?, 1) ON CONFLICT (yymm) DO UPDATE SET n = ref_counters.n + 1 RETURNING n', `SH${k}`);
     return `SH-${k}-${String(r!.n).padStart(4, '0')}`;
   }
-  async get(id: string) { const r = await this.db.get('SELECT * FROM shipping_requests WHERE id = ?', id); return r ? row(r) : null; }
+  async get(id: string) { const r = await this.db.get('SELECT * FROM shipping_requests WHERE id = ? AND deleted_at IS NULL', id); return r ? row(r) : null; }
   /** Strict ownership lookup for the portal. */
-  async getOwned(id: string, customerId: string) { const r = await this.db.get('SELECT * FROM shipping_requests WHERE id = ? AND customer_id = ?', id, customerId); return r ? row(r) : null; }
+  async getOwned(id: string, customerId: string) { const r = await this.db.get('SELECT * FROM shipping_requests WHERE id = ? AND customer_id = ? AND deleted_at IS NULL', id, customerId); return r ? row(r) : null; }
   async list(f: { customerId?: string; status?: string } = {}) {
-    const w: string[] = [], p: unknown[] = [];
+    const w: string[] = ['deleted_at IS NULL'], p: unknown[] = [];
     if (f.customerId) { w.push('customer_id = ?'); p.push(f.customerId); }
     if (f.status) { w.push('status = ?'); p.push(f.status); }
     return (await this.db.all(`SELECT * FROM shipping_requests ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY created_at DESC, id LIMIT 500`, ...p)).map(row);
   }
-  async activeForOrder(orderId: string) { const r = await this.db.get("SELECT * FROM shipping_requests WHERE order_id = ? AND status NOT IN ('REJECTED','CANCELLED')", orderId); return r ? row(r) : null; }
+  async activeForOrder(orderId: string) { const r = await this.db.get("SELECT * FROM shipping_requests WHERE order_id = ? AND status NOT IN ('REJECTED','CANCELLED') AND deleted_at IS NULL", orderId); return r ? row(r) : null; }
   async create(x: { kind: string; customerId: string; createdByKind: 'CUSTOMER' | 'STAFF'; createdBy: string | null; leadId?: string | null; orderId?: string | null; fields: Record<string, unknown> }, db: Db = this.db) {
     if (!SR_KINDS.includes(x.kind as never)) throw new SrError('Kind must be SOURCED or FREIGHT_ONLY', 400, 'invalid');
     const f = x.fields; if (!f.goods) throw new SrError('Describe the goods to ship', 400, 'required');
@@ -127,22 +127,29 @@ export class ShippingStore {
       VALUES (?,?,?,?,?,?,?,?${ks.map(() => ',?').join('')})`, id, ref, x.kind, x.customerId, x.createdByKind, x.createdBy, x.leadId ?? null, x.orderId ?? null, ...ks.map((k) => f[k]));
     return (await this.getIn(db, id))!;
   }
-  private async getIn(db: Db, id: string) { const r = await db.get('SELECT * FROM shipping_requests WHERE id = ?', id); return r ? row(r) : null; }
+  private async getIn(db: Db, id: string) { const r = await db.get('SELECT * FROM shipping_requests WHERE id = ? AND deleted_at IS NULL', id); return r ? row(r) : null; }
   async edit(id: string, f: Record<string, unknown>, db: Db = this.db) {
     const ks = Object.keys(f).filter((k) => COL[k]); if (!ks.length) return this.getIn(db, id);
-    await db.run(`UPDATE shipping_requests SET ${ks.map((k) => `${COL[k]} = ?`).join(', ')}, updated_at = now() WHERE id = ?`, ...ks.map((k) => f[k]), id);
+    await db.run(`UPDATE shipping_requests SET ${ks.map((k) => `${COL[k]} = ?`).join(', ')}, updated_at = now() WHERE id = ? AND deleted_at IS NULL`, ...ks.map((k) => f[k]), id);
     return this.getIn(db, id);
   }
   /** Compare-and-set status change: fails (409) when the request moved meanwhile. */
   async setStatus(id: string, from: readonly string[], to: string, extra: Record<string, unknown> = {}, db: Db = this.db) {
     const cols: Record<string, string> = { question: 'question', assignedTo: 'assigned_to', rejectReason: 'reject_reason', carrier: 'carrier', tracking: 'tracking', container: 'container', etd: 'etd', eta: 'eta', deliveredAt: 'delivered_at' };
     const ks = Object.keys(extra).filter((k) => cols[k]);
-    const n = await db.run(`UPDATE shipping_requests SET status = ?${ks.map((k) => `, ${cols[k]} = ?`).join('')}, updated_at = now() WHERE id = ? AND status IN (${from.map(() => '?').join(',')})`,
+    const n = await db.run(`UPDATE shipping_requests SET status = ?${ks.map((k) => `, ${cols[k]} = ?`).join('')}, updated_at = now() WHERE id = ? AND deleted_at IS NULL AND status IN (${from.map(() => '?').join(',')})`,
       to, ...ks.map((k) => extra[k]), id, ...from);
     if (!n) throw new SrError('This request has changed, refresh and try again', 409, 'state');
     return (await this.getIn(db, id))!;
   }
-  async assign(id: string, userId: string | null, db: Db = this.db) { await db.run('UPDATE shipping_requests SET assigned_to = ?, updated_at = now() WHERE id = ?', userId, id); return this.getIn(db, id); }
+  /** Statuses a super admin may delete: nothing accepted, booked or moving. */
+  static readonly DELETABLE = [...SR_OPEN, 'REJECTED', 'CANCELLED'] as readonly string[];
+  /** Soft delete, compare-and-set on status so it cannot race an accept or booking. Returns false when it moved. */
+  async softDelete(id: string, by: string, reason: string, db: Db = this.db) {
+    return !!(await db.run(`UPDATE shipping_requests SET deleted_at = now(), deleted_by = ?, delete_reason = ?, sla_due_at = NULL, updated_at = now()
+      WHERE id = ? AND deleted_at IS NULL AND status IN (${ShippingStore.DELETABLE.map(() => '?').join(',')})`, by, reason, id, ...ShippingStore.DELETABLE));
+  }
+  async assign(id: string, userId: string | null, db: Db = this.db) { await db.run('UPDATE shipping_requests SET assigned_to = ?, updated_at = now() WHERE id = ? AND deleted_at IS NULL', userId, id); return this.getIn(db, id); }
   async log(id: string, kind: string, actor: { kind: 'CUSTOMER' | 'STAFF' | 'SYSTEM'; id: string | null; name: string | null }, data: Record<string, unknown> = {}, db: Db = this.db, customerText?: string | null) {
     const text = customerText !== undefined ? customerText : srText(kind, data);
     await db.run('INSERT INTO shipping_request_events (request_id, kind, actor_kind, actor_id, actor_name, data, customer_visible, customer_text) VALUES (?,?,?,?,?,?,?,?)',
