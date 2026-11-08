@@ -415,7 +415,16 @@
       "loginHint": "Track your requests and quotes online. Our team checks your details and sends your login to this mobile number.",
       "loginOk": "Login requested. Our team will contact you on your mobile number with your portal login."
     },
-    "footer": "© {{year}} Source Easy · Fortune Engineering, Chennai"
+    "footer": "© {{year}} Source Easy · Fortune Engineering, Chennai",
+    "customer": {
+      "portal": "Customer Portal",
+      "title": "Already a Source Easy customer?",
+      "sub": "Sign in to the Customer Portal to raise and track sourcing and shipping requests, quotes and orders.",
+      "login": "Customer Portal login",
+      "apk": "Customer Android app (APK)",
+      "apkNote": "Direct APK download from sourceeasy.in (not on Google Play). Android may ask you to allow installs from your browser.",
+      "footerNav": "Customer and staff links"
+    }
   },
   "download": {
     "button": "Download Android app",
@@ -438,7 +447,8 @@
     ],
     "safety": "Only download the app from this page on the official Source Easy site. Android may warn because the app is not from the Play Store; that is expected.",
     "scan": "Scan with your phone",
-    "scanHint": "Opens this page on your Android phone"
+    "scanHint": "Opens this page on your Android phone",
+    "staffButton": "Staff Android app"
   },
   "assign": {
     "raisedBy": "Raised by",
