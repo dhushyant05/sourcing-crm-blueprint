@@ -107,7 +107,9 @@
     "or": "或",
     "demo": "使用演示数据体验",
     "failed": "登录失败",
-    "backHome": "返回首页"
+    "backHome": "返回首页",
+    "staffApk": "员工安卓应用 (APK)",
+    "staffApkHelp": "安装帮助"
   },
   "dashboard": {
     "greeting": "早上好 👋",
@@ -1232,6 +1234,19 @@
     "kind": {
       "SOURCED": "采购订单",
       "FREIGHT_ONLY": "仅货运"
+    },
+    "fqRev": "第 {{n}} 版",
+    "fqAdmin": {
+      "edit": "编辑",
+      "revert": "撤销接受",
+      "delete": "删除",
+      "locked": "已锁定 — 货运已订舱",
+      "reason": "原因（内部，客户不可见）",
+      "reasonShort": "请填写原因（至少 3 个字符）。",
+      "amount": "新金额 (₹)",
+      "amountBad": "请输入有效金额。",
+      "revertConfirm": "撤销 {{label}}？客户需要重新接受，申请将回到“已报价”。",
+      "deleteConfirm": "删除 {{label}}？客户将看不到它，历史记录会保留。"
     }
   },
   "gr": {
@@ -1333,11 +1348,22 @@
       "state": "此问候已被修改，请刷新后重试。",
       "published": "请先下线再编辑",
       "incomplete": "尚不能发布，请查看上方列表。",
-      "size": "图片超过 2 MB",
+      "size": "图片过大（最大 10 MB）",
       "type": "仅支持 PNG、JPEG 或 WebP 图片",
       "invalid": "请检查填写内容",
-      "required": "请填写必填项"
-    }
+      "required": "请填写必填项",
+      "dimensions": "图片尺寸过大（每边最多 8000 像素，4000 万像素）"
+    },
+    "introImage": "上传一张已包含完整祝福内容的图片。它会完整显示在网站、客户门户和客户应用中（不裁剪），直到取消发布。",
+    "chooseImage": "上传祝福图片",
+    "chooseOther": "选择其他图片",
+    "imageRules": "PNG、JPEG 或 WebP，最大 10 MB（每边最多 8000 像素）。手机上会自动缩放。",
+    "saveDraft": "保存为草稿",
+    "savePublish": "保存并发布",
+    "cancel": "取消",
+    "replaceImage": "更换图片",
+    "lockedHintImage": "该祝福正在展示。取消发布后才能更换图片或删除。",
+    "legacy": "旧版文字祝福，仍按原样显示。"
   },
   "outbox": {
     "title": "客户通知发件箱",

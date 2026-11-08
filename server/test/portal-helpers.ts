@@ -5,7 +5,10 @@ import { buildApp } from '../src/app.js';
 import { opened, testEnv } from './fixtures.js';
 
 export const PW = 'correct-horse-1';
-export const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+/** PNG signature + IHDR (width, height) so header-based size checks can read it. */
+export const pngOf = (w: number, h: number, pad = 0) => { const b = Buffer.alloc(33 + pad);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(b, 0); b.write('IHDR', 12, 'latin1'); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); b[24] = 8; b[25] = 6; return b; };
+export const PNG = pngOf(800, 400);
 export const SUP = { name: 'Ningbo Secret Factory', contact: 'Mr Wang', phone: '+86 138', wechat: 'wx_secret', city: 'Ningbo' };
 export function form(fields: Record<string, string>, files: { name: string; data: Buffer; type?: string }[] = []) {
   const B = '----se' + Math.random().toString(16).slice(2); const parts: Buffer[] = [];

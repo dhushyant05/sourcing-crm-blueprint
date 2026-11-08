@@ -10,7 +10,44 @@ import type { Db } from './db.js';
 export const LAYOUTS = ['IMAGE', 'CLASSIC', 'FESTIVE', 'MINIMAL'] as const;   // IMAGE = artwork only; the other three are presets
 export const THEMES = ['BRAND', 'GOLD', 'NIGHT', 'ROSE'] as const;
 export const SURFACES = ['PUBLIC', 'PORTAL', 'APP'] as const;
-export const GREETING_IMAGE_BYTES = 2 * 1024 * 1024;
+export const GREETING_IMAGE_BYTES = 10 * 1024 * 1024;
+/** Decoded-size guard (clients decode the artwork): longest side ≤ 8000 px and ≤ 40 megapixels. */
+export const GREETING_MAX_SIDE = 8000, GREETING_MAX_PIXELS = 40_000_000;
+
+/** Width × height from the image header (PNG IHDR, JPEG SOFn, WebP VP8/VP8L/VP8X) without decoding. Null if unreadable. */
+export function imageSize(b: Buffer, mime: string): { w: number; h: number } | null {
+  try {
+    if (mime === 'image/png') return b.length >= 24 && b.toString('latin1', 12, 16) === 'IHDR' ? { w: b.readUInt32BE(16), h: b.readUInt32BE(20) } : null;
+    if (mime === 'image/webp') {
+      const c = b.toString('latin1', 12, 16);
+      if (c === 'VP8X') return { w: 1 + b.readUIntLE(24, 3), h: 1 + b.readUIntLE(27, 3) };
+      if (c === 'VP8L') { const v = b.readUInt32LE(21); return { w: 1 + (v & 0x3fff), h: 1 + ((v >> 14) & 0x3fff) }; }
+      if (c === 'VP8 ') return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+      return null;
+    }
+    if (mime === 'image/jpeg') {
+      let i = 2;
+      while (i + 9 < b.length) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const m = b[i + 1];
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7) || m === 0xff) { i += m === 0xff ? 1 : 2; continue; }
+        const len = b.readUInt16BE(i + 2);
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+        i += 2 + len;
+      }
+      return null;
+    }
+  } catch { /* truncated */ }
+  return null;
+}
+/** Full artwork check: raster type by magic bytes, ≤ 10 MB, readable dimensions inside the decode limits. */
+export function checkArtwork(data: Buffer): { mime: 'image/png' | 'image/jpeg' | 'image/webp'; w: number; h: number } {
+  if (data.length > GREETING_IMAGE_BYTES) throw new GreetingError('Image too large (max 10 MB)', 413, 'size');
+  const mime = sniffImage(data); if (!mime) throw new GreetingError('Only PNG, JPEG or WebP images are allowed', 415, 'type');
+  const d = imageSize(data, mime); if (!d || d.w < 1 || d.h < 1) throw new GreetingError('This image could not be read', 415, 'type');
+  if (Math.max(d.w, d.h) > GREETING_MAX_SIDE || d.w * d.h > GREETING_MAX_PIXELS) throw new GreetingError(`Image is ${d.w}×${d.h}px; max ${GREETING_MAX_SIDE}px per side and 40 megapixels`, 413, 'dimensions');
+  return { mime, ...d };
+}
 export class GreetingError extends Error { constructor(msg: string, public status = 400, public code?: string) { super(msg); } }
 
 /** Raster only: PNG, JPEG, WebP by magic bytes. Anything else (SVG, HTML, GIF, polyglots without the header) is refused. */

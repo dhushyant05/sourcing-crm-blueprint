@@ -50,6 +50,7 @@ function Login({ api, onIn }: { api: PortalApi; onIn: (mustChange: boolean) => v
         <button disabled={busy} className={`${primary} w-full`}>{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
       <p className="mt-6 text-sm text-ink-500">No login yet? Tick “Request a customer portal login” when you send an enquiry on <a className="text-brand-600 underline" href="/#contact">our website</a>. Forgot your password? Contact Source Easy and we will reset it.</p>
+      <div className="mt-6 rounded-xl border border-ink-100 p-4"><a href="/download/source-easy-customer.apk" download data-testid="portal-customer-apk" className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-brand-600 px-4 font-medium text-brand-700 hover:bg-brand-50">Customer Android App (APK)</a><p className="mt-2 text-xs text-ink-500">Direct download from sourceeasy.in (not on Google Play). Android may ask you to allow installs from your browser.</p></div>
     </div>
   );
 }

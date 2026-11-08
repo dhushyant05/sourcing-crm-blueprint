@@ -32,7 +32,7 @@ export function GreetingBanner({ g, img, onClose, preview }: { g: Greeting; img?
   const d = img?.desktop ?? g.imageDesktop, m = img?.mobile ?? g.imageMobile ?? d;
   const link = safeLink(g.link?.path);
   const close = g.dismissible && onClose && <button type="button" onClick={onClose} aria-label="Dismiss greeting" className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/30 text-white hover:bg-black/50"><X size={16} /></button>;
-  const pic = d && <picture>{m && !preview && <source media="(max-width: 640px)" srcSet={m} />}<img src={preview === 'mobile' ? m ?? d : d} alt={g.alt ?? ''} className="h-full w-full object-cover" /></picture>;
+  const pic = d && <picture>{m && !preview && <source media="(max-width: 640px)" srcSet={m} />}<img src={preview === 'mobile' ? m ?? d : d} alt={g.alt ?? ''} className={g.layout === 'IMAGE' ? 'mx-auto block h-auto max-h-[80vh] w-full object-contain' : 'h-full w-full object-cover'} /></picture>;
   const cta = link && <a href={link} className="mt-3 inline-flex min-h-[40px] items-center rounded-lg bg-white/95 px-4 text-sm font-medium text-ink-900 hover:bg-white">{g.link?.label || 'Learn more'}</a>;
   const narrow = preview === 'mobile';
   let body;

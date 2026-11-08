@@ -30,6 +30,9 @@ export const SR_CUSTOMER_TEXT: Record<string, (d: Record<string, unknown>) => st
   FQ_ACCEPTED: (d) => `Freight quote F${d.n} accepted`,
   FQ_REJECTED: (d) => `Freight quote F${d.n} declined`,
   FQ_WITHDRAWN: (d) => `Freight quote F${d.n} withdrawn`,
+  FQ_DELETED: (d) => `Freight quote F${d.n} withdrawn`,
+  FQ_REVISED: (d) => `Freight quote F${d.n} updated`,
+  FQ_REVERTED: (d) => `Freight quote F${d.n} reopened for your decision`,
   SR_ACCEPTED: () => 'Accepted, booking next',
   SR_STAGE: (d) => `Shipment ${STAGE_LABEL[String(d.status)] ?? 'updated'}`,
   SR_REJECTED: () => 'Request declined by Source Easy',
@@ -53,7 +56,7 @@ export interface ShippingRequest {
   createdAt: string; updatedAt: string;
 }
 export interface FreightQuote { id: string; requestId: string; n: number; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null;
-  validUntil: string | null; customerNote: string | null; internalCost: number | null; status: string; reasonCode: string | null; reason: string | null; createdBy: string | null; createdAt: string; decidedAt: string | null }
+  validUntil: string | null; customerNote: string | null; internalCost: number | null; status: string; reasonCode: string | null; reason: string | null; createdBy: string | null; createdAt: string; decidedAt: string | null; revision: number }
 
 const num = (v: unknown) => (v == null || v === '' ? null : Number(v));
 const d10 = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
@@ -65,7 +68,7 @@ const row = (r: any): ShippingRequest => ({ id: r.id, ref: r.ref, kind: r.kind, 
   createdAt: r.created_at, updatedAt: r.updated_at });
 const fq = (r: any): FreightQuote => ({ id: r.id, requestId: r.request_id, n: Number(r.n), amount: Number(r.amount), currency: r.currency, mode: r.mode, incoterm: r.incoterm, transit: r.transit,
   validUntil: d10(r.valid_until), customerNote: r.customer_note, internalCost: num(r.internal_cost), status: r.status, reasonCode: r.reason_code, reason: r.reason, createdBy: r.created_by,
-  createdAt: r.created_at, decidedAt: r.decided_at });
+  createdAt: r.created_at, decidedAt: r.decided_at , revision: Number(r.revision ?? 1) });
 
 const str = (v: unknown, max = 200) => { const t = v == null ? '' : String(v).trim(); return t ? t.slice(0, max) : null; };
 const pos = (v: unknown, what: string, int = false) => {
@@ -151,8 +154,42 @@ export class ShippingStore {
       .filter((r: any) => r.customer_text).map((r: any) => ({ at: r.at, kind: r.kind, text: r.customer_text }));
   }
   // ---- freight quotes ----
-  async quotes(requestId: string) { return (await this.db.all('SELECT * FROM freight_quotes WHERE request_id = ? ORDER BY n', requestId)).map(fq); }
-  async quote(id: string) { const r = await this.db.get('SELECT * FROM freight_quotes WHERE id = ?', id); return r ? fq(r) : null; }
+  /** Visible quotes only: soft-deleted ones stay in the table (audit, numbering) but never reach lists, PDFs or decisions. */
+  async quotes(requestId: string) { return (await this.db.all('SELECT * FROM freight_quotes WHERE request_id = ? AND deleted_at IS NULL ORDER BY n', requestId)).map(fq); }
+  async quote(id: string) { const r = await this.db.get('SELECT * FROM freight_quotes WHERE id = ? AND deleted_at IS NULL', id); return r ? fq(r) : null; }
+  private async snapshot(db: Db, id: string, action: string, reason: string, by: string) {
+    const r: any = await db.get('SELECT * FROM freight_quotes WHERE id = ?', id);
+    await db.run('INSERT INTO freight_quote_revisions (quote_id, revision, snapshot, action, reason, by_user) VALUES (?,?,?,?,?,?)', id, Number(r.revision ?? 1), JSON.stringify(fq(r)), action, reason, by);
+  }
+  /** Super admin: edit an outstanding (SENT) quote in place, keeping an immutable copy of the previous revision. */
+  async editQuote(id: string, b: Record<string, unknown>, reason: string, by: string, db: Db = this.db) {
+    const v: Record<string, unknown> = {};
+    if ('amount' in b) { const a = pos(b.amount, 'Amount'); if (!a) throw new SrError('Amount is required', 400, 'required'); v.amount = a; }
+    if ('mode' in b) v.mode = oneOf(b.mode, SHIP_MODES, 'Mode');
+    if ('incoterm' in b) v.incoterm = oneOf(b.incoterm, INCOTERMS, 'Incoterm');
+    if ('transit' in b) v.transit = str(b.transit, 60);
+    if ('validUntil' in b) v.valid_until = date(b.validUntil, 'Valid until');
+    if ('customerNote' in b) v.customer_note = str(b.customerNote, 1000);
+    if ('internalCost' in b) v.internal_cost = pos(b.internalCost, 'Internal cost');
+    const ks = Object.keys(v); if (!ks.length) throw new SrError('Nothing to change', 400, 'required');
+    await this.snapshot(db, id, 'EDIT', reason, by);
+    const n = await db.run(`UPDATE freight_quotes SET ${ks.map((k) => `${k} = ?`).join(', ')}, revision = revision + 1 WHERE id = ? AND status = 'SENT' AND deleted_at IS NULL`, ...ks.map((k) => v[k]), id);
+    if (!n) throw new SrError('Only an outstanding (sent) freight quote can be edited; revert an accepted one first', 409, 'state');
+    return { quote: fq(await db.get('SELECT * FROM freight_quotes WHERE id = ?', id)), fields: ks };
+  }
+  /** Super admin: accepted → SENT again (customer decides again). Atomic with the caller's request-status change. */
+  async revertQuote(id: string, reason: string, by: string, db: Db = this.db) {
+    await this.snapshot(db, id, 'REVERT', reason, by);
+    const n = await db.run("UPDATE freight_quotes SET status = 'SENT', decided_at = NULL, reason_code = NULL, reason = NULL, revision = revision + 1 WHERE id = ? AND status = 'ACCEPTED' AND deleted_at IS NULL", id);
+    if (!n) throw new SrError('This freight quote is no longer accepted', 409, 'state');
+  }
+  /** Super admin: soft delete (never an accepted quote — revert it first). */
+  async deleteQuote(id: string, reason: string, by: string, db: Db = this.db) {
+    await this.snapshot(db, id, 'DELETE', reason, by);
+    const n = await db.run("UPDATE freight_quotes SET deleted_at = now(), deleted_by = ?, delete_reason = ? WHERE id = ? AND status <> 'ACCEPTED' AND deleted_at IS NULL", by, reason, id);
+    if (!n) throw new SrError('An accepted freight quote cannot be deleted; revert it first', 409, 'state');
+  }
+  async revisions(id: string) { return this.db.all('SELECT revision, snapshot, action, reason, by_user, at FROM freight_quote_revisions WHERE quote_id = ? ORDER BY id', id); }
   async addQuote(requestId: string, b: Record<string, unknown>, by: string, db: Db = this.db) {
     const amount = pos(b.amount, 'Amount'); if (!amount) throw new SrError('Amount is required', 400, 'required');
     const v = { mode: oneOf(b.mode, SHIP_MODES, 'Mode'), incoterm: oneOf(b.incoterm, INCOTERMS, 'Incoterm'), transit: str(b.transit, 60), validUntil: date(b.validUntil, 'Valid until'),
