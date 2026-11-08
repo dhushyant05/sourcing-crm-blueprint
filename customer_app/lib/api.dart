@@ -103,7 +103,7 @@ class PortalApi {
   }
 
   Future<Json> login(String phone, String password) async {
-    final r = await _client.post(_u('/api/portal/auth/login'), headers: {'content-type': 'application/json'}, body: jsonEncode({'phone': phone, 'password': password}));
+    final r = await _client.post(_u('/api/portal/auth/login'), headers: {'content-type': 'application/json'}, body: jsonEncode({'phone': phone, 'password': password})).timeout(const Duration(seconds: 30));
     if (r.statusCode != 200) {
       String msg = 'Sign-in failed';
       try { msg = (jsonDecode(r.body) as Map)['error'] as String? ?? msg; } catch (_) {}
@@ -148,7 +148,7 @@ class PortalApi {
   /// `revoked` (login disabled / password reset) signs the app out.
   Future<void> stream(void Function(String id, String type) onChange, {required Future<void> cancel}) async {
     final req = http.Request('GET', _u('/api/portal/stream'))..headers.addAll({..._auth, 'accept': 'text/event-stream', 'cache-control': 'no-cache'});
-    final res = await _client.send(req);
+    final res = await _client.send(req).timeout(const Duration(seconds: 30));
     if (res.statusCode == 401) {
       onAuthError?.call();
       return;

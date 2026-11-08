@@ -2470,6 +2470,24 @@ export async function buildApp(o: AppOptions) {
     });
   }
 
+  // Customer app (in.sourceeasy.customer): its own manifest + APK under downloads/customer/, never mixed with the staff app.
+  if (o.downloadsDir) {
+    const cdir = join(o.downloadsDir, 'customer'), CAPK = 'source-easy-customer.apk';
+    app.get('/download/customer/version.json', async (_req, reply) => {
+      const f = join(cdir, 'version.json');
+      if (!existsSync(f)) return reply.code(404).send({ error: 'No app published yet' });
+      const v = JSON.parse(readFileSync(f, 'utf8')); const apk = join(cdir, CAPK);
+      return reply.header('cache-control', 'no-cache').send({ version: v.version, build: v.build, sha256: v.sha256, minBuild: v.minBuild ?? null, notes: v.notes ?? null,
+        size: existsSync(apk) ? statSync(apk).size : v.size ?? null, url: `/download/${CAPK}` });
+    });
+    app.get(`/download/${CAPK}`, async (_req, reply) => {
+      const f = join(cdir, CAPK);
+      if (!existsSync(f)) return reply.code(404).send({ error: 'No app published yet' });
+      return reply.header('content-type', 'application/vnd.android.package-archive').header('content-disposition', `attachment; filename="${CAPK}"`)
+        .header('content-length', statSync(f).size).header('cache-control', 'no-cache').header('x-content-type-options', 'nosniff').send(createReadStream(f));
+    });
+  }
+
   app.all('/api/*', async (_r, reply) => reply.code(404).send({ error: 'Not found' }));
 
   if (o.webDir && existsSync(o.webDir)) {

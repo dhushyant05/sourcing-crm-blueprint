@@ -19,7 +19,7 @@ Future<void> openPdf(BuildContext context, PortalApi api, String path, String na
     final b = await api.bytes(path);
     if (b.length < 5 || String.fromCharCodes(b.take(5)) != '%PDF-') throw PortalError('The server did not return a PDF', 500);
     final dir = Directory('${(await getTemporaryDirectory()).path}/pdf')..createSync(recursive: true);
-    final f = File('${dir.path}/${name.replaceAll(RegExp(r'[^\w.-]'), '_')}.pdf');
+    final f = File('${dir.path}/${safeName(name)}.pdf');
     await f.writeAsBytes(b, flush: true);
     await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: 'application/pdf')]));
   } catch (e) {
@@ -27,11 +27,14 @@ Future<void> openPdf(BuildContext context, PortalApi api, String path, String na
   }
 }
 
+/// File name safe for the app cache (no path parts, never empty or dots only).
+String safeName(String n) { final s = n.replaceAll(RegExp(r'[^\w.-]'), '_').replaceAll(RegExp(r'^\.+'), ''); return s.isEmpty ? 'file' : (s.length > 100 ? s.substring(s.length - 100) : s); }
+
 Future<void> openFile(BuildContext context, PortalApi api, String path, String name, String mime) async {
   try {
     final b = await api.bytes(path);
     final dir = Directory('${(await getTemporaryDirectory()).path}/files')..createSync(recursive: true);
-    final f = File('${dir.path}/${name.replaceAll(RegExp(r'[^\w.-]'), '_')}');
+    final f = File('${dir.path}/${safeName(name)}');
     await f.writeAsBytes(b, flush: true);
     await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: mime)]));
   } catch (e) {

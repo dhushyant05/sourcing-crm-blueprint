@@ -167,6 +167,8 @@ class _NewShippingScreenState extends State<NewShippingScreen> {
   Future<void> _send() async {
     if (_kind == 'SOURCED' && _order == null) return setState(() => _err = 'Choose the order to ship.');
     if (_kind == 'FREIGHT_ONLY' && _c['goods']!.text.trim().isEmpty) return setState(() => _err = 'Describe the goods.');
+    final ready = _c['readyDate']!.text.trim();
+    if (ready.isNotEmpty && !isYmd(ready)) return setState(() => _err = 'Enter the ready date as YYYY-MM-DD, for example 2026-12-01.');
     setState(() { _busy = true; _err = null; });
     try {
       final r = await widget.api.createShipping({'kind': _kind, if (_order != null && _kind == 'SOURCED') 'orderId': _order!, if (_mode.isNotEmpty) 'mode': _mode,
@@ -201,7 +203,12 @@ class _NewShippingScreenState extends State<NewShippingScreen> {
           DropdownButtonFormField<String>(initialValue: _mode, decoration: const InputDecoration(labelText: 'Preferred mode', border: OutlineInputBorder()),
               items: [for (final m in modes) DropdownMenuItem(value: m.$1, child: Text(m.$2))], onChanged: (v) => setState(() => _mode = v ?? '')),
           const SizedBox(height: 12),
-          _f('readyDate', 'Goods ready on (YYYY-MM-DD)', type: TextInputType.datetime), _f('customerNote', 'Notes'),
+          Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(key: const Key('ns-readyDate'), controller: _c['readyDate'], keyboardType: TextInputType.datetime,
+              decoration: InputDecoration(labelText: 'Goods ready on (YYYY-MM-DD)', border: const OutlineInputBorder(), suffixIcon: IconButton(tooltip: 'Pick a date', icon: const Icon(Icons.calendar_today), onPressed: () async {
+                final now = DateTime.now();
+                final d = await showDatePicker(context: context, firstDate: DateTime(now.year - 1), lastDate: DateTime(now.year + 2), initialDate: now);
+                if (d != null) _c['readyDate']!.text = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+              })))), _f('customerNote', 'Notes'),
           const Text('Photos, packing list or invoice photos (up to 5)'),
           MediaPicker(files: _files, onChanged: (f) => setState(() => _files = f)),
           if (_err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_err!, key: const Key('ns-error'), style: const TextStyle(color: Colors.red))),

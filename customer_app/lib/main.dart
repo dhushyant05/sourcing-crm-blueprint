@@ -1,10 +1,15 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'api.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
 import 'session.dart';
+import 'updater.dart';
 import 'widgets.dart';
 
 /// Android Keystore-backed storage, private to this app's package (in.sourceeasy.customer).
@@ -21,13 +26,24 @@ class SecureKeyValue implements KeyValue {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  final session = Session(PortalApi(), const SecureKeyValue())..restore();
-  runApp(CustomerApp(session: session));
+  // Release builds only accept https; a debug build may point PORTAL_URL at a local http server for QA.
+  final session = Session(PortalApi(allowInsecure: !kReleaseMode), const SecureKeyValue(), clearFiles: clearDownloads)..restore();
+  runApp(CustomerApp(session: session, updater: Platform.isAndroid ? Updater() : null));
+}
+
+/// Removes documents downloaded for viewing (app cache pdf/ and files/).
+Future<void> clearDownloads() async {
+  final t = (await getTemporaryDirectory()).path;
+  for (final d in ['pdf', 'files']) {
+    final dir = Directory('$t/$d');
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+  }
 }
 
 class CustomerApp extends StatelessWidget {
-  const CustomerApp({super.key, required this.session, this.live = true});
+  const CustomerApp({super.key, required this.session, this.live = true, this.updater});
   final Session session;
+  final Updater? updater;
   final bool live;
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -38,7 +54,7 @@ class CustomerApp extends StatelessWidget {
           if (session.restoring) return const Scaffold(body: Center(child: CircularProgressIndicator()));
           if (!session.signedIn) return LoginScreen(key: const Key('login'), session: session);
           if (session.mustChangePassword) return ChangePasswordScreen(key: const Key('forced-pw'), session: session, forced: true);
-          return HomeScreen(key: ValueKey('home-${session.api.token.hashCode}'), session: session, live: live);
+          return UpdateGate(updater: updater, child: HomeScreen(key: ValueKey('home-${session.api.token.hashCode}'), session: session, live: live));
         }),
       );
 }

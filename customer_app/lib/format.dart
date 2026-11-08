@@ -7,10 +7,15 @@ String when(Object? iso) {
   if (d == null) return '';
   return '${DateFormat('dd MMM yyyy, hh:mm a').format(d.toUtc().add(ist))} IST';
 }
+/// A calendar date. Plain YYYY-MM-DD is shown as is; a full timestamp is converted to its IST date first.
 String day(Object? ymd) {
-  final d = DateTime.tryParse('${ymd ?? ''}');
-  return d == null ? '—' : DateFormat('dd MMM yyyy').format(d);
+  final s = '${ymd ?? ''}';
+  final d = DateTime.tryParse(s);
+  if (d == null) return '—';
+  return DateFormat('dd MMM yyyy').format(s.contains('T') ? d.toUtc().add(ist) : d);
 }
+/// Strict YYYY-MM-DD (a real calendar date).
+bool isYmd(String s) { final d = DateTime.tryParse(s); return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s) && d != null && DateFormat('yyyy-MM-dd').format(d) == s; }
 final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 final _inr2 = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
 String inr(Object? n) => n is num ? (n == n.roundToDouble() ? _inr.format(n) : _inr2.format(n)) : '—';

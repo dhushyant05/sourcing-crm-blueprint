@@ -8,11 +8,13 @@ import 'greetings.dart';
 /// Signed-in state. The only credential kept on the phone is the customer portal token, in encrypted storage under
 /// this app's own package (never shared with the staff app). Signing out clears it and every cached customer data at once.
 class Session extends ChangeNotifier {
-  Session(this.api, this.store) {
+  Session(this.api, this.store, {this.clearFiles}) {
     api.onAuthError = () => unawaited(signOut(reason: 'Your session ended. Please sign in again.'));
   }
   final PortalApi api;
   final KeyValue store;
+  /// Deletes downloaded customer documents (PDFs, files) from the app cache on sign-out.
+  final Future<void> Function()? clearFiles;
   static const tokenKey = 'portal.token';
   Json? me;
   bool restoring = true;
@@ -58,6 +60,7 @@ class Session extends ChangeNotifier {
     me = null;
     await store.delete(tokenKey);
     await GreetingCache(store).clear();
+    try { await clearFiles?.call(); } catch (_) {}
   }
 
   /// Immediate: credentials and cached data are removed before anything else happens.
