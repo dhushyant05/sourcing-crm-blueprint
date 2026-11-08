@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../src/app.js';
-import { testEnv } from './fixtures.js';
+import { opened, testEnv } from './fixtures.js';
 
 export const PW = 'correct-horse-1';
 export const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -19,6 +19,7 @@ export async function setup(extra: Record<string, unknown> & { makeNotifier?: (d
   const { db, bus, users } = await testEnv(false);
   const { makeNotifier, ...rest } = extra; if (makeNotifier) rest.notifier = makeNotifier(db);
   const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'portal-')), ...rest });
+  opened.push(app);
   const ids: Record<string, string> = {};
   for (const [e, r] of [['sa', 'SUPER_ADMIN'], ['ia', 'INDIA_ADMIN'], ['is', 'INDIA_STAFF'], ['ca', 'CHINA_ADMIN'], ['cs', 'CHINA_STAFF']] as const) ids[e] = (await users.create(`${e}@x.in`, `Staff ${e}`, r, PW)).id;
   const tok: Record<string, string> = {};

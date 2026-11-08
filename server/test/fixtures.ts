@@ -27,9 +27,13 @@ export class LeadsAccess {
   update(_p: string, id: string, d: Rec) { return this.store.update(id, d); }
 }
 
+/** Resources opened by a test; closed after each test by test/teardown.ts so PGlite instances don't pile up in a worker. */
+export const opened: { close(): Promise<unknown> }[] = [];
+
 /** Fresh in-memory PostgreSQL (PGlite, real migrations) + in-memory bus, seeded with the fixture leads. */
 export async function testEnv(seed = true) {
   const db: Db = await openMemoryDb();
+  opened.push(db);
   const bus = new MemoryBus();
   const store = new LeadStore(db);
   if (seed) for (const l of fixtures()) await store.create(l);
