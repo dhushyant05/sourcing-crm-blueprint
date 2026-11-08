@@ -67,6 +67,10 @@ export class PortalStore {
     await this.db.run('UPDATE customer_users SET last_login_at = now() WHERE id = ?', u.id);
     return u;
   }
+  async revokeSessions(id: string) {
+    await this.db.run('UPDATE customer_users SET token_version = token_version + 1, updated_at = now() WHERE id = ?', id);
+    await this.db.run('DELETE FROM customer_device_tokens WHERE customer_user_id = ?', id);
+  }
   async checkPassword(id: string, password: string) { const r = await this.db.get('SELECT password_hash FROM customer_users WHERE id = ?', id); return !!r && bcrypt.compare(password, r.password_hash); }
   /** Sets a password and revokes every session. `mustChange` is true when staff reset it (temporary password). */
   async setPassword(id: string, password: string, mustChange: boolean) {

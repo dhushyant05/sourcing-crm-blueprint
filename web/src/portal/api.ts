@@ -43,7 +43,11 @@ export class PortalApi {
     if (!res.ok) throw new PortalHttpError(j.error ?? 'Sign-in failed', res.status);
     portalToken.set(j.token); return j as { token: string; customer: { name: string; mustChangePassword: boolean } };
   }
-  logout() { portalToken.set(null); }
+  /** Clears the local token immediately and revokes the session on the server (best effort, fire-and-forget). */
+  logout() {
+    const t = portalToken.get(); portalToken.set(null);
+    if (t) void fetch('/api/portal/me/logout', { method: 'POST', cache: 'no-store', keepalive: true, headers: { authorization: `Bearer ${t}` } }).catch(() => undefined);
+  }
   me() { return this.call<{ data: PortalMe }>('GET', '/me').then((r) => r.data); }
   async changePassword(currentPassword: string, newPassword: string) {
     const r = await this.call<{ token: string; data: PortalMe }>('POST', '/me/password', { currentPassword, newPassword }); portalToken.set(r.token); return r.data;

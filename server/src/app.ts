@@ -332,7 +332,7 @@ export async function buildApp(o: AppOptions) {
     if (!c) return reply.code(401).send({ error: 'Session expired' });
     req.customer = c;
     // A temporary password must be changed before anything else.
-    if (c.mustChangePassword && !['/api/portal/me', '/api/portal/me/password'].includes(req.routeOptions.url ?? ''))
+    if (c.mustChangePassword && !['/api/portal/me', '/api/portal/me/password', '/api/portal/me/logout', '/api/portal/me/devices'].includes(req.routeOptions.url ?? ''))
       return reply.code(403).send({ error: 'Please change your temporary password first', code: 'password_change' });
   }
   const ctxOf = async (role: Role): Promise<Ctx> => ({ role });
@@ -1862,6 +1862,12 @@ export async function buildApp(o: AppOptions) {
     const me2 = async (c: CustomerUser) => { const cust = await customers.get(c.customerId);
       return { name: c.name, phone: c.phone, email: c.email, mustChangePassword: c.mustChangePassword, company: cust?.company ?? null, city: cust?.city ?? null }; };
     api.get('/api/portal/me', async (req) => ({ data: await me2(req.customer!) }));
+    // Server-side sign-out: revokes every portal session of this login (token version bump) and drops its push devices.
+    api.post('/api/portal/me/logout', async (req) => {
+      const c = req.customer!; await portal.revokeSessions(c.id);
+      await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'LOGGED_OUT', c.customerId, {});
+      return { ok: true };
+    });
     api.post<{ Body: { currentPassword?: string; newPassword?: string } }>('/api/portal/me/password', async (req, reply) => {
       const c = req.customer!, cur = String(req.body?.currentPassword ?? ''), nw = String(req.body?.newPassword ?? '');
       if (!(await portal.checkPassword(c.id, cur))) return reply.code(400).send({ error: 'Current password is wrong' });
@@ -1968,7 +1974,7 @@ export async function buildApp(o: AppOptions) {
     };
     api.post<{ Params: { qid: string } }>('/api/portal/quotes/:qid/accept', async (req) => {
       const c = req.customer!, q = await ownQuote(c, req.params.qid);
-      if (q.status !== 'SENT') throw bad('This quote was already decided', 409);
+      if (q.status !== 'SENT' || !(await quotes.claimSent(q.id, 'ACCEPTED'))) throw bad('This quote was already decided', 409);
       await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'ACCEPTED' });
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'QUOTE_ACCEPTED', c.customerId, { quoteId: q.id });
       await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });
@@ -1976,7 +1982,7 @@ export async function buildApp(o: AppOptions) {
     });
     api.post<{ Params: { qid: string }; Body: { reasonCode?: string; reason?: string } }>('/api/portal/quotes/:qid/reject', async (req) => {
       const c = req.customer!, q = await ownQuote(c, req.params.qid);
-      if (q.status !== 'SENT') throw bad('This quote was already decided', 409);
+      if (q.status !== 'SENT' || !(await quotes.claimSent(q.id, 'REJECTED'))) throw bad('This quote was already decided', 409);
       await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'REJECTED', reasonCode: String(req.body?.reasonCode ?? 'OTHER'), reason: String(req.body?.reason ?? '').slice(0, 500) });
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'QUOTE_REJECTED', c.customerId, { quoteId: q.id });
       await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });

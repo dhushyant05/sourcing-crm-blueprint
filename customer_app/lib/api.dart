@@ -151,6 +151,8 @@ class PortalApi {
   Future<Json> setNotificationPrefs({bool? email, bool? push}) => _data('PUT', '/api/portal/me/notifications', {if (email != null) 'email': email, if (push != null) 'push': push});
 
   Future<void> registerDevice(String token) async { await call('POST', '/api/portal/me/devices', body: {'token': token, 'platform': 'android'}); }
+  /// Server-side sign-out: revokes this login's sessions so a copied token stops working.
+  Future<void> logout() async { await call('POST', '/api/portal/me/logout'); }
   Future<void> unregisterDevice(String token) async { await call('DELETE', '/api/portal/me/devices', body: {'token': token}); }
 
   /// Live "something changed" events for this customer's own requests (SSE). Completes when the stream ends.

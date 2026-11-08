@@ -83,6 +83,10 @@ export class QuoteStore {
     });
     return (await this.get(id))!;
   }
+  /** Atomically decide a SENT quote (compare-and-set): false if someone else decided it first. */
+  async claimSent(id: string, status: 'ACCEPTED' | 'REJECTED'): Promise<boolean> {
+    return (await this.db.run("UPDATE quotes SET status=?, decided_at=now(), updated_at=now() WHERE id=? AND status='SENT'", status, id)) === 1;
+  }
   async setStatus(id: string, status: QuoteStatus, reason?: string | null): Promise<Quote> {
     const at = new Date().toISOString();
     if (status === 'SENT') await this.db.run("UPDATE quotes SET status='SENT', sent_at=COALESCE(sent_at, ?), decided_at=NULL, reject_reason=NULL, updated_at=? WHERE id=?", at, at, id);

@@ -67,10 +67,15 @@ class Session extends ChangeNotifier {
   }
 
   /// Immediate: credentials and cached data are removed before anything else happens.
+  bool _signingOut = false;
   Future<void> signOut({String? reason}) async {
-    if (api.token == null && me == null) return;
-    try { await push?.signOut(api); } catch (_) {} // unregister this phone while the token may still be valid
-    await _clear();
+    if (_signingOut || (api.token == null && me == null)) return;
+    _signingOut = true; // a 401 from the calls below must not re-enter signOut
+    try {
+      try { await push?.signOut(api); } catch (_) {} // unregister this phone while the token may still be valid
+      if (reason == null) { try { await api.logout().timeout(const Duration(seconds: 8)); } catch (_) {} } // user-initiated: revoke on the server too
+      await _clear();
+    } finally { _signingOut = false; }
     notice = reason;
     notifyListeners();
   }

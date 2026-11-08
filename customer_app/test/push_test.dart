@@ -101,7 +101,7 @@ void main() {
     s.me = {'name': 'A'};
     await s.push!.start(api);
     await s.signOut();
-    expect(calls.last, 'DELETE /api/portal/me/devices fcm-1');
+    expect(calls.sublist(calls.length - 2), ['DELETE /api/portal/me/devices fcm-1', 'POST /api/portal/me/logout']); // unregister, then revoke on the server
     expect(api.token, isNull);
   });
 
