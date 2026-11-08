@@ -93,6 +93,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
   }, [open]);
   /** Shipping-request notifications carry the request id (not a lead id): open it on the Shipping page. */
   const openTarget = (n: AppNotification) => {
+    if (n.kind === 'SHIP_READY') { sessionStorage.openChinaShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-china-shipping-request', { detail: n.leadId })); return; }
     if (n.kind === 'SHIP_REQUEST' || n.kind === 'SHIP_REQUEST_UPDATE' || n.kind === 'SHIP_SLA_WARN' || n.kind === 'SHIP_SLA_BREACH') { sessionStorage.openShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-shipping-request', { detail: n.leadId })); return; }
     openLead(n.leadId);
   };

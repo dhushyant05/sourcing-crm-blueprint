@@ -28,4 +28,13 @@ describe('portal security: logout and quote decisions', () => {
     expect(rs.filter((r) => r.statusCode === 200)).toHaveLength(1);
     expect(rs.filter((r) => r.statusCode === 409)).toHaveLength(2);
   });
+
+  it('rate-limits wrong current-password guesses on password change (5 per 15 min), without locking out sign-in', async () => {
+    const { as, customer, login } = await setup();
+    const A = await customer('Asha', '9876543210', 'Asha Traders');
+    for (let i = 0; i < 5; i++) expect((await as(A.token, 'POST', '/api/portal/me/password', { currentPassword: `wrong-${i}`, newPassword: 'another-long-pass' })).statusCode).toBe(400);
+    const r = await as(A.token, 'POST', '/api/portal/me/password', { currentPassword: A.password, newPassword: 'another-long-pass' });
+    expect(r.statusCode).toBe(429); // even the right password is refused while locked
+    expect((await login('9876543210', A.password)).statusCode).toBe(200);
+  });
 });

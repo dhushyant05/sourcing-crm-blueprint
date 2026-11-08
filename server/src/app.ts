@@ -77,7 +77,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const push = o.push ?? new PushStore(o.db);
-  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated', SHIP_SLA_WARN: 'Shipping request SLA warning', SHIP_SLA_BREACH: 'Shipping request SLA breached' };
+  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated', SHIP_SLA_WARN: 'Shipping request SLA warning', SHIP_SLA_BREACH: 'Shipping request SLA breached', SHIP_READY: 'Shipping request ready to book' };
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
@@ -1870,9 +1870,13 @@ export async function buildApp(o: AppOptions) {
     });
     api.post<{ Body: { currentPassword?: string; newPassword?: string } }>('/api/portal/me/password', async (req, reply) => {
       const c = req.customer!, cur = String(req.body?.currentPassword ?? ''), nw = String(req.body?.newPassword ?? '');
-      if (!(await portal.checkPassword(c.id, cur))) return reply.code(400).send({ error: 'Current password is wrong' });
+      // Current-password guesses with a stolen session: 5 failures per login per 15 min → 429 (cleared on success).
+      const pwKey = `se:ppw:${c.id}`;
+      if (Number((await o.bus.get(pwKey)) ?? 0) >= 5) return reply.code(429).send({ error: 'Too many attempts, try again in a few minutes' });
+      if (!(await portal.checkPassword(c.id, cur))) { await o.bus.incr(pwKey, 900); return reply.code(400).send({ error: 'Current password is wrong' }); }
       if (nw.length < PORTAL_MIN_PASSWORD) return reply.code(400).send({ error: `Use at least ${PORTAL_MIN_PASSWORD} characters` });
       if (nw === cur) return reply.code(400).send({ error: 'Choose a new password' });
+      await o.bus.del(pwKey);
       const nc = (await portal.setPassword(c.id, nw, false))!;
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'PASSWORD_CHANGED', c.customerId, {});
       return { token: portal.sign(nc), data: await me2(nc) };
@@ -2190,7 +2194,7 @@ export async function buildApp(o: AppOptions) {
       const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
       if (r.kind !== 'SOURCED') throw Object.assign(new Error('A freight-only request is accepted when the customer accepts a freight quote'), { status: 409, appCode: 'freight_quote_required' });
       const nr = await srs.setStatus(r.id, ['SUBMITTED', 'UNDER_REVIEW'], 'ACCEPTED').catch(srErr);
-      await srs.log(r.id, 'SR_ACCEPTED', srActor(u)); await srLive(nr); return { data: await srStaff(u, nr, true) };
+      await srs.log(r.id, 'SR_ACCEPTED', srActor(u)); await srLive(nr); await srChinaReady(nr, u.name); return { data: await srStaff(u, nr, true) };
     });
     api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/freight-quotes', async (req, reply) => {
       const u = req.user!; srIndia(u); need(u, 'quotes.customer'); const r = await srOf(req.params.id);
@@ -2238,6 +2242,18 @@ export async function buildApp(o: AppOptions) {
         shipmentRef: p?.shipmentRef ?? null, updatedAt: r.updatedAt,
         // FREIGHT_ONLY: China updates booking/transit here. SOURCED: China books the linked shipment on the Shipping board (single source of truth).
         canUpdate: r.kind === 'FREIGHT_ONLY' && ['ACCEPTED', 'BOOKED', 'IN_TRANSIT'].includes(r.status) };
+    };
+    /** "Ready to book" for China (in-app + SSE via assign.notify): SR ref + goods only — never customer name, destination contact or prices.
+     *  FREIGHT_ONLY → active China users who may update shipments; SOURCED → the lead's China assignee + China admins (they book on the Shipping board). */
+    const srChinaReady = async (r: ShippingRequest, byName: string | null) => {
+      const china = o.users.list().filter((x) => x.active && (x.role === 'CHINA_ADMIN' || x.role === 'CHINA_STAFF') && can(x, 'orders.production'));
+      let to = china.map((x) => x.id);
+      if (r.kind === 'SOURCED') {
+        const a = r.leadId ? await assign.get(r.leadId) : null;
+        const owner = a?.ownerOffice === 'CHINA' && a.assignedTo && china.some((x) => x.id === a.assignedTo) ? [a.assignedTo] : [];
+        to = [...new Set([...owner, ...china.filter((x) => x.role === 'CHINA_ADMIN').map((x) => x.id)])];
+      }
+      if (to.length) await assign.notify(to, { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind: 'SHIP_READY', office: 'CHINA', byName, detail: null });
     };
     const srChinaOf = async (id: string) => { const r = await srOf(id); if (!CHINA_SR.has(r.status)) throw Object.assign(new Error('Not found'), { status: 404 }); return r; };
     api.get('/api/china/shipping-requests', async (req) => {
@@ -2381,6 +2397,7 @@ export async function buildApp(o: AppOptions) {
       await srs.log(r.id, 'FQ_ACCEPTED', cActor(c), { n: q.n, quoteId: q.id });
       const nr = (await srs.get(r.id))!;
       await srNotify(nr, 'SHIP_REQUEST_UPDATE', c.name, `Freight quote ${r.ref}-F${q.n} accepted, ready to book`); await srLive(nr);
+      await srChinaReady(nr, null); // customer acceptance: no customer name to China
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'FREIGHT_QUOTE_ACCEPTED', c.customerId, { quoteId: q.id });
       return { data: await srCustomer(nr, true) };
     });

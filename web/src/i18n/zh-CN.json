@@ -519,7 +519,9 @@
     "SHIP_SLA_WARN": "{{ref}}：运输请求即将超时",
     "SHIP_SLA_BREACH": "{{ref}}：运输请求已超时",
     "SHIP_SLA_WARN_nobody": "{{ref}}：运输请求即将超时",
-    "SHIP_SLA_BREACH_nobody": "{{ref}}：运输请求已超时"
+    "SHIP_SLA_BREACH_nobody": "{{ref}}：运输请求已超时",
+    "SHIP_READY": "{{ref}}：运输请求可以订舱",
+    "SHIP_READY_nobody": "{{ref}}：运输请求可以订舱"
   },
   "lq": {
     "title": "供应商报价",

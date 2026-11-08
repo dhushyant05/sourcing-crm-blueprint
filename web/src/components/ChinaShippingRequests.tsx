@@ -12,7 +12,11 @@ const dash = (v: unknown) => (v == null || v === '' ? '—' : String(v));
 
 export function ChinaShippingRequests() {
   const { api, session, perms } = useApp(); const { t } = useTranslation();
-  const [list, setList] = useState<ShippingRequestChina[] | null>(null), [open, setOpen] = useState<string | null>(null);
+  const [list, setList] = useState<ShippingRequestChina[] | null>(null);
+  // Deep link from the "ready to book" notification (bell → #/shipping).
+  const [open, setOpen] = useState<string | null>(() => { const x = sessionStorage.openChinaShippingRequest ?? null; delete sessionStorage.openChinaShippingRequest; return x; });
+  useEffect(() => { const h = (e: Event) => { delete sessionStorage.openChinaShippingRequest; setOpen((e as CustomEvent<string>).detail); void load(); };
+    addEventListener('open-china-shipping-request', h); return () => removeEventListener('open-china-shipping-request', h); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const load = useCallback(() => api.chinaShippingRequests?.().then(setList).catch(() => setList([])), [api]);
   useEffect(() => { void load(); }, [load]);
   const china = session?.role === 'CHINA_ADMIN' || session?.role === 'CHINA_STAFF' || session?.role === 'SUPER_ADMIN';

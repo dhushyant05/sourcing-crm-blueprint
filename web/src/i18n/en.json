@@ -519,7 +519,9 @@
     "SHIP_SLA_WARN": "{{ref}}: shipping request SLA almost due",
     "SHIP_SLA_BREACH": "{{ref}}: shipping request SLA breached",
     "SHIP_SLA_WARN_nobody": "{{ref}}: shipping request SLA almost due",
-    "SHIP_SLA_BREACH_nobody": "{{ref}}: shipping request SLA breached"
+    "SHIP_SLA_BREACH_nobody": "{{ref}}: shipping request SLA breached",
+    "SHIP_READY": "{{ref}}: shipping request ready to book",
+    "SHIP_READY_nobody": "{{ref}}: shipping request ready to book"
   },
   "lq": {
     "title": "Supplier quotes",

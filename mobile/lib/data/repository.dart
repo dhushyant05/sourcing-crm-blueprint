@@ -468,4 +468,15 @@ class SourceEasyRepository {
     ev.sort((a, b) => a.at.compareTo(b.at));
     return ev;
   }
+
+  // ---- Shipping requests (same server routes/DTOs as the web). China: accepted requests' booking details only (server allowlist). ----
+  Future<List<Map<String, dynamic>>> chinaShippingRequests() async => _list(await api.send('GET', '/api/china/shipping-requests'));
+  Future<Map<String, dynamic>> chinaSrStage(String id, Map<String, dynamic> body) async =>
+      ((await api.send('POST', '/api/china/shipping-requests/${Uri.encodeComponent(id)}/stage', body: body) as Map)['data'] as Map).cast<String, dynamic>();
+  /// India office (server 403 for China).
+  Future<List<Map<String, dynamic>>> shippingRequests() async => _list(await api.send('GET', '/api/shipping-requests'));
+  Future<Map<String, dynamic>> shippingRequest(String id) async =>
+      ((await api.send('GET', '/api/shipping-requests/${Uri.encodeComponent(id)}') as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> srStage(String id, Map<String, dynamic> body) async =>
+      ((await api.send('POST', '/api/shipping-requests/${Uri.encodeComponent(id)}/stage', body: body) as Map)['data'] as Map).cast<String, dynamic>();
 }

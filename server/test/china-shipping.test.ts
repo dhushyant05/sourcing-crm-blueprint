@@ -28,6 +28,14 @@ describe('China shipping-request booking view', () => {
     expect((await call('cs', 'GET', '/api/china/shipping-requests')).json().data).toHaveLength(0); // quoted, not accepted
     expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${fq}/accept`)).statusCode).toBe(200);
 
+    // China gets an in-app "ready to book" (SR ref + goods only); India-only roles do not.
+    const nCs = (await call('cs', 'GET', '/api/notifications')).json().data;
+    const ready = nCs.find((n: any) => n.kind === 'SHIP_READY');
+    expect(ready).toMatchObject({ leadId: id, leadRef: expect.stringMatching(/^SH-/), product: 'Brass lamps', office: 'CHINA', byName: null });
+    expect(JSON.stringify(nCs)).not.toMatch(/Secretname|Hidden Traders|9876543210|Secret Street|65000/);
+    expect((await call('ca', 'GET', '/api/notifications')).json().data.some((n: any) => n.kind === 'SHIP_READY')).toBe(true);
+    expect((await call('is', 'GET', '/api/notifications')).json().data.some((n: any) => n.kind === 'SHIP_READY')).toBe(false);
+
     // After acceptance: allowlisted booking details only.
     const list = (await call('cs', 'GET', '/api/china/shipping-requests')).json().data;
     expect(list).toHaveLength(1);

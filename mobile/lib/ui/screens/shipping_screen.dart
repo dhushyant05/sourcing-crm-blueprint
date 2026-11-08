@@ -7,6 +7,7 @@ import '../../services/session.dart';
 import '../widgets/live_refresh.dart';
 import '../widgets/seg_tabs.dart';
 import 'lead_detail_screen.dart';
+import 'shipping_requests_screen.dart';
 
 /// Shipping — same as the web Shipping page: one shipment per order, Active/Closed tabs, stage filter chips with counts,
 /// search, a progress bar per shipment, China part (booking/transit details, Mark shipped) and India part (customs/delivery,
@@ -62,7 +63,13 @@ class _ShippingScreenState extends State<ShippingScreen> with LiveRefresh {
         ['ref', 'leadRef', 'product', 'customer', 'supplier', 'tracking', 'container'].map((k) => '${s[k] ?? ''}').join(' ').toLowerCase().contains(_q))).toList();
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(tw(context, 'shipping.title'))),
+      appBar: AppBar(title: Text(tw(context, 'shipping.title')), actions: [
+        // Shipping requests: India gets the request list, China the booking view of accepted requests (server enforces both).
+        if (context.read<Session>().perms.canSeeCustomers) IconButton(key: const Key('open-sr'), tooltip: tw(context, 'sr.title'), icon: const Icon(Icons.assignment_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IndiaShippingRequestsScreen()))),
+        if (const {'CHINA_ADMIN', 'CHINA_STAFF', 'SUPER_ADMIN'}.contains(context.read<Session>().role.code)) IconButton(key: const Key('open-csr'), tooltip: tw(context, 'csr.title'), icon: const Icon(Icons.sailing_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChinaShippingRequestsScreen()))),
+      ]),
       body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: [
         Text(tw(context, 'shipping.subtitle'), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         const SizedBox(height: 8),
