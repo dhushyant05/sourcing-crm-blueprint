@@ -38,6 +38,9 @@ export interface Api {
   srPatch?(id: string, body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   srFileUrl?(id: string, fileId: string): Promise<string>;
   srFqPdfUrl?(id: string, qid: string): Promise<string>;
+  storage?(q: Record<string, string>): Promise<StoragePage>;
+  storageDelete?(items: { key: string; id: string; size: number; places: number }[], reason?: string): Promise<{ results: { key: string; id: string; ok: boolean; code?: string; freed?: number }[]; freed: number }>;
+  storageFileUrl?(key: string, id: string): Promise<string>;
   srFqAdmin?(id: string, qid: string, op: 'edit' | 'revert' | 'delete', body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   createShippingRequest?(body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   shippableOrders?(customerId: string): Promise<{ id: string; leadReference: string | null; product: string; qty: number }[]>;
@@ -282,6 +285,9 @@ export class ServerApi implements Api {
     const p = `/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}`;
     return this.req<ShippingRequestStaff>(op === 'edit' ? 'PATCH' : op === 'delete' ? 'DELETE' : 'POST', op === 'revert' ? `${p}/revert` : p, body);
   }
+  storage(q: Record<string, string>) { return this.req<StoragePage>('GET', `/storage?${new URLSearchParams(q)}`); }
+  storageDelete(items: { key: string; id: string; size: number; places: number }[], reason?: string) { return this.req<{ results: { key: string; id: string; ok: boolean; code?: string; freed?: number }[]; freed: number }>('POST', '/storage/delete', { items, confirm: true, reason }); }
+  storageFileUrl(key: string, id: string) { return this.blob(`/api/storage/files/${encodeURIComponent(key)}/${encodeURIComponent(id)}`); }
   srFqPdfUrl(id: string, qid: string) { return this.blob(`/api/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}/pdf`); }
   createShippingRequest(body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('POST', '/shipping-requests', body); }
   shippableOrders(customerId: string) { return this.req<{ id: string; leadReference: string | null; product: string; qty: number }[]>('GET', `/customers/${encodeURIComponent(customerId)}/shippable-orders`); }
@@ -511,3 +517,7 @@ const demoNotes: AppNotification[] = [
   { id: 'n1', leadId: 'L2', leadRef: 'SE-2611-0002', product: 'Bamboo cutting boards', kind: 'RETURNED', office: 'INDIA', byName: 'Li Wei', createdAt: new Date(Date.now() - 12 * 60e3).toISOString(), read: false },
   { id: 'n2', leadId: 'L1', leadRef: 'SE-2611-0001', product: 'Steel water bottles', kind: 'ASSIGNED', office: 'INDIA', byName: 'Chen Jing', createdAt: new Date(Date.now() - 3 * 3600e3).toISOString(), read: true },
 ];
+
+export interface StoragePlace { kind: string; ref: string | null; recordId: string | null; customerVisible?: boolean }
+export interface StorageItem { key: string; id: string; name: string; mime: string; type: 'image' | 'video' | 'document'; size: number; createdAt: string; missing: boolean; owner: 'LEAD' | 'QUOTE' | 'SHIPPING' | 'GREETING'; places: StoragePlace[]; blocked: string | null }
+export interface StoragePage { disk: { total: number; used: number; free: number } | null; uploads: { files: number; bytes: number; missing: number; byType: Record<string, { files: number; bytes: number }> }; total: number; offset: number; limit: number; items: StorageItem[] }
