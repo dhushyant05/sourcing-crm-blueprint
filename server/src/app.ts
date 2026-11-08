@@ -27,7 +27,7 @@ import { ShippingStore, SrError, cleanFields, CUSTOMER_FIELDS, SR_OPEN, SR_STAGE
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
 import { PushStore } from './push.js';
 import { AssignStore, type Assignment, type Office, type NotifKind } from './assign.js';
-import { WorkflowStore, type LeadEvent, type EventKind, type Vis } from './workflow.js';
+import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 import { PortalStore, PortalError, loginView, tempPassword, customerStage, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
 
@@ -77,7 +77,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const push = o.push ?? new PushStore(o.db);
-  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated' };
+  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated', SHIP_SLA_WARN: 'Shipping request SLA warning', SHIP_SLA_BREACH: 'Shipping request SLA breached' };
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
@@ -193,8 +193,10 @@ export async function buildApp(o: AppOptions) {
   };
   const stopClock = (leadId: string, office?: Office) => wf.stop(leadId, office);
   /** SLA watcher: 80% → the clock's assignee (or the office queue watchers); breach → office admins + super admin (+ assignee), logged on the timeline. */
+  let srSlaTick: () => Promise<{ warn: number; breach: number }> = async () => ({ warn: 0, breach: 0 });
   const slaTick = async () => {
     const { warn, breach } = await wf.tick();
+    const sr = await srSlaTick().catch(() => ({ warn: 0, breach: 0 }));
     for (const [c, kind] of [...warn.map((c) => [c, 'SLA_WARN'] as const), ...breach.map((c) => [c, 'SLA_BREACH'] as const)]) {
       const lead = await leadDb.get(c.leadId);
       if (!lead) { await wf.forgetLead(c.leadId); continue; }
@@ -211,7 +213,7 @@ export async function buildApp(o: AppOptions) {
       await wf.log(f.leadId, 'FOLLOW_UP_DUE', null, { date: f.date });
       if (recips.length) await assign.notify(recips, { leadId: f.leadId, leadRef: (lead.leadRef as string) ?? null, product: (lead.productInterest as string) ?? null, kind: 'FOLLOW_UP', office: 'INDIA', byName: null, detail: f.date });
     }
-    return { warn: warn.length, breach: breach.length };
+    return { warn: warn.length + sr.warn, breach: breach.length + sr.breach };
   };
   const tickMs = o.slaTickMs ?? 30000;
   if (tickMs > 0) {
@@ -2018,7 +2020,39 @@ export async function buildApp(o: AppOptions) {
     const srAdmin = (u: User) => u.role === 'SUPER_ADMIN' || u.role === 'INDIA_ADMIN';
     const srOf = async (id: string) => { const r = await srs.get(String(id)); if (!r) throw Object.assign(new Error('Not found'), { status: 404 }); return r; };
     const srActor = (u: User) => ({ kind: 'STAFF' as const, id: u.id, name: u.name });
-    const srLive = (r: ShippingRequest) => liveData({ type: 'shipping', id: r.id, shippingRequestId: r.id, at: Date.now() });
+    /** SLA (lead settings, normal hours): runs while India owes a response (SUBMITTED / UNDER_REVIEW); stops on any India answer or close. */
+    const SR_SLA_OPEN = ['SUBMITTED', 'UNDER_REVIEW'];
+    const srSlaSync = async (id: string) => {
+      const x = await o.db.get('SELECT status, assigned_to, sla_started_at, sla_due_at, sla_breached FROM shipping_requests WHERE id = ?', id); if (!x) return;
+      const running = !!x.sla_started_at, owes = SR_SLA_OPEN.includes(x.status);
+      if (owes && !running) {
+        const mins = (await wf.sla()).normalMinutes, now = Date.now();
+        await o.db.run('UPDATE shipping_requests SET sla_started_at = ?, sla_due_at = ?, sla_warned = false, sla_breached = false WHERE id = ? AND sla_started_at IS NULL',
+          new Date(now).toISOString(), new Date(now + mins * 60e3).toISOString(), id);
+      } else if (!owes && running) {
+        const ended = new Date(), breached = !!x.sla_breached || ended.getTime() > new Date(x.sla_due_at).getTime();
+        await o.db.run('INSERT INTO shipping_sla_runs (id, request_id, assignee, started_at, due_at, ended_at, breached) VALUES (?,?,?,?,?,?,?)', randomUUID(), id, x.assigned_to ?? null, x.sla_started_at, x.sla_due_at, ended.toISOString(), breached);
+        await o.db.run('UPDATE shipping_requests SET sla_started_at = NULL, sla_due_at = NULL, sla_warned = false, sla_breached = false WHERE id = ?', id);
+      }
+    };
+    srSlaTick = async () => {
+      const wm = (await wf.sla()).warnMinutes, now = Date.now(); let warn = 0, breach = 0;
+      for (const x of await o.db.all('SELECT id, ref, goods, assigned_to, sla_started_at, sla_due_at, sla_warned, sla_breached FROM shipping_requests WHERE sla_due_at IS NOT NULL AND NOT sla_breached')) {
+        const due = new Date(x.sla_due_at).getTime(), start = new Date(x.sla_started_at).getTime();
+        const kind = now >= due ? 'SHIP_SLA_BREACH' : !x.sla_warned && now >= warnAt(start, due, wm) ? 'SHIP_SLA_WARN' : null; if (!kind) continue;
+        const n = await o.db.run(kind === 'SHIP_SLA_BREACH' ? 'UPDATE shipping_requests SET sla_breached = true, sla_warned = true WHERE id = ? AND NOT sla_breached' : 'UPDATE shipping_requests SET sla_warned = true WHERE id = ? AND NOT sla_warned', x.id);
+        if (!n) continue;
+        const owner = x.assigned_to && o.users.byId(x.assigned_to)?.active ? [x.assigned_to as string] : [];
+        const sa = o.users.list().filter((u) => u.active && u.role === 'SUPER_ADMIN').map((u) => u.id);
+        const recips = kind === 'SHIP_SLA_WARN' ? [...new Set([...(owner.length ? owner : queueWatchers('INDIA')), ...sa])] : [...new Set([...queueWatchers('INDIA'), ...owner])];
+        if (kind === 'SHIP_SLA_BREACH') { await srs.log(x.id, 'SR_SLA_BREACH', { kind: 'SYSTEM', id: null, name: null }, { dueAt: new Date(due).toISOString() }); breach++; } else warn++;
+        await assign.notify(recips, { leadId: x.id, leadRef: x.ref, product: x.goods ?? null, kind, office: 'INDIA', byName: null });
+      }
+      return { warn, breach };
+    };
+    const srSla = async (id: string) => { const x = await o.db.get('SELECT sla_started_at, sla_due_at, sla_warned, sla_breached FROM shipping_requests WHERE id = ?', id);
+      return x?.sla_due_at ? { startedAt: new Date(x.sla_started_at).toISOString(), dueAt: new Date(x.sla_due_at).toISOString(), warned: !!x.sla_warned, breached: !!x.sla_breached || Date.now() > new Date(x.sla_due_at).getTime() } : null; };
+    const srLive = async (r: ShippingRequest) => { await srSlaSync(r.id); return liveData({ type: 'shipping', id: r.id, shippingRequestId: r.id, at: Date.now() }); };
     const srIndiaPeople = () => o.users.list().filter((x) => x.active && sides(x.role).india).map((x) => x.id);
     const srNotify = async (r: ShippingRequest, kind: 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE', byName: string | null, detail?: string) => {
       const to = r.assignedTo && kind === 'SHIP_REQUEST_UPDATE' ? [r.assignedTo, ...queueWatchers('INDIA')] : srIndiaPeople();
@@ -2036,7 +2070,7 @@ export async function buildApp(o: AppOptions) {
     const srStaff = async (u: User, r: ShippingRequest, full: boolean) => {
       const names = userNames(), c = await customers.get(r.customerId);
       const base = { ...r, customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, assignedToName: (r.assignedTo && names.get(r.assignedTo)) || null,
-        leadRef: await srLeadRef(r.leadId), progress: await srTracking(r), canEdit: true };
+        leadRef: await srLeadRef(r.leadId), progress: await srTracking(r), sla: await srSla(r.id), canEdit: true };
       if (!full) return base;
       const fqs = (await srs.quotes(r.id)).map((q) => ({ ...q, label: `${r.ref}-F${q.n}`, internalCost: can(u, 'prices.inr') ? q.internalCost : null, createdByName: (q.createdBy && names.get(q.createdBy)) || null }));
       const shared = await srs.customerFileIds(r.id);

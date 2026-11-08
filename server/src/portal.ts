@@ -71,10 +71,13 @@ export class PortalStore {
   /** Sets a password and revokes every session. `mustChange` is true when staff reset it (temporary password). */
   async setPassword(id: string, password: string, mustChange: boolean) {
     await this.db.run('UPDATE customer_users SET password_hash = ?, must_change_password = ?, token_version = token_version + 1, updated_at = now() WHERE id = ?', await bcrypt.hash(password, 12), mustChange, id);
+    // Revoked sessions must not keep getting pushes: phones re-register after the next sign-in.
+    await this.db.run('DELETE FROM customer_device_tokens WHERE customer_user_id = ?', id);
     return this.byId(id);
   }
   async setActive(id: string, active: boolean) {
     await this.db.run('UPDATE customer_users SET active = ?, token_version = token_version + 1, updated_at = now() WHERE id = ?', active, id);
+    if (!active) await this.db.run('DELETE FROM customer_device_tokens WHERE customer_user_id = ?', id);
     return this.byId(id);
   }
   // ---- login requests ----

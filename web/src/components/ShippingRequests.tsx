@@ -28,12 +28,12 @@ export function ShippingRequests() {
         {api.createShippingRequest && <button className="btn-primary !py-1 text-xs" onClick={() => setCreating(true)} data-testid="sr-new"><Plus size={13} />{t('sr.new')}</button>}
         <label className="ml-auto flex items-center gap-1 text-xs text-ink-500"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />{t('sr.showClosed')}</label></div>
       {list === null ? <p className="text-sm text-ink-400">{t('sr.loading')}</p> : !rows.length ? <p className="text-sm text-ink-500">{t('sr.none')}</p> : (
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-ink-500"><th className="py-1 pr-3">{t('sr.col.ref')}</th><th className="pr-3">{t('sr.col.customer')}</th><th className="pr-3">{t('sr.col.goods')}</th><th className="pr-3">{t('sr.col.type')}</th><th className="pr-3">{t('sr.col.status')}</th><th className="pr-3">{t('sr.col.owner')}</th><th>{t('sr.col.raised')}</th></tr></thead>
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-ink-500"><th className="py-1 pr-3">{t('sr.col.ref')}</th><th className="pr-3">{t('sr.col.customer')}</th><th className="pr-3">{t('sr.col.goods')}</th><th className="pr-3">{t('sr.col.type')}</th><th className="pr-3">{t('sr.col.status')}</th><th className="pr-3">{t('sr.col.owner')}</th><th className="pr-3">{t('sr.col.sla')}</th><th>{t('sr.col.raised')}</th></tr></thead>
           <tbody>{rows.map((r) => <tr key={r.id} className="cursor-pointer border-t border-ink-100 hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50" onClick={() => setOpenId(r.id)} data-testid={`sr-row-${r.ref}`}>
             <td className="py-2 pr-3 font-mono font-semibold text-brand-700 dark:text-brand-300">{r.ref}</td><td className="pr-3">{r.customer?.company || r.customer?.name}</td>
             <td className="max-w-[16rem] truncate pr-3">{r.goods}</td><td className="pr-3 text-xs">{r.kind === 'SOURCED' ? `${t('sr.sourced')} ${r.leadRef ?? ''}` : t('sr.freightOnly')}</td>
             <td className="pr-3"><span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">{st(r.status)}</span></td>
-            <td className="pr-3 text-xs">{r.assignedToName ?? t('sr.unclaimed')}</td><td className="text-xs text-ink-500">{when(r.createdAt)}</td></tr>)}</tbody></table></div>)}
+            <td className="pr-3 text-xs">{r.assignedToName ?? t('sr.unclaimed')}</td><td className={`pr-3 text-xs ${r.sla?.breached ? 'font-semibold text-rose-600' : r.sla?.warned ? 'text-amber-700' : 'text-ink-500'}`} data-testid={`sr-sla-${r.ref}`}>{r.sla ? (r.sla.breached ? t('sr.slaBreached') : t('sr.slaDue', { at: when(r.sla.dueAt) })) : '—'}</td><td className="text-xs text-ink-500">{when(r.createdAt)}</td></tr>)}</tbody></table></div>)}
       {creating && <NewSr onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); void load(); setOpenId(id); }} />}
       {openId && <SrPanel id={openId} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
     </div>
@@ -64,7 +64,7 @@ function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; 
           {row(t('sr.f.packages'), r.packages)}{row(t('sr.f.weight'), r.weightKg != null ? `${r.weightKg} kg` : null)}{row(t('sr.f.volume'), r.cbm != null ? `${r.cbm} CBM` : null)}
           {row(t('sr.f.shipper'), [r.shipperName, r.shipperPhone].filter(Boolean).join(' · '))}{row(t('sr.f.pickup'), [r.pickupAddress, r.pickupCity].filter(Boolean).join(', '))}
           {row(t('sr.f.dest'), [r.destAddress, r.destCity, r.destPincode].filter(Boolean).join(', '))}{row(t('sr.f.modeTerm'), [r.mode, r.incoterm].filter(Boolean).join(' · '))}
-          {row(t('sr.f.ready'), r.readyDate)}{row(t('sr.f.note'), r.customerNote)}{row(t('sr.f.owner'), r.assignedToName ?? t('sr.unclaimed'))}{row(t('sr.f.rejectReason'), r.rejectReason)}
+          {row(t('sr.f.ready'), r.readyDate)}{row(t('sr.f.note'), r.customerNote)}{r.sla && row(t('sr.col.sla'), r.sla.breached ? t('sr.slaBreached') : t('sr.slaDue', { at: when(r.sla.dueAt) }))}{row(t('sr.f.owner'), r.assignedToName ?? t('sr.unclaimed'))}{row(t('sr.f.rejectReason'), r.rejectReason)}
           {r.progress && row(t('sr.f.shipment'), `${st(r.progress.stage)}${r.progress.shipmentRef ? ` · ${r.progress.shipmentRef}` : ''}${r.progress.container ? ` · ${r.progress.container}` : ''}`)}
         </dl>
         <div className="flex flex-wrap gap-2">

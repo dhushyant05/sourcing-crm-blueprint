@@ -515,7 +515,11 @@
     "SHIP_REQUEST": "{{ref}}：新运输申请",
     "SHIP_REQUEST_nobody": "{{ref}}：新运输申请",
     "SHIP_REQUEST_UPDATE": "{{ref}}：{{by}} 更新了运输申请",
-    "SHIP_REQUEST_UPDATE_nobody": "{{ref}}：运输申请已更新"
+    "SHIP_REQUEST_UPDATE_nobody": "{{ref}}：运输申请已更新",
+    "SHIP_SLA_WARN": "{{ref}}：运输请求即将超时",
+    "SHIP_SLA_BREACH": "{{ref}}：运输请求已超时",
+    "SHIP_SLA_WARN_nobody": "{{ref}}：运输请求即将超时",
+    "SHIP_SLA_BREACH_nobody": "{{ref}}：运输请求已超时"
   },
   "lq": {
     "title": "供应商报价",
@@ -1107,7 +1111,8 @@
       "type": "类型",
       "status": "状态",
       "owner": "负责人",
-      "raised": "创建时间"
+      "raised": "创建时间",
+      "sla": "时限"
     },
     "sourced": "采购订单",
     "freightOnly": "仅运输",
@@ -1208,7 +1213,9 @@
       "ACCEPTED": "已接受",
       "REJECTED": "已拒绝",
       "WITHDRAWN": "已替换"
-    }
+    },
+    "slaDue": "截止 {{at}}",
+    "slaBreached": "已超时"
   },
   "gr": {
     "title": "节日问候",

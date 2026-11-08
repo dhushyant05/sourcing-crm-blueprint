@@ -61,7 +61,7 @@ export function customerFcmFromEnv(env = process.env, http: typeof fetch = fetch
   };
   return { enabled: true, async send(token, m) {
     const r = await http(`https://fcm.googleapis.com/v1/projects/${a.project_id}/messages:send`, { method: 'POST', headers: { authorization: `Bearer ${await access()}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ message: { token, notification: { title: m.title, body: m.body }, data: m.data } }) });
+      body: JSON.stringify({ message: { token, notification: { title: m.title, body: m.body }, data: m.data, android: { notification: { channel_id: 'customer_updates' } } } }) });
     if (r.status === 404 || r.status === 400) return 'gone';
     if (!r.ok) throw new Error(`fcm ${r.status}`);
     return 'ok';

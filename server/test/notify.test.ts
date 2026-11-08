@@ -58,6 +58,10 @@ describe('customer notifications', () => {
     expect(out.find((r: any) => r.channel === 'EMAIL')).toMatchObject({ status: 'SKIPPED', reason: 'opted_out' });
     expect(out.find((r: any) => r.channel === 'PUSH')).toMatchObject({ status: 'SENT' });
     expect(JSON.stringify(m.pushes)).not.toContain('3333');
+    // Staff resets the password (or disables the login): this phone stops getting pushes until it signs in again.
+    expect((await t.db.all('SELECT token FROM customer_device_tokens')).length).toBe(1);
+    expect((await t.call('ia', 'POST', `/api/customers/${A.customerId}/portal-login/reset`, {})).statusCode).toBe(200);
+    expect((await t.db.all('SELECT token FROM customer_device_tokens')).length).toBe(0);
   });
 
   it('templates only take allowlisted variables; env adapters stay disabled without config; FCM/HTTP adapters build safe requests (mocked)', async () => {
@@ -79,6 +83,6 @@ describe('customer notifications', () => {
     expect(p.enabled).toBe(true);
     expect(await p.send('tok', { title: 'T', body: 'B', data: { reference: 'SH-2611-0001' } })).toBe('ok');
     const msg = calls.find((c) => String(c.url).includes('customer-app-test/messages:send'));
-    expect(JSON.parse(msg.init.body).message).toEqual({ token: 'tok', notification: { title: 'T', body: 'B' }, data: { reference: 'SH-2611-0001' } });
+    expect(JSON.parse(msg.init.body).message).toEqual({ token: 'tok', notification: { title: 'T', body: 'B' }, data: { reference: 'SH-2611-0001' }, android: { notification: { channel_id: 'customer_updates' } } });
   });
 });

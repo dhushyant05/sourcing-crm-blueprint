@@ -515,7 +515,11 @@
     "SHIP_REQUEST": "{{ref}}: new shipping request",
     "SHIP_REQUEST_nobody": "{{ref}}: new shipping request",
     "SHIP_REQUEST_UPDATE": "{{ref}}: shipping request updated by {{by}}",
-    "SHIP_REQUEST_UPDATE_nobody": "{{ref}}: shipping request updated"
+    "SHIP_REQUEST_UPDATE_nobody": "{{ref}}: shipping request updated",
+    "SHIP_SLA_WARN": "{{ref}}: shipping request SLA almost due",
+    "SHIP_SLA_BREACH": "{{ref}}: shipping request SLA breached",
+    "SHIP_SLA_WARN_nobody": "{{ref}}: shipping request SLA almost due",
+    "SHIP_SLA_BREACH_nobody": "{{ref}}: shipping request SLA breached"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -1107,7 +1111,8 @@
       "type": "Type",
       "status": "Status",
       "owner": "Owner",
-      "raised": "Raised"
+      "raised": "Raised",
+      "sla": "SLA"
     },
     "sourced": "Sourced",
     "freightOnly": "Freight only",
@@ -1208,7 +1213,9 @@
       "ACCEPTED": "Accepted",
       "REJECTED": "Declined",
       "WITHDRAWN": "Replaced"
-    }
+    },
+    "slaDue": "Due {{at}}",
+    "slaBreached": "Overdue"
   },
   "gr": {
     "title": "Greetings",
