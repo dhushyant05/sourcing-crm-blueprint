@@ -1,6 +1,7 @@
 /**
  * India-side customer directory (PostgreSQL `customers`), the mirror of the China supplier directory.
  * Leads are linked automatically (dedupe by phone → email → company) by `sync()`, which also back-fills old leads.
+ * This link is INTERNAL only (contact details are spoofable): it never makes a lead visible in a customer's portal (`leads.portal_customer_id`).
  * China never reaches this store (routes are India + super admin only, gated by customers.view / customers.edit).
  */
 import { randomUUID } from 'node:crypto';
@@ -62,7 +63,15 @@ export class CustomerStore {
         for (const k of TEXT) if (k !== 'notes' && !v[k] && (sc as any)[k]) v[k] = (sc as any)[k];
         if (sc.notes && sc.notes !== v.notes) v.notes = [v.notes, sc.notes].filter(Boolean).join('\n');
         v.tags = [...new Set([...v.tags, ...sc.tags])];
-        await t.run('UPDATE leads SET customer_id = ? WHERE customer_id = ?', targetId, sid);
+        // Portal logins follow the merge (one login per customer): move it over, or refuse when both have one.
+        const loginMoves = !!(await t.get('SELECT 1 FROM customer_users WHERE customer_id = ?', sid));
+        if (loginMoves) {
+          if (await t.get('SELECT 1 FROM customer_users WHERE customer_id = ?', targetId)) throw new BadCustomer('Both customers have a portal login; deactivate one first');
+          await t.run('UPDATE customer_users SET customer_id = ?, token_version = token_version + 1, updated_at = now() WHERE customer_id = ?', targetId, sid); // sessions re-login
+        }
+        // Portal visibility only follows the merge with the login it was granted to; anything else becomes internal again (re-share explicitly).
+        await t.run(`UPDATE leads SET customer_id = ?, portal_customer_id = CASE WHEN ? AND portal_customer_id = ? THEN ? ELSE NULL END WHERE customer_id = ?`, targetId, loginMoves, sid, targetId, sid);
+        await t.run('UPDATE shipping_requests SET customer_id = ? WHERE customer_id = ?', targetId, sid);
         await t.run('DELETE FROM customers WHERE id = ?', sid);
       }
       await t.run(`UPDATE customers SET name=?, company=?, phone=?, whatsapp=?, email=?, city=?, state=?, country=?, gst=?, address=?, notes=?, tags=?,
@@ -73,7 +82,10 @@ export class CustomerStore {
   }
   async leadCount(id: string) { return Number((await this.db.get('SELECT COUNT(*)::int AS n FROM leads WHERE customer_id = ?', id))?.n ?? 0); }
   async remove(id: string) { return this.db.run('DELETE FROM customers WHERE id = ?', id); }
-  async link(leadId: string, customerId: string) { await this.db.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, leadId); }
+  /** Internal CRM link. Re-linking to another customer always revokes portal visibility (it must be re-shared by an India admin). */
+  async link(leadId: string, customerId: string, db: Db = this.db) {
+    await db.run('UPDATE leads SET portal_customer_id = CASE WHEN portal_customer_id = ? THEN portal_customer_id ELSE NULL END, customer_id = ? WHERE id = ?', customerId, customerId, leadId);
+  }
   async customerOf(leadId: string) { return (await this.db.get('SELECT customer_id FROM leads WHERE id = ?', leadId))?.customer_id ?? null; }
   /** Best existing match for contact details (phone, then email, then company). */
   async match(phone?: string | null, email?: string | null, company?: string | null, db: Db = this.db): Promise<string | null> {

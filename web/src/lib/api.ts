@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff, ShippingRequestChina, GreetingStaff } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -23,6 +23,38 @@ export interface Api {
   /** The directory customer a lead is linked to (null when unlinked). */
   leadCustomer(leadId: string): Promise<Customer | null>;
   deleteCustomer(id: string): Promise<void>;
+  /** Customer portal logins (India admin / super admin with portal.logins.manage). Optional: the demo API has none. */
+  portalRequests?(status?: string): Promise<PortalLoginRequest[]>;
+  approvePortalRequest?(id: string, b: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean }): Promise<{ login: PortalLogin; tempPassword: string }>;
+  portalLeads?(customerId: string): Promise<PortalLeadShare[]>;
+  setPortalShare?(leadId: string, shared: boolean): Promise<{ shared: boolean }>;
+  /** Shipping Requests, China office booking view (accepted requests only). */
+  chinaShippingRequests?(): Promise<ShippingRequestChina[]>;
+  chinaSrStage?(id: string, body: Record<string, unknown>): Promise<ShippingRequestChina>;
+  /** Shipping Requests (India office only). */
+  shippingRequests?(status?: string): Promise<ShippingRequestStaff[]>;
+  shippingRequest?(id: string): Promise<ShippingRequestStaff>;
+  srAction?(id: string, action: 'assign' | 'needs-info' | 'reject' | 'cancel' | 'accept' | 'freight-quotes' | 'stage', body?: Record<string, unknown>): Promise<ShippingRequestStaff>;
+  srPatch?(id: string, body: Record<string, unknown>): Promise<ShippingRequestStaff>;
+  srFileUrl?(id: string, fileId: string): Promise<string>;
+  srFqPdfUrl?(id: string, qid: string): Promise<string>;
+  createShippingRequest?(body: Record<string, unknown>): Promise<ShippingRequestStaff>;
+  shippableOrders?(customerId: string): Promise<{ id: string; leadReference: string | null; product: string; qty: number }[]>;
+  /** Greetings (greetings.manage / greetings.publish). */
+  greetings?(): Promise<GreetingStaff[]>;
+  greeting?(id: string): Promise<GreetingStaff>;
+  saveGreeting?(body: Record<string, unknown>, id?: string): Promise<GreetingStaff>;
+  deleteGreeting?(id: string): Promise<void>;
+  greetingAction?(id: string, action: 'publish' | 'unpublish'): Promise<GreetingStaff>;
+  uploadGreetingImage?(id: string, kind: 'desktop' | 'mobile', file: File): Promise<GreetingStaff>;
+  removeGreetingImage?(id: string, kind: 'desktop' | 'mobile'): Promise<GreetingStaff>;
+  greetingImageUrl?(path: string): Promise<string>;
+  notificationOutbox?(): Promise<{ email: boolean; push: boolean; rows: { id: string; channel: string; template: string; reference?: string; label?: string; status: string; reason: string | null; createdAt: string; processedAt: string | null }[] }>;
+  rejectPortalRequest?(id: string, reason: string): Promise<PortalLoginRequest>;
+  portalLogin?(customerId: string): Promise<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>;
+  issuePortalLogin?(customerId: string, phone?: string): Promise<{ login: PortalLogin; tempPassword: string }>;
+  resetPortalLogin?(customerId: string): Promise<{ login: PortalLogin; tempPassword: string }>;
+  setPortalLoginActive?(customerId: string, active: boolean): Promise<{ login: PortalLogin }>;
   /** Returns the new lead id. */
   createLead(l: NewLead): Promise<string>;
   /** India side: edit lead fields (e.g. summary). */
@@ -234,6 +266,50 @@ export class ServerApi implements Api {
   mergeCustomers(into: string, from: string[]) { return this.req<Customer>('POST', `/customers/${encodeURIComponent(into)}/merge`, { from }); }
   leadCustomer(leadId: string) { return this.req<Customer | null>('GET', `/leads/${encodeURIComponent(leadId)}/customer`); }
   async deleteCustomer(id: string) { await this.req('DELETE', `/customers/${encodeURIComponent(id)}`); }
+  portalRequests(status?: string) { return this.req<PortalLoginRequest[]>('GET', `/portal-admin/login-requests${status ? `?status=${status}` : ''}`); }
+  approvePortalRequest(id: string, b: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean }) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/approve`, b); }
+  portalLeads(customerId: string) { return this.req<PortalLeadShare[]>('GET', `/customers/${encodeURIComponent(customerId)}/portal-leads`); }
+  setPortalShare(leadId: string, shared: boolean) { return this.req<{ shared: boolean }>('POST', `/leads/${encodeURIComponent(leadId)}/portal-share`, { shared }); }
+  chinaShippingRequests() { return this.req<ShippingRequestChina[]>('GET', '/china/shipping-requests'); }
+  chinaSrStage(id: string, body: Record<string, unknown>) { return this.req<ShippingRequestChina>('POST', `/china/shipping-requests/${encodeURIComponent(id)}/stage`, body); }
+  shippingRequests(status?: string) { return this.req<ShippingRequestStaff[]>('GET', `/shipping-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`); }
+  shippingRequest(id: string) { return this.req<ShippingRequestStaff>('GET', `/shipping-requests/${encodeURIComponent(id)}`); }
+  srAction(id: string, action: string, body: Record<string, unknown> = {}) { return this.req<ShippingRequestStaff>('POST', `/shipping-requests/${encodeURIComponent(id)}/${action}`, body); }
+  srPatch(id: string, body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('PATCH', `/shipping-requests/${encodeURIComponent(id)}`, body); }
+  srFqPdfUrl(id: string, qid: string) { return this.blob(`/api/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}/pdf`); }
+  createShippingRequest(body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('POST', '/shipping-requests', body); }
+  shippableOrders(customerId: string) { return this.req<{ id: string; leadReference: string | null; product: string; qty: number }[]>('GET', `/customers/${encodeURIComponent(customerId)}/shippable-orders`); }
+  greetings() { return this.req<GreetingStaff[]>('GET', '/greetings'); }
+  greeting(id: string) { return this.req<GreetingStaff>('GET', `/greetings/${encodeURIComponent(id)}`); }
+  saveGreeting(body: Record<string, unknown>, id?: string) { return this.req<GreetingStaff>(id ? 'PATCH' : 'POST', id ? `/greetings/${encodeURIComponent(id)}` : '/greetings', body); }
+  async deleteGreeting(id: string) { await this.req('DELETE', `/greetings/${encodeURIComponent(id)}`); }
+  greetingAction(id: string, action: 'publish' | 'unpublish') { return this.req<GreetingStaff>('POST', `/greetings/${encodeURIComponent(id)}/${action}`, {}); }
+  async uploadGreetingImage(id: string, kind: 'desktop' | 'mobile', file: File) {
+    const fd = new FormData(); fd.append('files', file, file.name);
+    const res = await fetch(`/api/greetings/${encodeURIComponent(id)}/image/${kind}`, { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });
+    const j = await res.json().catch(() => ({})); if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j); return j.data as GreetingStaff;
+  }
+  removeGreetingImage(id: string, kind: 'desktop' | 'mobile') { return this.req<GreetingStaff>('DELETE', `/greetings/${encodeURIComponent(id)}/image/${kind}`); }
+  notificationOutbox() { return this.req('GET', '/notification-outbox'); }
+  greetingImageUrl(path: string) { if (!path.startsWith('/api/greetings/')) return Promise.reject(new HttpError('Bad link', 400)); return this.blob(path); }
+  private async blob(path: string) {
+    const res = await fetch(path, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+  async srFileUrl(id: string, fileId: string) {
+    const res = await fetch(`/api/shipping-requests/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+  rejectPortalRequest(id: string, reason: string) { return this.req<PortalLoginRequest>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/reject`, { reason }); }
+  portalLogin(customerId: string) { return this.req<{ login: PortalLogin | null; audit: { at: string; action: string; by: string | null }[] }>('GET', `/customers/${encodeURIComponent(customerId)}/portal-login`); }
+  issuePortalLogin(customerId: string, phone?: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login`, phone ? { phone } : {}); }
+  resetPortalLogin(customerId: string) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login/reset`, {}); }
+  setPortalLoginActive(customerId: string, active: boolean) { return this.req<{ login: PortalLogin }>('POST', `/customers/${encodeURIComponent(customerId)}/portal-login/active`, { active }); }
   async createLead(l: NewLead) {
     const r = await this.req<{ id: string }>('POST', '/records/leads', { ...(l.customerId ? { customerId: l.customerId } : {}),
       name: `${l.clientName} – ${l.productInterest}`, clientName: l.clientName, productInterest: l.productInterest, quantity: l.quantity, status: 'NEW',

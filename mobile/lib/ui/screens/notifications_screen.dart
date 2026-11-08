@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import '../widgets/delete_lead.dart' show tDel;
 import '../../l10n/web_strings.dart';
 import 'lead_detail_screen.dart';
+import 'shipping_requests_screen.dart';
 
 /// Privacy: text uses only the SE reference, product summary and the staff name of who handed it over.
 String notifText(BuildContext context, AppNotification n) {
@@ -29,6 +30,8 @@ String notifText(BuildContext context, AppNotification n) {
     case 'SLA_WARN': return tDel(context, '$ref · $product: SLA about to expire — act now', '$ref · $product：时限即将到期，请立即处理');
     case 'LEAD_COMPLETED': return tDel(context, '$ref · $product: delivered — closed as Completed', '$ref · $product：已交付，已完成关闭');
     case 'SLA_BREACH': return tDel(context, '$ref · $product: SLA breached', '$ref · $product：已超时');
+    case 'SHIP_READY' || 'SHIP_REQUEST' || 'SHIP_REQUEST_UPDATE' || 'SHIP_SLA_WARN' || 'SHIP_SLA_BREACH':
+      return '${tw(context, 'notif.${n.kind}', {'ref': ref})}${n.product != null ? ' · ${n.product}' : ''}${(n.detail ?? '').isNotEmpty ? ' — ${n.detail}' : ''}';
     default: return l.notifAssigned(ref, product, by);
   }
 }
@@ -60,7 +63,7 @@ class NotificationsScreen extends StatelessWidget {
                     trailing: n.read ? null : const Badge(smallSize: 8),
                     onTap: () {
                       if (!n.read) nc.markRead(n.id);
-                      Navigator.push(c, MaterialPageRoute(builder: (_) => LeadDetailScreen(leadId: n.leadId)));
+                      Navigator.push(c, MaterialPageRoute(builder: (_) => notifTarget(n)));
                     },
                   );
                 },
@@ -69,3 +72,10 @@ class NotificationsScreen extends StatelessWidget {
     );
   }
 }
+
+/// Deep link for a notification: shipping-request kinds open their screen (the id is a shipping request, not a lead).
+Widget notifTarget(AppNotification n) => switch (n.kind) {
+      'SHIP_READY' => ChinaShippingRequestsScreen(openId: n.leadId),
+      'SHIP_REQUEST' || 'SHIP_REQUEST_UPDATE' || 'SHIP_SLA_WARN' || 'SHIP_SLA_BREACH' => IndiaShippingRequestsScreen(openId: n.leadId),
+      _ => LeadDetailScreen(leadId: n.leadId),
+    };

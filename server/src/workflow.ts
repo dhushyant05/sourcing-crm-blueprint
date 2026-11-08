@@ -6,6 +6,7 @@
 import type { Db } from './db.js';
 import { randomUUID } from 'node:crypto';
 import type { Office } from './assign.js';
+import { customerText } from './portal.js';
 
 export type Vis = 'ALL' | 'INDIA' | 'CHINA';
 export type EventKind =
@@ -29,13 +30,20 @@ export class WorkflowStore {
   // ---- events ----
   async log(leadId: string, kind: EventKind, actor: { id: string; name: string; office: Office | 'ADMIN' | null } | null, data: Record<string, unknown> = {}, vis: Vis = 'ALL') {
     const e: LeadEvent = { id: randomUUID(), leadId, at: this.iso(), kind, actorId: actor?.id ?? null, actorName: actor?.name ?? null, actorOffice: actor?.office ?? null, data, vis };
-    await this.db.run('INSERT INTO lead_events (id,lead_id,at,kind,actor_id,actor_name,actor_office,data,vis) VALUES (?,?,?,?,?,?,?,?,?)',
-      e.id, leadId, e.at, kind, e.actorId, e.actorName, e.actorOffice, JSON.stringify(data), vis);
+    // Customer visibility is decided here, once, from an allowlist of kinds; the customer only ever gets `customer_text`.
+    const ct = customerText(kind, data);
+    await this.db.run('INSERT INTO lead_events (id,lead_id,at,kind,actor_id,actor_name,actor_office,data,vis,customer_visible,customer_text) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      e.id, leadId, e.at, kind, e.actorId, e.actorName, e.actorOffice, JSON.stringify(data), vis, ct != null, ct);
     return e;
   }
   async events(leadId: string): Promise<LeadEvent[]> {
     return (await this.db.all('SELECT * FROM lead_events WHERE lead_id = ? ORDER BY at, seq', leadId)).map((r) => ({
       id: r.id, leadId: r.lead_id, at: r.at, kind: r.kind, actorId: r.actor_id, actorName: r.actor_name, actorOffice: r.actor_office, data: r.data ?? {}, vis: r.vis }));
+  }
+  /** Customer timeline: only customer-visible events, as {at, kind, text}. No actor, office or data. */
+  async customerEvents(leadId: string): Promise<{ at: string; kind: string; text: string }[]> {
+    return (await this.db.all('SELECT at, kind, data, customer_text FROM lead_events WHERE lead_id = ? AND customer_visible ORDER BY at, seq', leadId))
+      .map((r) => ({ at: r.at, kind: r.kind, text: r.customer_text ?? customerText(r.kind, r.data ?? {}) ?? '' })).filter((e) => e.text);
   }
   async has(leadId: string, kind: EventKind) { return !!(await this.db.get('SELECT 1 FROM lead_events WHERE lead_id = ? AND kind = ? LIMIT 1', leadId, kind)); }
 

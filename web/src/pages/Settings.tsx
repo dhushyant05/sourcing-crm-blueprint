@@ -1,6 +1,6 @@
 import { Coins, HardDriveDownload, KeyRound, ShieldCheck } from 'lucide-react';
 import { SlaSettingsCard } from '../components/Workflow';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { AvatarEditor } from '../components/AvatarEditor';
 import { useTranslation } from 'react-i18next';
 import { useApp, useLoad } from '../lib/store';
@@ -56,6 +56,7 @@ export function Settings() {
           </section>
         )}
       </div>
+      {session?.role === 'SUPER_ADMIN' && api.notificationOutbox && <Outbox />}
     </>
   );
 }
@@ -85,6 +86,26 @@ function PasswordCard() {
         <button className="btn-primary" disabled={busy} data-testid="pw-submit">{t('pw.submit')}</button>
         {msg && <p className={msg.ok ? 'text-sm text-emerald-600' : 'text-sm text-red-600'} data-testid="pw-msg">{msg.text}</p>}
       </form>
+    </section>
+  );
+}
+
+/** Super admin: customer notification outbox (read-only; nothing is sent while no provider is configured). */
+function Outbox() {
+  const { api } = useApp(); const { t } = useTranslation();
+  const [d, setD] = useState<Awaited<ReturnType<NonNullable<typeof api.notificationOutbox>>> | null>(null), [err, setErr] = useState<string | null>(null);
+  useEffect(() => { void api.notificationOutbox!().then(setD).catch((e) => setErr((e as Error).message)); }, [api]);
+  const when = (s: string) => new Date(s).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) + ' IST';
+  return (
+    <section className="card mt-6 p-6" data-testid="outbox">
+      <h2 className="font-semibold text-ink-900 dark:text-white">{t('outbox.title')}</h2>
+      <p className="mt-1 text-sm text-ink-500">{t('outbox.intro')}</p>
+      {err && <p className="text-sm text-red-600">{err}</p>}
+      {d && <><p className="mt-2 text-xs text-ink-600">{t('outbox.email')}: {t(d.email ? 'outbox.on' : 'outbox.off')} · {t('outbox.push')}: {t(d.push ? 'outbox.on' : 'outbox.off')}</p>
+        {!d.rows.length ? <p className="mt-2 text-sm text-ink-500">{t('outbox.none')}</p> : <div className="mt-3 max-h-96 overflow-auto"><table className="w-full text-xs"><thead><tr className="text-left text-ink-500">
+          {(['at', 'channel', 'template', 'customer', 'status', 'reason'] as const).map((c) => <th key={c} className="pr-3">{t(`outbox.col.${c}`)}</th>)}</tr></thead>
+          <tbody>{d.rows.map((r) => <tr key={r.id} className="border-t border-ink-100 dark:border-ink-800"><td className="py-1 pr-3">{when(r.createdAt)}</td><td className="pr-3">{r.channel}</td><td className="pr-3">{r.template}</td>
+            <td className="pr-3 font-mono">{r.label || r.reference || ''}</td><td className="pr-3">{r.status}</td><td>{r.reason ?? ''}</td></tr>)}</tbody></table></div>}</>}
     </section>
   );
 }

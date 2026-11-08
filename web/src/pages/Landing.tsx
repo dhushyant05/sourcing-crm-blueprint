@@ -4,6 +4,7 @@ import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Langu
 import { LanguageSwitch } from '../components/LanguageSwitch';
 import { AppDownloadButton } from './Download';
 import { EnquiryForm } from '../components/EnquiryForm';
+import { PublicGreeting } from '../greetings/Public';
 
 const PHONE = '+91 72995 41489', TEL = '+917299541489', EMAIL = 'fortuneengineering05@gmail.com';
 const WA = `https://wa.me/917299541489`, WA_DISPLAY = '+91 72995 41489';
@@ -37,6 +38,7 @@ export function Landing() {
         <div className="pointer-events-none absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-brand-600/40 blur-3xl animate-[pulse_8s_ease-in-out_infinite]" />
         <div className="pointer-events-none absolute -right-32 top-20 h-[28rem] w-[28rem] rounded-full bg-accent-500/25 blur-3xl animate-[pulse_10s_ease-in-out_infinite]" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
+        <PublicGreeting />
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 animate-fade-in">
           <img src="/brand/lockup.png" alt="Source Easy" data-testid="hero-logo" className="mb-8 h-28 w-auto object-contain sm:h-36" />
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-white/80"><Globe2 size={14} />{l('hero.badge')}</span>

@@ -3,6 +3,7 @@ import { GitMerge, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useApp, useLoad } from '../lib/store';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Chip, Empty, Field, PageHeader, SlideOver, TableSkeleton } from '../components/ui';
+import { LoginRequests, PortalLoginCard, usePortalAdmin } from '../components/PortalAdmin';
 import type { Customer } from '../lib/types';
 
 const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString() : '—');
@@ -16,6 +17,7 @@ export function Customers({ search, openLead }: { search: string; openLead: (id:
   const { api, perms } = useApp();
   const { t } = useTranslation();
   const canEdit = perms.can('customers.edit');
+  const portalAdmin = usePortalAdmin();
   const { data, reload } = useLoad(() => api.customers(), [api]);
   const [openId, setOpenId] = useState<string | null>(() => { const id = sessionStorage.openCustomer ?? null; delete sessionStorage.openCustomer; return id; });
   useEffect(() => { const h = (e: Event) => { delete sessionStorage.openCustomer; setOpenId((e as CustomEvent<string>).detail); }; addEventListener('open-customer', h); return () => removeEventListener('open-customer', h); }, []);
@@ -38,6 +40,7 @@ export function Customers({ search, openLead }: { search: string; openLead: (id:
         actions={<div className="flex gap-2">
           <button data-testid="customers-due" className={due ? 'btn-primary' : 'btn-outline'} onClick={() => setDue(!due)}>{t('customers.duesFilter', { n: pending })}</button>
           {canEdit && <button data-testid="customer-add" className="btn-primary" onClick={() => startEdit()}><Plus size={16} />{t('customers.add')}</button>}</div>} />
+      {portalAdmin && <LoginRequests onChanged={reload} />}
       <div className="card overflow-hidden">
         {!data ? <TableSkeleton /> : !rows?.length ? <Empty title={t('customers.none')} /> : (
           <table data-testid="customers-table" className="rtable w-full text-sm">
@@ -115,6 +118,7 @@ function CustomerPanel({ id, canEdit, onClose, onEdit, onMerge, onDeleted, openL
           {(['phone', 'whatsapp', 'email', 'gst', 'country'] as const).map((k) => <div key={k}><dt className="text-ink-500">{t(`customers.f.${k}`)}</dt><dd className="break-all">{c[k] ?? '—'}</dd></div>)}
           <div><dt className="text-ink-500">{t('customers.addedBy')}</dt><dd>{c.createdByName ?? t('customers.auto')} · {fmtDate(c.createdAt)}</dd></div>
         </dl>
+        <PortalLoginCard customerId={c.id} phone={c.phone ?? null} />
         {c.tags.length > 0 && <div className="flex flex-wrap gap-1">{c.tags.map((x) => <span key={x} className="rounded bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-900/30">{x}</span>)}</div>}
         {c.address && <p className="whitespace-pre-wrap text-ink-600 dark:text-ink-300">{c.address}</p>}
         {c.notes && <p className="whitespace-pre-wrap rounded-xl bg-ink-50 p-3 dark:bg-ink-800/50">{c.notes}</p>}

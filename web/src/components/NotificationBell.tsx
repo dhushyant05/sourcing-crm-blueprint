@@ -44,6 +44,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     setData(d);
   }).catch(() => {}); }, [api]);
   const openRef = useRef(openLead); openRef.current = openLead;
+  const openTargetRef = useRef<(n: AppNotification) => void>((n) => openRef.current(n.leadId));
   const tRef = useRef(t); tRef.current = t;
   const china = session?.role?.startsWith('CHINA') ?? false;
   // Real-time: SSE stream, with a 15 s poll + reload on tab focus as the fallback.
@@ -70,7 +71,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
       // Privacy: China users see only the SE reference + product; India sees the usual message.
       const ref = n.leadRef ?? 'Source Easy';
       const body = china ? [ref, n.product].filter(Boolean).join(' · ') : [notifText(tRef.current, n), n.product].filter(Boolean).join('\n');
-      desktopNotify(china ? ref : 'Source Easy', body, n.id, () => openRef.current(n.leadId));
+      desktopNotify(china ? ref : 'Source Easy', body, n.id, () => openTargetRef.current(n));
     };
     alertRef.current = alert;
     (async () => {
@@ -90,10 +91,17 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     const h = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
     addEventListener('mousedown', h); return () => removeEventListener('mousedown', h);
   }, [open]);
+  /** Shipping-request notifications carry the request id (not a lead id): open it on the Shipping page. */
+  const openTarget = (n: AppNotification) => {
+    if (n.kind === 'SHIP_READY') { sessionStorage.openChinaShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-china-shipping-request', { detail: n.leadId })); return; }
+    if (n.kind === 'SHIP_REQUEST' || n.kind === 'SHIP_REQUEST_UPDATE' || n.kind === 'SHIP_SLA_WARN' || n.kind === 'SHIP_SLA_BREACH') { sessionStorage.openShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-shipping-request', { detail: n.leadId })); return; }
+    openLead(n.leadId);
+  };
+  openTargetRef.current = openTarget;
   const click = async (n: AppNotification) => {
     setOpen(false);
     if (!n.read) { await api.markNotificationRead(n.id).catch(() => {}); load(); }
-    openLead(n.leadId);
+    openTarget(n);
   };
   const unread = data?.unread ?? 0;
   const Icon = (n: AppNotification) => (n.kind === 'RETURNED' || n.kind === 'SENT_BACK' ? CornerDownLeft : n.kind === 'QUEUE' ? Inbox : n.kind === 'QUOTE_ACCEPTED' || n.kind === 'LEAD_COMPLETED' ? CheckCircle2 : n.kind === 'QUOTE_REJECTED' || n.kind === 'LEAD_CLOSED' || n.kind === 'QUOTE_REVERTED' ? XCircle : n.kind === 'REVISE_REQUESTED' ? CornerDownLeft : n.kind === 'ORDER_SHIPPED' ? Ship : n.kind === 'SLA_WARN' ? Timer : n.kind === 'SLA_BREACH' ? AlarmClock : n.kind === 'PRIORITY' ? Flame : n.kind.startsWith('ORDER') ? Package : n.kind === 'SHIPMENT_UPDATE' ? Ship : UserCheck);

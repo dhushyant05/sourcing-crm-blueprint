@@ -30,7 +30,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -117,3 +117,41 @@ export const CHINA_SHIP = ['PENDING', 'BOOKED'], INDIA_SHIP = ['IN_TRANSIT', 'AR
 export interface PermRow { key: string; group: string; side: 'INDIA' | 'CHINA' | 'ANY'; default: boolean; override: boolean | null; effective: boolean; locked: boolean }
 export interface PermAudit { id: number; perm: string; before: boolean | null; after: boolean | null; changedBy: string | null; changedByName: string | null; changedAt: string }
 export interface PermMatrix { userId: string; role: import('./roles').Role; editable: boolean; permissions: PermRow[]; audit: PermAudit[] }
+
+/** Customer portal login (staff view; never a password). */
+export interface PortalLogin { id: string; customerId: string; phone: string; name: string; email: string | null; active: boolean; mustChangePassword: boolean; lastLoginAt: string | null; createdAt: string }
+export interface PortalLoginRequest { id: string; leadId: string | null; leadRef: string | null; product: string | null; name: string; phone: string; email: string | null; company: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'; reason: string | null; customerId: string | null; decidedByName: string | null; decidedAt: string | null; createdAt: string;
+  customer: { id: string; name: string; company: string | null; phone: string | null } | null; hasLogin: boolean; match: { verified: false; phoneMatches: boolean; otherLeads: number } | null }
+export interface PortalLeadShare { id: string; leadRef: string | null; product: string | null; sourceChannel: string | null; createdAt: string; shared: boolean; sharedAt: string | null }
+/** Shipping Request (SH-YYMM-NNNN), India office view. */
+export interface FreightQuoteStaff { id: string; n: number; label: string; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null;
+  customerNote: string | null; internalCost: number | null; status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'; reasonCode: string | null; reason: string | null; createdAt: string; decidedAt: string | null; createdByName: string | null }
+/** China office view of an accepted shipping request: booking details only (server allowlist; no customer identity, destination contact or prices). */
+export interface ShippingRequestChina {
+  id: string; ref: string; kind: 'SOURCED' | 'FREIGHT_ONLY'; status: string; goods: string; quantity: number | null; unit: string | null; packages: number | null;
+  weightKg: number | null; cbm: number | null; pickupContact: string | null; pickupPhone: string | null; pickupAddress: string | null; pickupCity: string | null;
+  readyDate: string | null; mode: string | null; incoterm: string | null; destCity: string | null; carrier: string | null; tracking: string | null; container: string | null;
+  etd: string | null; eta: string | null; stage: string; shipmentRef: string | null; updatedAt: string; canUpdate: boolean;
+}
+export interface ShippingRequestStaff {
+  id: string; ref: string; kind: 'SOURCED' | 'FREIGHT_ONLY'; customerId: string; customer: { id: string; name: string; company: string | null; phone: string | null } | null;
+  createdByKind: 'CUSTOMER' | 'STAFF'; leadId: string | null; leadRef: string | null; orderId: string | null; goods: string; quantity: number | null; unit: string | null; packages: number | null;
+  weightKg: number | null; cbm: number | null; shipperName: string | null; shipperPhone: string | null; pickupAddress: string | null; pickupCity: string | null;
+  destCity: string | null; destAddress: string | null; destPincode: string | null; mode: string | null; incoterm: string | null; readyDate: string | null; customerNote: string | null;
+  status: string; question: string | null; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null;
+  assignedTo: string | null; assignedToName: string | null; internalNote: string | null; rejectReason: string | null; createdAt: string; updatedAt: string;
+  sla?: { startedAt: string; dueAt: string; warned: boolean; breached: boolean } | null;
+  progress: { stage: string; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null; shipmentRef: string | null } | null;
+  freightQuotes?: FreightQuoteStaff[]; files?: (Attachment & { customerVisible: boolean })[];
+  events?: { at: string; kind: string; by: string | null; data: Record<string, unknown>; customerVisible: boolean; customerText: string | null }[];
+}
+
+/** Staff view of a greeting banner (GET /api/greetings). `preview` is the customer-safe DTO with staff image URLs. */
+export interface GreetingStaff {
+  id: string; name: string; status: 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED'; layout: 'IMAGE' | 'CLASSIC' | 'FESTIVE' | 'MINIMAL'; theme: 'BRAND' | 'GOLD' | 'NIGHT' | 'ROSE';
+  heading: string | null; message: string | null; altText: string | null; linkPath: string | null; linkLabel: string | null; imageDesktop: string | null; imageMobile: string | null;
+  surfaces: ('PUBLIC' | 'PORTAL' | 'APP')[]; startsAt: string; endsAt: string; priority: number; dismissible: boolean; version: number;
+  createdByName: string | null; updatedByName: string | null; publishedByName: string | null; publishedAt: string | null; createdAt: string; updatedAt: string;
+  preview: import('../greetings/Banner').Greeting; problems: string[]; problemCodes?: string[]; audit?: { at: string; action: string; by: string | null; detail: unknown }[];
+}

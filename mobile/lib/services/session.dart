@@ -67,6 +67,8 @@ class Session extends ChangeNotifier {
   StreamSubscription? _conn;
 
   SourceEasyRepository get repo => _repo!;
+  @visibleForTesting
+  set debugRepo(SourceEasyRepository r) => _repo = r;
   ChatwootClient? get chat => config.chatwootToken.isEmpty
       ? null
       : ChatwootClient(baseUrl: config.chatwootUrl, accountId: config.chatwootAccountId,

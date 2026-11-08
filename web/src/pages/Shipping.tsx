@@ -7,6 +7,8 @@ import { CHINA_SHIP, INDIA_SHIP, SHIP_STAGES, type Lead, type Shipment } from '.
 import { fmtDate } from '../i18n';
 import { Empty, PageHeader, TableSkeleton } from '../components/ui';
 import { ClosedBadge, ClosedBox, ClosedTabs } from '../components/ClosedBox';
+import { ShippingRequests } from '../components/ShippingRequests';
+import { ChinaShippingRequests } from '../components/ChinaShippingRequests';
 
 const MODES = ['', 'AIR', 'SEA', 'EXPRESS', 'ROAD'], TERMS = ['', 'EXW', 'FOB', 'CIF', 'CFR', 'DDP', 'DAP', 'DOOR'];
 const d = (v?: string | null) => (v ? fmtDate(v, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -74,6 +76,8 @@ export function Shipping({ search, openLead }: { search: string; openLead: (l: L
   const open = (id: string) => { void api.lead(id).then((l) => l && openLead(l)); };
   return (<>
     <PageHeader title={t('shipping.title')} subtitle={t('shipping.subtitle')} />
+    <ShippingRequests />
+    <ChinaShippingRequests />
     <ClosedTabs closed={closed} setClosed={setClosed} nOpen={data?.filter((s) => !s.closed).length ?? 0} nClosed={data?.filter((s) => s.closed).length ?? 0} />
     <div className="mb-3 flex flex-wrap gap-1">{['', ...SHIP_STAGES].map((x) => <button key={x || 'all'} onClick={() => setFilter(x)} className={clsx('rounded-full px-3 py-1 text-xs', filter === x ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300')}>{x ? t(`ship.st.${x}`) : t('ship.all')}{pool && ` (${pool.filter((s) => !x || s.status === x).length})`}</button>)}</div>
     {!data ? <div className="card"><TableSkeleton /></div> : !rows?.length ? <div className="card"><Empty title={t('shipping.none')} hint={t('shipping.noneHint')} /></div>

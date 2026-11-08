@@ -73,3 +73,36 @@ export function customerQuotePdf(x: PdfInput): Promise<Buffer> {
     doc.end();
   });
 }
+
+/** Freight quote PDF (freight-only Shipping Request): same branding; INR amount only, never our internal cost. */
+export interface FreightPdfInput { label: string; ref: string; customer: string | null; goods: string; quantity: string | null; packages: number | null; weightKg: number | null; cbm: number | null;
+  from: string | null; to: string | null; amount: number; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null; note: string | null; date: string }
+export function freightQuotePdf(x: FreightPdfInput): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 48, info: { Title: `Freight quotation ${x.label}`, Author: 'Source Easy' } });
+    const chunks: Buffer[] = []; doc.on('data', (c) => chunks.push(c)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
+    const R = ASSETS ? join(ASSETS, 'NotoSans-Regular.ttf') : 'Helvetica', B = ASSETS ? join(ASSETS, 'NotoSans-Bold.ttf') : 'Helvetica-Bold';
+    const W = doc.page.width - 96, green = '#3d8b2f', ink = '#1f2937', mute = '#6b7280';
+    if (ASSETS && existsSync(join(ASSETS, 'lockup.png'))) doc.image(join(ASSETS, 'lockup.png'), 48, 40, { height: 56 });
+    doc.font(B).fontSize(18).fillColor(ink).text('FREIGHT QUOTATION', 48, 44, { width: W, align: 'right' });
+    doc.font(R).fontSize(9).fillColor(mute).text('sourceeasy.in', { width: W, align: 'right' });
+    doc.moveTo(48, 112).lineTo(48 + W, 112).strokeColor(green).lineWidth(1.5).stroke();
+    let y = 120;
+    const kv = (k: string, v: string, xx: number, yy: number) => { doc.font(R).fontSize(8).fillColor(mute).text(k.toUpperCase(), xx, yy); doc.font(B).fontSize(10).fillColor(ink).text(v, xx, yy + 10, { width: W / 2 - 10 }); };
+    kv('Quote no.', x.label, 48, y); kv('Date', x.date, 48 + W / 2, y); y += 32;
+    kv('Shipping request', x.ref, 48, y); kv('Valid until', x.validUntil ?? '—', 48 + W / 2, y); y += 32;
+    if (x.customer) { kv('Prepared for', x.customer, 48, y); y += 32; }
+    doc.font(B).fontSize(13).fillColor(ink).text(x.goods, 48, y, { width: W }); y = doc.y + 8;
+    const facts = [['Quantity', x.quantity], ['Packages', x.packages != null ? String(x.packages) : null], ['Weight', x.weightKg != null ? `${x.weightKg} kg` : null], ['Volume', x.cbm != null ? `${x.cbm} CBM` : null],
+      ['From', x.from], ['To', x.to], ['Mode', x.mode ? MODE_LABEL[x.mode] ?? x.mode : null], ['Term', x.incoterm ? TERM_LABEL[x.incoterm] ?? x.incoterm : null], ['Transit time', x.transit]].filter((r) => r[1]) as string[][];
+    for (const [k, v] of facts) { doc.font(R).fontSize(9.5).fillColor(mute).text(`${k}: `, 48, y, { continued: true }).fillColor(ink).text(v); y = doc.y + 2; }
+    y += 10; doc.rect(48, y, W, 34).fill('#eef6ea');
+    doc.font(B).fontSize(12).fillColor(ink).text('Freight charges (INR)', 56, y + 10).fillColor(green).text(inr(x.amount), 48, y + 10, { width: W - 8, align: 'right' });
+    y += 50;
+    if (x.note) { doc.font(B).fontSize(10).fillColor(ink).text('Notes', 48, y); doc.font(R).fontSize(9).fillColor(ink).text(x.note, 48, doc.y + 2, { width: W }); y = doc.y + 8; }
+    doc.font(R).fontSize(9).fillColor(mute).text('Please accept this quote in the Source Easy customer portal before we book your shipment. Duties and taxes are extra unless stated.', 48, y + 4, { width: W });
+    doc.page.margins.bottom = 0;
+    doc.font(R).fontSize(8).fillColor(mute).text('Source Easy · Sourcing made easy · sourceeasy.in', 48, doc.page.height - 64, { width: W, align: 'center' });
+    doc.end();
+  });
+}
