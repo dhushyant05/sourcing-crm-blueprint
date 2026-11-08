@@ -68,3 +68,15 @@ export async function setup(extra: Record<string, unknown> & { makeNotifier?: (d
   return { app, db, call, as, ids, tok, enquire, login, customer, orderFor, sse };
 }
 
+
+/** Accept a freight quote the way a current client does: echo the version/amount/currency the customer was shown. */
+export async function seenFq(as: (token: string, m: string, u: string, b?: unknown) => Promise<any>, token: string, qid: string) {
+  const list = (await as(token, 'GET', '/api/portal/shipping-requests')).json().data ?? [];
+  for (const r of list) {
+    const d = (await as(token, 'GET', `/api/portal/shipping-requests/${r.id}`)).json().data;
+    const q = d?.freightQuotes?.find((x: any) => x.id === qid); if (q) return { version: q.version, amount: q.amount, currency: q.currency };
+  }
+  return {};
+}
+export const acceptFq = async (as: (token: string, m: string, u: string, b?: unknown) => Promise<any>, token: string, qid: string) =>
+  as(token, 'POST', `/api/portal/freight-quotes/${qid}/accept`, await seenFq(as, token, qid));

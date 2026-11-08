@@ -144,7 +144,8 @@ class PortalApi {
       (await multipart('/api/portal/shipping-requests/${_e(id)}/reply', {'message': message}, files))['data'] as Json;
   Future<Json> cancelShipping(String id) => _data('POST', '/api/portal/shipping-requests/${_e(id)}/cancel', {});
   Future<List<Json>> shippableOrders() => _list('/api/portal/shippable-orders');
-  Future<Json> acceptFreight(String qid) => _data('POST', '/api/portal/freight-quotes/${_e(qid)}/accept', {});
+  /// Echo what the customer was shown; the server refuses with 409 `stale` if the quote changed since.
+  Future<Json> acceptFreight(Json q) => _data('POST', '/api/portal/freight-quotes/${_e('${q['id']}')}/accept', {'version': q['version'], 'amount': q['amount'], 'currency': q['currency']});
   Future<Json> rejectFreight(String qid, String code, String reason) => _data('POST', '/api/portal/freight-quotes/${_e(qid)}/reject', {'reasonCode': code, 'reason': reason});
   Future<List<Json>> greetings() => _list('/api/portal/greetings', {'surface': 'APP'});
   Future<Json> notificationPrefs() => _data('GET', '/api/portal/me/notifications');

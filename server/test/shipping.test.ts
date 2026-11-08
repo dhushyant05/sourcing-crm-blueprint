@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PNG, form, setup } from './portal-helpers.js';
+import { PNG, form, setup, acceptFq } from './portal-helpers.js';
 
 describe('shipping requests (SH-YYMM-NNNN)', () => {
   it('freight-only: own customer, India queue, more-info loop, freight quote must be accepted before booking, customer-safe view', async () => {
@@ -70,14 +70,14 @@ describe('shipping requests (SH-YYMM-NNNN)', () => {
     for (const secret of ['61000', 'internalCost', 'secret-margin', 'internal-rates', 'Staff is', 'assignedTo', 'rejectReason']) expect(txt).not.toContain(secret);
     expect(d.files.map((f: any) => f.name).sort()).toEqual(['invoice.png', 'packing.png']);
     const q1 = d.freightQuotes[0].id;
-    expect((await as(B.token, 'POST', `/api/portal/freight-quotes/${q1}/accept`)).statusCode).toBe(404);
+    expect((await acceptFq(as, B.token, q1)).statusCode).toBe(404);
     expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q1}/reject`, { reasonCode: 'NOPE' })).statusCode).toBe(400);
     expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q1}/reject`, { reasonCode: 'PRICE', reason: 'too high' })).json().data.status).toBe('UNDER_REVIEW');
-    expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${q1}/accept`)).statusCode).toBe(409);
+    expect((await acceptFq(as, A.token, q1)).statusCode).toBe(409);
     expect((await call('is', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).json().code).toBe('freight_quote_required');
     await call('is', 'POST', `/api/shipping-requests/${r.id}/freight-quotes`, { amount: 78000 });
     const q2 = (await as(A.token, 'GET', `/api/portal/shipping-requests/${r.id}`)).json().data.freightQuotes.find((q: any) => q.status === 'SENT').id;
-    const acc = (await as(A.token, 'POST', `/api/portal/freight-quotes/${q2}/accept`)).json().data;
+    const acc = (await acceptFq(as, A.token, q2)).json().data;
     expect(acc).toMatchObject({ status: 'ACCEPTED', canCancel: false });
     expect((await as(A.token, 'POST', `/api/portal/shipping-requests/${r.id}/cancel`)).statusCode).toBe(409);
     // Now China books (India cannot book; China has no access to India's staff routes); stages move forward only; tracking is customer-visible. SSE announces own changes only.

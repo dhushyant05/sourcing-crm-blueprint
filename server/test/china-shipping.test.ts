@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { setup } from './portal-helpers.js';
+import { setup, acceptFq } from './portal-helpers.js';
 
 // China office view of shipping requests: booking details only (allowlist), BOOKED/IN_TRANSIT only, after the customer's freight-quote acceptance.
 describe('China shipping-request booking view', () => {
@@ -26,7 +26,7 @@ describe('China shipping-request booking view', () => {
     await call('is', 'POST', `/api/shipping-requests/${id}/freight-quotes`, { amount: 65000, internalCost: 51000 });
     const fq = (await as(A.token, 'GET', `/api/portal/shipping-requests/${id}`)).json().data.freightQuotes[0].id;
     expect((await call('cs', 'GET', '/api/china/shipping-requests')).json().data).toHaveLength(0); // quoted, not accepted
-    expect((await as(A.token, 'POST', `/api/portal/freight-quotes/${fq}/accept`)).statusCode).toBe(200);
+    expect((await acceptFq(as, A.token, fq)).statusCode).toBe(200);
 
     // China gets an in-app "ready to book" (SR ref + goods only); India-only roles do not.
     const nCs = (await call('cs', 'GET', '/api/notifications')).json().data;
