@@ -22,7 +22,7 @@ import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
 import { RejectStore, REJECT_REASONS } from './rejections.js';
 import { Notifier, httpEmailFromEnv, customerFcmFromEnv, type TemplateKey } from './notify.js';
-import { GreetingStore, GreetingError, cleanGreeting, publishProblems, problemCodes, greetingDto, grKey, sniffImage, GREETING_IMAGE_BYTES, SURFACES } from './greetings.js';
+import { GreetingStore, GreetingError, cleanGreeting, publishProblems, problemCodes, greetingDto, grKey, checkArtwork, GREETING_IMAGE_BYTES, SURFACES } from './greetings.js';
 import { ShippingStore, SrError, cleanFields, CUSTOMER_FIELDS, SR_OPEN, SR_STAGES, STAGE_LABEL, srKey, type ShippingRequest } from './shipping.js';
 import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, INDIA_SHIP_STATUS, shipRank, type Shipment } from './shipments.js';
 import { PushStore } from './push.js';
@@ -2208,6 +2208,51 @@ export async function buildApp(o: AppOptions) {
       await notifyCustomer(r.customerId, 'FREIGHT_QUOTE_READY', { reference: r.ref, label: `${r.ref}-F${fq.n}` }, `${r.id}:FQ:${fq.n}`); const nr = (await srs.get(r.id))!; await srLive(nr);
       return reply.code(201).send({ data: await srStaff(u, nr, true) });
     });
+    // ---- Super admin only: edit / delete / revert a freight (shipping) quote. Role check, never a grantable permission. ----
+    // Booking safety: once China/India moved the request past ACCEPTED (booked, in transit…), the accepted quote is locked —
+    // nothing here cancels a shipment or rolls stages back. Every action needs a reason (+ confirm for delete/revert), is atomic
+    // with the request status, snapshots the previous revision, and logs a fixed customer-safe timeline line (never the reason).
+    const fqAdmin = async (req: FastifyRequest<{ Params: { id: string; qid: string }; Body: Record<string, unknown> }>, destructive: boolean) => {
+      const u = req.user!; if (u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can change a freight quote');
+      const r = await srOf(req.params.id), q = await srs.quote(req.params.qid), b = req.body ?? {};
+      if (!q || q.requestId !== r.id) throw Object.assign(new Error('Not found'), { status: 404 });
+      const reason = String(b.reason ?? '').trim().slice(0, 500); if (reason.length < 3) throw bad('A reason is required');
+      if (destructive && b.confirm !== true) throw Object.assign(new Error('Please confirm this action'), { status: 400, appCode: 'confirm' });
+      return { u, r, q, b, reason };
+    };
+    const BOOKED = new Set<string>(SR_STAGES);
+    api.patch<{ Params: { id: string; qid: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/freight-quotes/:qid', async (req) => {
+      const { u, r, q, b, reason } = await fqAdmin(req, false);
+      if (q.status === 'ACCEPTED') throw Object.assign(new Error('Revert the acceptance before editing this quote'), { status: 409, appCode: 'accepted' });
+      if (q.status !== 'SENT') throw Object.assign(new Error('Only an outstanding (sent) quote can be edited; send a new quote instead'), { status: 409, appCode: 'state' });
+      const patch = Object.fromEntries(Object.entries(b).filter(([k]) => ['amount', 'mode', 'incoterm', 'transit', 'validUntil', 'customerNote', 'internalCost'].includes(k)));
+      const res = await o.db.tx((t) => srs.editQuote(q.id, patch, reason, u.id, t)).catch(srErr);
+      const customerFacing = res.fields.some((k) => k !== 'internal_cost');
+      await srs.log(r.id, 'FQ_REVISED', srActor(u), { n: q.n, quoteId: q.id, revision: res.quote.revision, fields: res.fields, reason }, undefined, customerFacing ? undefined : null);
+      const nr = (await srs.get(r.id))!; await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    api.post<{ Params: { id: string; qid: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/freight-quotes/:qid/revert', async (req) => {
+      const { u, r, q, reason } = await fqAdmin(req, true);
+      if (q.status !== 'ACCEPTED') throw Object.assign(new Error('Only an accepted quote can be reverted'), { status: 409, appCode: 'state' });
+      if (BOOKED.has(r.status)) throw Object.assign(new Error(`This request is already ${r.status.replace(/_/g, ' ').toLowerCase()}; booked shipments are not rolled back, so the accepted quote stays locked`), { status: 409, appCode: 'booked' });
+      await o.db.tx(async (t) => { await srs.revertQuote(q.id, reason, u.id, t); await srs.setStatus(r.id, ['ACCEPTED'], 'QUOTED', {}, t); }).catch(srErr);
+      await srs.log(r.id, 'FQ_REVERTED', srActor(u), { n: q.n, quoteId: q.id, reason });
+      const nr = (await srs.get(r.id))!;
+      await srNotify(nr, 'SHIP_REQUEST_UPDATE', u.name, `Freight quote ${r.ref}-F${q.n} acceptance reverted by super admin`); await srLive(nr);
+      return { data: await srStaff(u, nr, true) };
+    });
+    api.delete<{ Params: { id: string; qid: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/freight-quotes/:qid', async (req) => {
+      const { u, r, q, reason } = await fqAdmin(req, true);
+      if (q.status === 'ACCEPTED') throw Object.assign(new Error(BOOKED.has(r.status) ? 'This quote was accepted and the shipment is booked; it cannot be deleted' : 'Revert the acceptance before deleting this quote'), { status: 409, appCode: BOOKED.has(r.status) ? 'booked' : 'accepted' });
+      await o.db.tx(async (t) => {
+        await srs.deleteQuote(q.id, reason, u.id, t);
+        // The outstanding quote is gone: the request goes back to India's review (customer can no longer decide on it).
+        if (q.status === 'SENT' && r.status === 'QUOTED' && !(await t.get("SELECT 1 FROM freight_quotes WHERE request_id = ? AND status = 'SENT' AND deleted_at IS NULL", r.id)))
+          await srs.setStatus(r.id, ['QUOTED'], 'UNDER_REVIEW', {}, t);
+      }).catch(srErr);
+      await srs.log(r.id, 'FQ_DELETED', srActor(u), { n: q.n, quoteId: q.id, status: q.status, reason }, undefined, q.status === 'SENT' ? undefined : null);
+      const nr = (await srs.get(r.id))!; await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
     /** FREIGHT_ONLY tracking (India). Booking needs an ACCEPTED freight quote; stages only move forward. SOURCED requests follow their Shipment. */
     api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/stage', async (req) => {
       const u = req.user!; srIndia(u); need(u, 'orders.production'); const r = await srOf(req.params.id), b = req.body ?? {};
@@ -2446,7 +2491,26 @@ export async function buildApp(o: AppOptions) {
       const ng = (await greetings.update(g.id, v, u.id))!; await greetings.audit(g.id, u.id, 'EDITED', { fields: Object.keys(v) });
       return { data: grStaff(ng) };
     });
-    /** Artwork upload: one PNG/JPEG/WebP (≤ 2 MB, sniffed) for `kind` desktop|mobile, stored under this greeting only. */
+    /** Image-only greeting: one upload creates a ready draft. The artwork carries all text, so name/alt are derived; it shows on the
+     *  website, portal and customer app (one image for desktop + mobile, shown uncropped) and stays live until unpublished. */
+    api.post('/api/greetings/upload', async (req, reply) => {
+      const u = req.user!; need(u, 'greetings.manage');
+      if (!req.isMultipart()) throw bad('Upload the image as multipart form data');
+      const m = await readMultipart(req, 1); if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
+      const f = m.files[0]; if (!f) throw bad('Choose an image');
+      try {
+        if (f.size > GREETING_IMAGE_BYTES) throw Object.assign(new Error('Image too large (max 10 MB)'), { status: 413, appCode: 'size' });
+        const data = await readFile(f.path); const a = (() => { try { return checkArtwork(data); } catch (e) { return grErr(e); } })();
+        const label = `Greeting ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`;
+        const g = await greetings.create({ name: label, layout: 'IMAGE', theme: 'BRAND', heading: null, message: null, altText: 'Source Easy greeting',
+          surfaces: [...SURFACES], startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 10 * 365 * 864e5).toISOString(), priority: 0, dismissible: true }, u.id).catch(grErr);
+        const list = uploads.save(grKey(g.id), [{ name: `artwork.${a.mime.split('/')[1]}`, mime: a.mime, data }]), nf = list[list.length - 1];
+        const ng = (await greetings.update(g.id, { imageDesktop: nf.id }, u.id))!;
+        await greetings.audit(g.id, u.id, 'CREATED', { imageOnly: true, size: data.length, mime: a.mime, width: a.w, height: a.h });
+        return reply.code(201).send({ data: grStaff(ng) });
+      } finally { uploads.discard(m.files); }
+    });
+    /** Artwork upload: one PNG/JPEG/WebP (≤ 10 MB, sniffed, decode-size checked) for `kind` desktop|mobile, stored under this greeting only. */
     api.post<{ Params: { id: string; kind: string } }>('/api/greetings/:id/image/:kind', async (req, reply) => {
       const u = req.user!; need(u, 'greetings.manage'); const g = await grOf(req.params.id), kind = req.params.kind;
       if (kind !== 'desktop' && kind !== 'mobile') throw bad('Kind must be desktop or mobile');
@@ -2455,9 +2519,8 @@ export async function buildApp(o: AppOptions) {
       const m = await readMultipart(req, 1); if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
       const f = m.files[0]; if (!f) throw bad('Choose an image');
       try {
-        if (f.size > GREETING_IMAGE_BYTES) throw Object.assign(new Error('Image too large (max 2 MB)'), { status: 413, appCode: 'size' });
-        const data = await readFile(f.path), mime = sniffImage(data);
-        if (!mime) throw Object.assign(new Error('Only PNG, JPEG or WebP images are allowed'), { status: 415, appCode: 'type' });
+        if (f.size > GREETING_IMAGE_BYTES) throw Object.assign(new Error('Image too large (max 10 MB)'), { status: 413, appCode: 'size' });
+        const data = await readFile(f.path); const { mime } = (() => { try { return checkArtwork(data); } catch (e) { return grErr(e); } })();
         const list = uploads.save(grKey(g.id), [{ name: `${kind}.${mime.split('/')[1]}`, mime, data }]), nf = list[list.length - 1];
         const old = kind === 'desktop' ? g.imageDesktop : g.imageMobile; if (old) uploads.remove(grKey(g.id), old);
         const ng = (await greetings.update(g.id, kind === 'desktop' ? { imageDesktop: nf.id } : { imageMobile: nf.id }, u.id))!;

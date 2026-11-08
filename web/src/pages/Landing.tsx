@@ -1,11 +1,10 @@
 import { type ReactNode, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Languages, Mail, MapPin, MessageCircle, Phone, Radar, Receipt, Ship, ShieldCheck, Sofa, Shirt, Package, Plug, Wrench, Cog, Gift, CookingPot, Smartphone, UserRound } from 'lucide-react';
+import { ArrowRight, BadgeCheck, ClipboardList, Factory, FileText, Globe2, Languages, Mail, MapPin, MessageCircle, Phone, Radar, Receipt, Ship, ShieldCheck, Sofa, Shirt, Package, Plug, Wrench, Cog, Gift, CookingPot, UserRound } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
-import { AppDownloadButton } from './Download';
 
 // Customer-facing entry points (separate from the staff app/login).
-const PORTAL = '/portal', CUSTOMER_APK = '/download/source-easy-customer.apk';
+const PORTAL = '/portal';
 import { EnquiryForm } from '../components/EnquiryForm';
 import { PublicGreeting } from '../greetings/Public';
 
@@ -31,7 +30,6 @@ export function Landing() {
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitch />
-            <AppDownloadButton className="hidden xl:inline-flex" />
             <a href={PORTAL} data-testid="nav-customer-portal" className="inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"><UserRound size={16} aria-hidden="true" />{l('customer.portal')}</a>
             <a href="/app" data-testid="staff-login" className="inline-flex min-h-[36px] items-center whitespace-nowrap rounded-lg border border-white/25 px-3 text-sm font-medium text-white/90 transition hover:bg-white/10">{l('staffLogin')}</a>
           </div>
@@ -59,9 +57,7 @@ export function Landing() {
             <p className="mt-1 text-sm text-white/70">{l('customer.sub')}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <a href={PORTAL} data-testid="hero-customer-portal" className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-white px-5 font-medium text-ink-900 transition hover:bg-brand-50"><UserRound size={18} aria-hidden="true" />{l('customer.login')}</a>
-              <a href={CUSTOMER_APK} download data-testid="hero-customer-apk" className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-white/25 px-5 font-medium text-white transition hover:bg-white/10"><Smartphone size={18} aria-hidden="true" />{l('customer.apk')}</a>
             </div>
-            <p className="mt-2 text-xs text-white/50">{l('customer.apkNote')}</p>
           </div>
         </div>
       </section>
@@ -123,7 +119,7 @@ export function Landing() {
         </div>
       </Section>
 
-      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-4 h-16 w-auto object-contain" /><nav aria-label={l('customer.footerNav')} className="mb-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2" data-testid="footer-links"><a href={PORTAL} className="font-medium text-brand-700 hover:underline">{l('customer.portal')}</a><a href={CUSTOMER_APK} download className="font-medium text-brand-700 hover:underline">{l('customer.apk')}</a><AppDownloadButton variant="outline" /><a href="/app" className="hover:underline">{l('staffLogin')}</a></nav>{t('landing.footer', { year: new Date().getFullYear() })}</footer>
+      <footer className="border-t border-ink-100 py-10 text-center text-sm text-ink-500"><img src="/brand/lockup.png" alt="Source Easy" loading="lazy" className="mx-auto mb-4 h-16 w-auto object-contain" /><nav aria-label={l('customer.footerNav')} className="mb-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2" data-testid="footer-links"><a href={PORTAL} className="font-medium text-brand-700 hover:underline">{l('customer.portal')}</a><a href="/app" className="hover:underline">{l('staffLogin')}</a></nav>{t('landing.footer', { year: new Date().getFullYear() })}</footer>
     </div>
   );
 }

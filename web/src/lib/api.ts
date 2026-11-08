@@ -38,6 +38,7 @@ export interface Api {
   srPatch?(id: string, body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   srFileUrl?(id: string, fileId: string): Promise<string>;
   srFqPdfUrl?(id: string, qid: string): Promise<string>;
+  srFqAdmin?(id: string, qid: string, op: 'edit' | 'revert' | 'delete', body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   createShippingRequest?(body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   shippableOrders?(customerId: string): Promise<{ id: string; leadReference: string | null; product: string; qty: number }[]>;
   /** Greetings (greetings.manage / greetings.publish). */
@@ -46,6 +47,7 @@ export interface Api {
   saveGreeting?(body: Record<string, unknown>, id?: string): Promise<GreetingStaff>;
   deleteGreeting?(id: string): Promise<void>;
   greetingAction?(id: string, action: 'publish' | 'unpublish'): Promise<GreetingStaff>;
+  createImageGreeting?(file: File): Promise<GreetingStaff>;
   uploadGreetingImage?(id: string, kind: 'desktop' | 'mobile', file: File): Promise<GreetingStaff>;
   removeGreetingImage?(id: string, kind: 'desktop' | 'mobile'): Promise<GreetingStaff>;
   greetingImageUrl?(path: string): Promise<string>;
@@ -276,6 +278,10 @@ export class ServerApi implements Api {
   shippingRequest(id: string) { return this.req<ShippingRequestStaff>('GET', `/shipping-requests/${encodeURIComponent(id)}`); }
   srAction(id: string, action: string, body: Record<string, unknown> = {}) { return this.req<ShippingRequestStaff>('POST', `/shipping-requests/${encodeURIComponent(id)}/${action}`, body); }
   srPatch(id: string, body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('PATCH', `/shipping-requests/${encodeURIComponent(id)}`, body); }
+  srFqAdmin(id: string, qid: string, op: 'edit' | 'revert' | 'delete', body: Record<string, unknown>) {
+    const p = `/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}`;
+    return this.req<ShippingRequestStaff>(op === 'edit' ? 'PATCH' : op === 'delete' ? 'DELETE' : 'POST', op === 'revert' ? `${p}/revert` : p, body);
+  }
   srFqPdfUrl(id: string, qid: string) { return this.blob(`/api/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}/pdf`); }
   createShippingRequest(body: Record<string, unknown>) { return this.req<ShippingRequestStaff>('POST', '/shipping-requests', body); }
   shippableOrders(customerId: string) { return this.req<{ id: string; leadReference: string | null; product: string; qty: number }[]>('GET', `/customers/${encodeURIComponent(customerId)}/shippable-orders`); }
@@ -284,6 +290,12 @@ export class ServerApi implements Api {
   saveGreeting(body: Record<string, unknown>, id?: string) { return this.req<GreetingStaff>(id ? 'PATCH' : 'POST', id ? `/greetings/${encodeURIComponent(id)}` : '/greetings', body); }
   async deleteGreeting(id: string) { await this.req('DELETE', `/greetings/${encodeURIComponent(id)}`); }
   greetingAction(id: string, action: 'publish' | 'unpublish') { return this.req<GreetingStaff>('POST', `/greetings/${encodeURIComponent(id)}/${action}`, {}); }
+  async createImageGreeting(file: File) {
+    const fd = new FormData(); fd.append('files', file, file.name);
+    const res = await fetch('/api/greetings/upload', { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });
+    const j = await res.json().catch(() => ({})); if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(j.error ?? `HTTP ${res.status}`, res.status, j); return j.data as GreetingStaff;
+  }
   async uploadGreetingImage(id: string, kind: 'desktop' | 'mobile', file: File) {
     const fd = new FormData(); fd.append('files', file, file.name);
     const res = await fetch(`/api/greetings/${encodeURIComponent(id)}/image/${kind}`, { method: 'POST', body: fd, headers: { authorization: `Bearer ${this.token}` } });

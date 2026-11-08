@@ -107,7 +107,9 @@
     "or": "or",
     "demo": "Explore with demo data",
     "failed": "Sign-in failed",
-    "backHome": "Back to home"
+    "backHome": "Back to home",
+    "staffApk": "Staff Android App (APK)",
+    "staffApkHelp": "Install help"
   },
   "dashboard": {
     "greeting": "Good morning 👋",
@@ -1232,6 +1234,19 @@
     "kind": {
       "SOURCED": "Sourced order",
       "FREIGHT_ONLY": "Freight only"
+    },
+    "fqRev": "rev {{n}}",
+    "fqAdmin": {
+      "edit": "Edit",
+      "revert": "Revert acceptance",
+      "delete": "Delete",
+      "locked": "Locked — shipment booked",
+      "reason": "Reason (internal, not shown to the customer)",
+      "reasonShort": "Please give a reason (at least 3 characters).",
+      "amount": "New amount (₹)",
+      "amountBad": "Enter a valid amount.",
+      "revertConfirm": "Revert {{label}}? The customer must accept it again and the request goes back to Quoted.",
+      "deleteConfirm": "Delete {{label}}? It is hidden from the customer; history is kept."
     }
   },
   "gr": {
@@ -1333,11 +1348,22 @@
       "state": "This greeting changed. Refresh and try again.",
       "published": "Unpublish this greeting before editing it",
       "incomplete": "Not ready to publish yet. See the list above.",
-      "size": "The image is larger than 2 MB",
-      "type": "Only PNG, JPEG or WebP images",
+      "size": "Image too large (max 10 MB)",
+      "type": "Only PNG, JPEG or WebP images are allowed",
       "invalid": "Please check the fields",
-      "required": "Please fill in the required fields"
-    }
+      "required": "Please fill in the required fields",
+      "dimensions": "Image dimensions too large (max 8000 px per side, 40 megapixels)"
+    },
+    "introImage": "Upload one image that already contains the full greeting. It shows on the website, the customer portal and the customer app, uncropped, until you unpublish it.",
+    "chooseImage": "Upload greeting image",
+    "chooseOther": "Choose a different image",
+    "imageRules": "PNG, JPEG or WebP, up to 10 MB (max 8000 px per side). Large images are scaled down on phones.",
+    "saveDraft": "Save as draft",
+    "savePublish": "Save and publish",
+    "cancel": "Cancel",
+    "replaceImage": "Replace image",
+    "lockedHintImage": "This greeting is live. Unpublish it to replace the image or delete it.",
+    "legacy": "Older greeting created with text fields; it still shows as before."
   },
   "outbox": {
     "title": "Customer notification outbox",

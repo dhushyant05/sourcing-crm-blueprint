@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { PNG, form, setup } from './portal-helpers.js';
+import { PNG, form, pngOf, setup } from './portal-helpers.js';
 
-const BIGPNG = Buffer.concat([PNG, Buffer.alloc(2 * 1024 * 1024 + 10)]);
+const BIGPNG = pngOf(2000, 1000, 10 * 1024 * 1024 + 10); // over the 10 MB limit
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
 
 describe('greetings', () => {
@@ -68,5 +68,46 @@ describe('greetings', () => {
     expect(audit).toEqual(expect.arrayContaining(['CREATED', 'IMAGE_UPLOADED', 'EDITED', 'PUBLISHED', 'UNPUBLISHED']));
     expect((await call('ia', 'DELETE', `/api/greetings/${g.id}`)).statusCode).toBe(204);
     await app.close();
+  });
+
+  it('image-only greeting: one upload (PNG/JPEG/WebP ≤ 10 MB, decode-size checked) creates a ready draft for every surface', async () => {
+    const { app, call, as, customer, tok } = await setup();
+    const send = (who: string, data: Buffer, name = 'diwali.png', type = 'image/png') => { const f = form({}, [{ name, data, type }]);
+      return app.inject({ method: 'POST', url: '/api/greetings/upload', payload: f.payload, headers: { ...f.headers, authorization: `Bearer ${tok[who]}` } }); };
+    // ACL unchanged: no greetings.manage → 403; India admin manages but cannot publish.
+    for (const who of ['is', 'cs', 'ca']) expect((await send(who, pngOf(1200, 600))).statusCode).toBe(403);
+    // > 2 MB (old limit) is accepted now.
+    const big = pngOf(4000, 2000, 6 * 1024 * 1024);
+    const r = await send('ia', big); expect(r.statusCode).toBe(201);
+    const g = r.json().data;
+    expect(g).toMatchObject({ layout: 'IMAGE', status: 'DRAFT', heading: null, message: null, altText: 'Source Easy greeting', surfaces: ['PUBLIC', 'PORTAL', 'APP'], problems: [] });
+    expect(new Date(g.endsAt).getTime() - Date.now()).toBeGreaterThan(5 * 365 * 864e5); // live until unpublished
+    expect((await call('ia', 'POST', `/api/greetings/${g.id}/publish`)).statusCode).toBe(403);
+    expect((await call('sa', 'POST', `/api/greetings/${g.id}/publish`)).json().data.status).toBe('PUBLISHED');
+    // Delivered everywhere with the single image (desktop URL; mobile falls back to it on every client).
+    const pub = (await app.inject({ method: 'GET', url: '/api/public/greetings' })).json().data[0];
+    expect(pub).toMatchObject({ id: g.id, layout: 'IMAGE', imageMobile: null }); expect(pub.imageDesktop).toContain(`/api/public/greetings/${g.id}/image/desktop`);
+    const img = await app.inject({ method: 'GET', url: pub.imageDesktop });
+    expect(img.statusCode).toBe(200); expect(img.headers['content-type']).toBe('image/png'); expect(img.rawPayload.length).toBe(big.length);
+    const A = await customer('Asha', '9876543210', 'Asha Traders');
+    expect((await as(A.token, 'GET', '/api/portal/greetings?surface=APP')).json().data.map((x: any) => x.id)).toContain(g.id);
+    // JPEG and WebP (VP8X) headers are read too.
+    const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 11, 8, 0x05, 0xdc, 0x07, 0xd0, 3]), Buffer.alloc(3 * 1024 * 1024)]); // 2000×1500
+    expect((await send('sa', jpg, 'a.jpg', 'image/jpeg')).statusCode).toBe(201);
+    const webp = Buffer.alloc(40); webp.write('RIFF', 0, 'latin1'); webp.write('WEBP', 8, 'latin1'); webp.write('VP8X', 12, 'latin1'); webp.writeUIntLE(1919, 24, 3); webp.writeUIntLE(1079, 27, 3);
+    expect((await send('sa', webp, 'a.webp', 'image/webp')).statusCode).toBe(201);
+    // Rejected: over 10 MB, too many pixels / too long a side, unreadable header, non-raster.
+    expect((await send('sa', BIGPNG)).statusCode).toBe(413);
+    expect((await send('sa', pngOf(9000, 100))).json().code).toBe('dimensions');
+    expect((await send('sa', pngOf(7000, 7000))).json().code).toBe('dimensions');
+    expect((await send('sa', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]))).json().code).toBe('type');
+    expect((await send('sa', SVG, 'x.svg', 'image/svg+xml')).statusCode).toBe(415);
+    expect((await send('sa', Buffer.from('GIF89a........'), 'x.gif', 'image/gif')).statusCode).toBe(415);
+    // Replace image on a draft accepts large images too; a live greeting must be unpublished first.
+    const d = (await send('sa', pngOf(1000, 500))).json().data;
+    const f = form({}, [{ name: 'n.png', data: pngOf(3000, 1500, 3 * 1024 * 1024), type: 'image/png' }]);
+    expect((await app.inject({ method: 'POST', url: `/api/greetings/${d.id}/image/desktop`, payload: f.payload, headers: { ...f.headers, authorization: `Bearer ${tok.sa}` } })).statusCode).toBe(200);
+    const f2 = form({}, [{ name: 'n.png', data: pngOf(1000, 500), type: 'image/png' }]);
+    expect((await app.inject({ method: 'POST', url: `/api/greetings/${g.id}/image/desktop`, payload: f2.payload, headers: { ...f2.headers, authorization: `Bearer ${tok.sa}` } })).json().code).toBe('published');
   });
 });

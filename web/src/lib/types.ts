@@ -126,7 +126,7 @@ export interface PortalLoginRequest { id: string; leadId: string | null; leadRef
 export interface PortalLeadShare { id: string; leadRef: string | null; product: string | null; sourceChannel: string | null; createdAt: string; shared: boolean; sharedAt: string | null }
 /** Shipping Request (SH-YYMM-NNNN), India office view. */
 export interface FreightQuoteStaff { id: string; n: number; label: string; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null;
-  customerNote: string | null; internalCost: number | null; status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'; reasonCode: string | null; reason: string | null; createdAt: string; decidedAt: string | null; createdByName: string | null }
+  customerNote: string | null; internalCost: number | null; status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'; reasonCode: string | null; reason: string | null; createdAt: string; decidedAt: string | null; createdByName: string | null; revision: number }
 /** China office view of an accepted shipping request: booking details only (server allowlist; no customer identity, destination contact or prices). */
 export interface ShippingRequestChina {
   id: string; ref: string; kind: 'SOURCED' | 'FREIGHT_ONLY'; status: string; goods: string; quantity: number | null; unit: string | null; packages: number | null;

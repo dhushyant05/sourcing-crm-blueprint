@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Ship, UserCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
-import type { Customer, ShippingRequestStaff, StaffLite } from '../lib/types';
+import type { Customer, FreightQuoteStaff, ShippingRequestStaff, StaffLite } from '../lib/types';
 import { SlideOver } from './ui';
 
 // India office: Shipping Requests (SH-YYMM-NNNN). Staff labels in EN / 中文 (sr.*). China never gets here (server 403).
@@ -95,7 +95,8 @@ function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; 
         {!!r.freightQuotes?.length && <div><div className="mb-1 text-xs font-medium">{t('sr.fqs')}</div><ul className="space-y-1 text-xs">{r.freightQuotes.map((x) => <li key={x.id} className="flex flex-wrap gap-x-2">
           <span className="font-mono">{x.label}</span><b>{inr(x.amount)}</b>{x.internalCost != null && <span className="text-ink-500">{t('sr.costLabel')} {inr(x.internalCost)}</span>}<span>{t(`sr.fqSt.${x.status}`, { defaultValue: x.status })}</span>
           {x.reasonCode && <span className="text-rose-600">{t(`sr.reason.${x.reasonCode}`, { defaultValue: x.reasonCode })}{x.reason ? `: ${x.reason}` : ''}</span>}<span className="text-ink-400">{when(x.createdAt)}</span>
-          <button className="text-brand-600 underline" onClick={() => void api.srFqPdfUrl!(r.id, x.id).then((u) => window.open(u, '_blank', 'noopener')).catch((e) => setErr((e as Error).message))} data-testid="sr-fq-pdf">{t('sr.pdf')}</button></li>)}</ul></div>}
+          <button className="text-brand-600 underline" onClick={() => void api.srFqPdfUrl!(r.id, x.id).then((u) => window.open(u, '_blank', 'noopener')).catch((e) => setErr((e as Error).message))} data-testid="sr-fq-pdf">{t('sr.pdf')}</button>{x.revision > 1 && <span className="text-ink-400">{t('sr.fqRev', { n: x.revision })}</span>}
+          {sa && <FqAdmin x={x} booked={STAGES.includes(r.status)} busy={busy} run={(op, b) => run(() => api.srFqAdmin!(r.id, x.id, op, b))} />}</li>)}</ul></div>}
         {r.kind === 'FREIGHT_ONLY' && !sa && ['ACCEPTED', 'BOOKED'].includes(r.status) && <p className="text-xs text-ink-500" data-testid="sr-china-books">{t('sr.chinaBooks')}</p>}
         {r.kind === 'FREIGHT_ONLY' && (sa ? (r.status === 'ACCEPTED' || STAGES.slice(0, -1).includes(r.status)) : STAGES.slice(1, -1).includes(r.status)) && perms.can('orders.production') && <div className="space-y-2 rounded-lg border border-ink-100 p-3 dark:border-ink-800" data-testid="sr-stage-form">
           <div className="text-xs font-medium">{t(r.status === 'ACCEPTED' ? 'sr.book' : 'sr.updateTracking')}</div>
@@ -164,4 +165,23 @@ function NewSr({ onClose, onCreated }: { onClose: () => void; onCreated: (id: st
       </div>
     </SlideOver>
   );
+}
+
+/** Super admin only: edit (sent), revert acceptance, soft delete. Server enforces the same rules; booked quotes are locked. */
+function FqAdmin({ x, booked, busy, run }: { x: FreightQuoteStaff; booked: boolean; busy: boolean; run: (op: 'edit' | 'revert' | 'delete', b: Record<string, unknown>) => void }) {
+  const { t } = useTranslation();
+  const ask = (msg: string) => { const r = window.prompt(msg)?.trim(); if (!r) return null; if (r.length < 3) { window.alert(t('sr.fqAdmin.reasonShort')); return null; } return r; };
+  if (x.status === 'ACCEPTED' && booked) return <span className="text-ink-400" data-testid="sr-fq-locked">{t('sr.fqAdmin.locked')}</span>;
+  const edit = () => {
+    const a = window.prompt(t('sr.fqAdmin.amount'), String(x.amount)); if (a == null) return;
+    const amount = Number(a); if (!Number.isFinite(amount) || amount <= 0) return void window.alert(t('sr.fqAdmin.amountBad'));
+    const transit = window.prompt(t('sr.transit'), x.transit ?? ''); if (transit == null) return;
+    const reason = ask(t('sr.fqAdmin.reason')); if (reason) run('edit', { amount, transit, reason });
+  };
+  const destroy = (op: 'revert' | 'delete') => { if (!window.confirm(t(`sr.fqAdmin.${op}Confirm`, { label: x.label }))) return; const reason = ask(t('sr.fqAdmin.reason')); if (reason) run(op, { reason, confirm: true }); };
+  return <span className="flex gap-2">
+    {x.status === 'SENT' && <button disabled={busy} className="text-brand-600 underline" onClick={edit} data-testid="sr-fq-edit">{t('sr.fqAdmin.edit')}</button>}
+    {x.status === 'ACCEPTED' && <button disabled={busy} className="text-amber-700 underline" onClick={() => destroy('revert')} data-testid="sr-fq-revert">{t('sr.fqAdmin.revert')}</button>}
+    {x.status !== 'ACCEPTED' && <button disabled={busy} className="text-rose-600 underline" onClick={() => destroy('delete')} data-testid="sr-fq-delete">{t('sr.fqAdmin.delete')}</button>}
+  </span>;
 }
