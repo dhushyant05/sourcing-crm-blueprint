@@ -121,6 +121,17 @@ function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; 
           {typeof e.data?.message === 'string' && e.data.message && <div className="text-ink-600 dark:text-ink-300">“{e.data.message}”</div>}
           <span className={e.customerVisible ? 'ml-1 text-accent-700' : 'ml-1 text-ink-400'}>{e.customerVisible ? t('sr.customerSees', { text: e.customerText }) : t('sr.internal')}</span></li>)}</ol></div>}
         {err && <p className="text-sm text-rose-600">{err}</p>}
+        {sa && <div className="rounded-lg border border-rose-200 p-3 text-xs dark:border-rose-900" data-testid="sr-delete-box">
+          {['SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO', 'QUOTED', 'REJECTED', 'CANCELLED'].includes(r.status)
+            ? <button disabled={busy} className="text-rose-600 underline" data-testid="sr-delete" onClick={() => {
+                if (!window.confirm(t('sr.del.confirm', { ref: r.ref }))) return;
+                const typed = window.prompt(t('sr.del.typeRef', { ref: r.ref }))?.trim(); if (typed !== r.ref) { if (typed != null) window.alert(t('sr.del.refMismatch')); return; }
+                const reason = window.prompt(t('sr.del.reason'))?.trim(); if (!reason || reason.length < 3) { if (reason != null) window.alert(t('sr.fqAdmin.reasonShort')); return; }
+                setBusy(true); setErr(null);
+                api.srDelete!(r.id, r.ref, reason).then(() => { onChanged(); onClose(); }).catch((e) => setErr((e as Error).message)).finally(() => setBusy(false));
+              }}>{t('sr.del.btn')}</button>
+            : <span className="text-ink-500" data-testid="sr-delete-blocked">{t(r.status === 'ACCEPTED' ? 'sr.del.blockedAccepted' : 'sr.del.blockedBooked')}</span>}
+        </div>}
       </div>}
     </SlideOver>
   );

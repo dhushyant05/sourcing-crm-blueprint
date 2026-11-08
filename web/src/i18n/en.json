@@ -1247,6 +1247,15 @@
       "amountBad": "Enter a valid amount.",
       "revertConfirm": "Revert {{label}}? The customer must accept it again and the request goes back to Quoted.",
       "deleteConfirm": "Delete {{label}}? It is hidden from the customer; history is kept."
+    },
+    "del": {
+      "btn": "Delete this shipping request",
+      "confirm": "Delete shipping request {{ref}}?\n\nIt disappears for staff, China and the customer. History, quotes and files are kept (files can be removed later in Settings → Storage). Linked leads/orders are not changed.",
+      "typeRef": "Type the reference {{ref}} to confirm",
+      "refMismatch": "The reference did not match; nothing was deleted.",
+      "reason": "Reason (internal, at least 3 characters)",
+      "blockedAccepted": "Cannot delete: a freight quote was accepted. Revert the acceptance or cancel the request first.",
+      "blockedBooked": "Cannot delete: booked or moving shipments are never deleted."
     }
   },
   "gr": {
@@ -1454,6 +1463,11 @@
     },
     "blocked": {
       "published_greeting": "Published greeting — unpublish first"
-    }
+    },
+    "olderThan": "Uploaded more than",
+    "days": "days ago",
+    "ageNote": "Showing files uploaded more than {{n}} days ago (before {{cutoff}}, server time): {{files}} files, {{size}}. {{unknown}} files with an unknown upload date are never included. Nothing is deleted until you select files and confirm.",
+    "ageDays": "{{n}} days old",
+    "ageUnknown": "Unknown date"
   }
 }

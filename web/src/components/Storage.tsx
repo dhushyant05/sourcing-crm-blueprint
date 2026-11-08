@@ -10,9 +10,9 @@ const PAGE = 25;
 /** Super admin: managed uploads, largest first. Deleting is permanent and removes the file from every place listed. */
 export function StorageCard() {
   const { t } = useTranslation(); const { api } = useApp();
-  const [type, setType] = useState(''), [owner, setOwner] = useState(''), [q, setQ] = useState(''), [offset, setOffset] = useState(0);
+  const [days, setDays] = useState(''), [type, setType] = useState(''), [owner, setOwner] = useState(''), [q, setQ] = useState(''), [offset, setOffset] = useState(0);
   const [page, setPage] = useState<StoragePage | null>(null), [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false), [sel, setSel] = useState<Record<string, StorageItem>>({}), [msg, setMsg] = useState<string | null>(null);
-  const load = useCallback(() => api.storage!({ type, owner, q, offset: String(offset), limit: String(PAGE) }).then((p) => { setPage(p); setErr(null); }).catch((e) => setErr((e as Error).message)), [api, type, owner, q, offset]);
+  const load = useCallback(() => api.storage!({ type, owner, q, offset: String(offset), limit: String(PAGE), ...(/^\d+$/.test(days) && Number(days) >= 1 ? { olderThanDays: days } : {}) }).then((p) => { setPage(p); setErr(null); }).catch((e) => setErr((e as Error).message)), [api, type, owner, q, offset, days]);
   useEffect(() => { void load(); }, [load]);
   const k = (f: StorageItem) => `${f.key}/${f.id}`;
   const open = (f: StorageItem) => void api.storageFileUrl!(f.key, f.id).then((u) => window.open(u, '_blank', 'noopener')).catch((e) => setErr((e as Error).message));
@@ -46,9 +46,12 @@ export function StorageCard() {
           <option value="">{t('storage.allTypes')}</option>{['image', 'video', 'document'].map((x) => <option key={x} value={x}>{t(`storage.t.${x}`)}</option>)}</select>
         <select className="input !w-auto" value={owner} onChange={(e) => { setOwner(e.target.value); setOffset(0); }} aria-label={t('storage.owner')}>
           <option value="">{t('storage.allOwners')}</option>{['LEAD', 'QUOTE', 'SHIPPING', 'GREETING'].map((x) => <option key={x} value={x}>{t(`storage.o.${x}`)}</option>)}</select>
+        <label className="flex items-center gap-1">{t('storage.olderThan')}<input className="input !w-20" type="number" min={1} max={3650} step={1} inputMode="numeric" value={days} data-testid="storage-days"
+          onChange={(e) => { setDays(e.target.value.replace(/\D/g, '')); setOffset(0); setSel({}); }} />{t('storage.days')}</label>
         <input className="input !w-48" placeholder={t('storage.search')} value={q} onChange={(e) => { setQ(e.target.value); setOffset(0); }} />
         <button disabled={busy || !selected.length} className="btn-outline !py-1 text-rose-600" onClick={() => void remove(selected)} data-testid="storage-bulk-delete"><Trash2 size={14} />{t('storage.deleteSelected', { n: selected.length })}</button>
       </div>
+      {page?.olderThanDays != null && page.cutoff && <p className="mt-2 text-xs text-ink-500" data-testid="storage-age-note">{t('storage.ageNote', { n: page.olderThanDays, cutoff: new Date(page.cutoff).toLocaleString(), files: page.total, size: fmt(page.totalBytes), unknown: page.unknownAge })}</p>}
       {err && <p role="alert" className="mt-2 text-sm text-rose-600">{err}</p>}
       {msg && <p className="mt-2 text-sm text-accent-700" data-testid="storage-msg">{msg}</p>}
       <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-ink-500"><tr><th /><th>{t('storage.name')}</th><th>{t('storage.size')}</th><th>{t('storage.type')}</th><th>{t('storage.used')}</th><th>{t('storage.date')}</th><th /></tr></thead>
@@ -58,7 +61,7 @@ export function StorageCard() {
           <td className="py-2 pr-2 font-medium">{fmt(f.size)}</td>
           <td className="py-2 pr-2">{t(`storage.t.${f.type}`)}</td>
           <td className="py-2 pr-2 text-xs">{f.places.map((p, i) => <div key={i}>{t(`storage.place.${p.kind}`, { defaultValue: p.kind })}{p.ref ? ` · ${p.ref}` : ''}</div>)}</td>
-          <td className="py-2 pr-2 text-xs text-ink-500">{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : '—'}</td>
+          <td className="py-2 pr-2 text-xs text-ink-500">{f.ageDays != null ? <>{new Date(f.createdAt).toLocaleDateString()}<div>{t('storage.ageDays', { n: f.ageDays })}</div></> : t('storage.ageUnknown')}</td>
           <td className="py-2">{f.blocked ? <span className="text-xs text-amber-700" data-testid="storage-blocked">{t(`storage.blocked.${f.blocked}`)}</span>
             : <button disabled={busy} className="text-rose-600 underline" onClick={() => void remove([f])} data-testid="storage-delete">{t('storage.delete')}</button>}</td>
         </tr>)}</tbody></table></div>

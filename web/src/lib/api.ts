@@ -38,6 +38,7 @@ export interface Api {
   srPatch?(id: string, body: Record<string, unknown>): Promise<ShippingRequestStaff>;
   srFileUrl?(id: string, fileId: string): Promise<string>;
   srFqPdfUrl?(id: string, qid: string): Promise<string>;
+  srDelete?(id: string, ref: string, reason: string): Promise<{ id: string; deleted: boolean }>;
   storage?(q: Record<string, string>): Promise<StoragePage>;
   storageDelete?(items: { key: string; id: string; size: number; places: number }[], reason?: string): Promise<{ results: { key: string; id: string; ok: boolean; code?: string; freed?: number }[]; freed: number }>;
   storageFileUrl?(key: string, id: string): Promise<string>;
@@ -285,6 +286,7 @@ export class ServerApi implements Api {
     const p = `/shipping-requests/${encodeURIComponent(id)}/freight-quotes/${encodeURIComponent(qid)}`;
     return this.req<ShippingRequestStaff>(op === 'edit' ? 'PATCH' : op === 'delete' ? 'DELETE' : 'POST', op === 'revert' ? `${p}/revert` : p, body);
   }
+  srDelete(id: string, ref: string, reason: string) { return this.req<{ id: string; deleted: boolean }>('DELETE', `/shipping-requests/${encodeURIComponent(id)}`, { ref, reason, confirm: true }); }
   storage(q: Record<string, string>) { return this.req<StoragePage>('GET', `/storage?${new URLSearchParams(q)}`); }
   storageDelete(items: { key: string; id: string; size: number; places: number }[], reason?: string) { return this.req<{ results: { key: string; id: string; ok: boolean; code?: string; freed?: number }[]; freed: number }>('POST', '/storage/delete', { items, confirm: true, reason }); }
   storageFileUrl(key: string, id: string) { return this.blob(`/api/storage/files/${encodeURIComponent(key)}/${encodeURIComponent(id)}`); }
@@ -519,5 +521,5 @@ const demoNotes: AppNotification[] = [
 ];
 
 export interface StoragePlace { kind: string; ref: string | null; recordId: string | null; customerVisible?: boolean }
-export interface StorageItem { key: string; id: string; name: string; mime: string; type: 'image' | 'video' | 'document'; size: number; createdAt: string; missing: boolean; owner: 'LEAD' | 'QUOTE' | 'SHIPPING' | 'GREETING'; places: StoragePlace[]; blocked: string | null }
-export interface StoragePage { disk: { total: number; used: number; free: number } | null; uploads: { files: number; bytes: number; missing: number; byType: Record<string, { files: number; bytes: number }> }; total: number; offset: number; limit: number; items: StorageItem[] }
+export interface StorageItem { key: string; id: string; name: string; mime: string; type: 'image' | 'video' | 'document'; size: number; createdAt: string; missing: boolean; owner: 'LEAD' | 'QUOTE' | 'SHIPPING' | 'GREETING'; places: StoragePlace[]; blocked: string | null; ageDays: number | null }
+export interface StoragePage { disk: { total: number; used: number; free: number } | null; uploads: { files: number; bytes: number; missing: number; byType: Record<string, { files: number; bytes: number }> }; total: number; totalBytes: number; offset: number; limit: number; items: StorageItem[]; serverTime: string; olderThanDays: number | null; cutoff: string | null; unknownAge: number }
