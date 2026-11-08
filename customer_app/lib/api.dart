@@ -55,7 +55,10 @@ class PortalApi {
 
   Map<String, String> get _auth => {if (token != null) 'authorization': 'Bearer $token'};
 
-  Future<Json> _handle(http.Response r) async {
+  /// A 401 / revoke only ends the session if it is about the token in use now (not one replaced by a password change).
+  void _authFailed(String? used) { if (used != null && used == token) onAuthError?.call(); }
+
+  Future<Json> _handle(http.Response r, [String? used]) async {
     Json j;
     try {
       final d = jsonDecode(utf8.decode(r.bodyBytes));
@@ -63,8 +66,8 @@ class PortalApi {
     } catch (_) {
       j = {};
     }
-    if (r.statusCode == 401 && token != null) {
-      onAuthError?.call();
+    if (r.statusCode == 401 && used != null) {
+      _authFailed(used);
       throw PortalError(j['error'] as String? ?? 'Please sign in again', 401);
     }
     if (r.statusCode >= 400) throw PortalError(j['error'] as String? ?? 'Something went wrong (${r.statusCode})', r.statusCode, j['code'] as String?);
@@ -72,30 +75,33 @@ class PortalApi {
   }
 
   Future<Json> call(String method, String path, {Object? body, Map<String, String>? query}) async {
+    final used = token;
     final req = http.Request(method, _u(path, query))..headers.addAll({..._auth, 'accept': 'application/json'});
     if (body != null) {
       req.headers['content-type'] = 'application/json';
       req.body = jsonEncode(body);
     }
     final r = await http.Response.fromStream(await _client.send(req).timeout(const Duration(seconds: 30)));
-    return _handle(r);
+    return _handle(r, used);
   }
 
   /// Multipart upload (photos / videos). Files are given as (name, bytes).
   Future<Json> multipart(String path, Map<String, String> fields, List<UploadFile> files) async {
+    final used = token;
     final req = http.MultipartRequest('POST', _u(path))..headers.addAll(_auth)..fields.addAll(fields);
     for (final f in files) {
       req.files.add(await http.MultipartFile.fromPath('files', f.path, filename: f.name));
     }
     final r = await http.Response.fromStream(await _client.send(req).timeout(const Duration(minutes: 5)));
-    return _handle(r);
+    return _handle(r, used);
   }
 
   /// Authenticated binary download (quote PDF, own file, greeting image). Never a public link.
   Future<List<int>> bytes(String path) async {
+    final used = token;
     final r = await _client.get(_u(path), headers: _auth).timeout(const Duration(seconds: 60));
-    if (r.statusCode == 401 && token != null) {
-      onAuthError?.call();
+    if (r.statusCode == 401 && used != null) {
+      _authFailed(used);
       throw PortalError('Please sign in again', 401);
     }
     if (r.statusCode != 200) throw PortalError('Could not download the file', r.statusCode);
@@ -144,13 +150,17 @@ class PortalApi {
   Future<Json> notificationPrefs() => _data('GET', '/api/portal/me/notifications');
   Future<Json> setNotificationPrefs({bool? email, bool? push}) => _data('PUT', '/api/portal/me/notifications', {if (email != null) 'email': email, if (push != null) 'push': push});
 
+  Future<void> registerDevice(String token) async { await call('POST', '/api/portal/me/devices', body: {'token': token, 'platform': 'android'}); }
+  Future<void> unregisterDevice(String token) async { await call('DELETE', '/api/portal/me/devices', body: {'token': token}); }
+
   /// Live "something changed" events for this customer's own requests (SSE). Completes when the stream ends.
   /// `revoked` (login disabled / password reset) signs the app out.
   Future<void> stream(void Function(String id, String type) onChange, {required Future<void> cancel}) async {
+    final used = token;
     final req = http.Request('GET', _u('/api/portal/stream'))..headers.addAll({..._auth, 'accept': 'text/event-stream', 'cache-control': 'no-cache'});
     final res = await _client.send(req).timeout(const Duration(seconds: 30));
     if (res.statusCode == 401) {
-      onAuthError?.call();
+      _authFailed(used);
       return;
     }
     if (res.statusCode != 200) return;
@@ -166,7 +176,7 @@ class PortalApi {
         final ev = parseSse(block);
         if (ev == null) continue;
         if (ev.$1 == 'revoked') {
-          onAuthError?.call();
+          _authFailed(used);
           sub.cancel();
           if (!done.isCompleted) done.complete();
           return;

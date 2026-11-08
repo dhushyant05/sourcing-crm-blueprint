@@ -4,17 +4,20 @@ import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'greetings.dart';
+import 'push.dart';
 
 /// Signed-in state. The only credential kept on the phone is the customer portal token, in encrypted storage under
 /// this app's own package (never shared with the staff app). Signing out clears it and every cached customer data at once.
 class Session extends ChangeNotifier {
-  Session(this.api, this.store, {this.clearFiles}) {
+  Session(this.api, this.store, {this.clearFiles, this.push}) {
     api.onAuthError = () => unawaited(signOut(reason: 'Your session ended. Please sign in again.'));
   }
   final PortalApi api;
   final KeyValue store;
   /// Deletes downloaded customer documents (PDFs, files) from the app cache on sign-out.
   final Future<void> Function()? clearFiles;
+  /// Optional customer push (FCM). Null or not configured → the app runs without it.
+  final PushService? push;
   static const tokenKey = 'portal.token';
   Json? me;
   bool restoring = true;
@@ -66,6 +69,7 @@ class Session extends ChangeNotifier {
   /// Immediate: credentials and cached data are removed before anything else happens.
   Future<void> signOut({String? reason}) async {
     if (api.token == null && me == null) return;
+    try { await push?.signOut(api); } catch (_) {} // unregister this phone while the token may still be valid
     await _clear();
     notice = reason;
     notifyListeners();

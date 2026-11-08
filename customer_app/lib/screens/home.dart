@@ -36,11 +36,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _refresh();
     if (widget.live) _liveLoop();
+    final push = widget.session.push;
+    if (push != null) {
+      push.onOpen = _openReference;
+      _pushSub = push.foreground.listen((_) => _refresh());
+      unawaited(push.start(api));
+    }
+  }
+
+  StreamSubscription<Object?>? _pushSub;
+
+  /// Notification tap: opens the record only if it is in this customer's own lists (the server checks again).
+  Future<void> _openReference(String ref) async {
+    if (_reqs == null || _ships == null) await _refresh();
+    if (!mounted) return;
+    final r = (_reqs ?? []).where((x) => x['reference'] == ref).firstOrNull;
+    final s = (_ships ?? []).where((x) => x['reference'] == ref).firstOrNull;
+    if (r != null) { setState(() => _tab = 0); await _open(RequestDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream)); }
+    else if (s != null) { setState(() => _tab = 1); await _open(ShippingDetailScreen(api: api, id: '${s['id']}', changes: _changes.stream)); }
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _pushSub?.cancel();
+    if (widget.session.push?.onOpen == _openReference) widget.session.push?.onOpen = null;
     _stop?.complete();
     _changes.close();
     WidgetsBinding.instance.removeObserver(this);
@@ -107,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: IndexedStack(index: _tab, children: [
         _list(_reqs, (r) => RequestTile(r, onTap: () => _open(RequestDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream))), 'No requests yet. Tap “New request” to tell us what you need.'),
         _list(_ships, (r) => ShippingTile(r, onTap: () => _open(ShippingDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream))), 'No shipping requests yet.'),
-        AlertsScreen(api: api),
+        AlertsScreen(api: api, push: widget.session.push),
       ]),
       floatingActionButton: _tab == 2 ? null : FloatingActionButton.extended(key: const Key('fab-new'), icon: const Icon(Icons.add), label: Text(_tab == 0 ? 'New request' : 'Ship goods'),
           onPressed: () => _open(_tab == 0 ? NewRequestScreen(api: api) : NewShippingScreen(api: api))),

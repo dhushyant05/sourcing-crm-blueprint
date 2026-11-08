@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'api.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
+import 'push.dart';
 import 'session.dart';
 import 'updater.dart';
 import 'widgets.dart';
@@ -27,7 +28,7 @@ class SecureKeyValue implements KeyValue {
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Release builds only accept https; a debug build may point PORTAL_URL at a local http server for QA.
-  final session = Session(PortalApi(allowInsecure: !kReleaseMode), const SecureKeyValue(), clearFiles: clearDownloads)..restore();
+  final session = Session(PortalApi(allowInsecure: !kReleaseMode), const SecureKeyValue(), clearFiles: clearDownloads, push: PushService(FirebasePushBackend()))..restore();
   runApp(CustomerApp(session: session, updater: Platform.isAndroid ? Updater() : null));
 }
 

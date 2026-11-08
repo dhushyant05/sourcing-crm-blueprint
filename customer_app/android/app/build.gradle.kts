@@ -6,11 +6,14 @@ plugins {
 
 import java.util.Properties
 
+// Push (FCM) is optional: the google-services plugin is applied only when the CUSTOMER project's
+// android/app/google-services.json exists (git-ignored; its package must be in.sourceeasy.customer, never the staff app's).
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
 // Source Easy Customer: its own package and its own signing key (never the staff key).
 // Release signing reads a key.properties (storeFile, storePassword, keyAlias, keyPassword) from
 // $SOURCEEASY_CUSTOMER_KEY_PROPERTIES, else android/key.properties (git-ignored). Without one, release builds
 // fail instead of silently using a debug key.
-// Push (FCM) is not wired: there is no customer Firebase project yet, so no google-services plugin is applied.
 val keyPropsFile: File? = listOfNotNull(System.getenv("SOURCEEASY_CUSTOMER_KEY_PROPERTIES")?.let { File(it) },
     rootProject.file("key.properties")).firstOrNull { it.exists() }
 val keyProps = Properties().apply { keyPropsFile?.inputStream()?.use { load(it) } }

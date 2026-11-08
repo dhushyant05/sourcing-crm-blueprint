@@ -1,6 +1,14 @@
 package `in`.sourceeasy.customer
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -46,6 +54,20 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    companion object { const val CHANNEL = "customer_updates" }
+
+    /** One channel for quote / order / shipment updates, with the default notification sound. */
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL) != null) return
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Quotes, orders and shipments", NotificationManager.IMPORTANCE_HIGH).apply {
+            setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            enableVibration(true)
+        })
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val filter = IntentFilter(actionStatus)
@@ -56,6 +78,28 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        ensureChannel()
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sourceeasy.customer/notify").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "requestPermission" -> {
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7201)
+                    result.success(null)
+                }
+                "show" -> try {
+                    ensureChannel()
+                    val open = PendingIntent.getActivity(this, 0, packageManager.getLaunchIntentForPackage(packageName)!!.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    val n = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_stat_notify).setColor(0xFF0E7490.toInt())
+                        .setContentTitle(call.argument<String>("title")).setContentText(call.argument<String>("body"))
+                        .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true).setContentIntent(open).build()
+                    if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+                        NotificationManagerCompat.from(this).notify((System.currentTimeMillis() % 100000).toInt(), n)
+                    result.success(null)
+                } catch (e: Exception) { result.error("notify_failed", e.message, null) }
+                else -> result.notImplemented()
+            }
+        }
         installer = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sourceeasy.customer/installer")
         installer!!.setMethodCallHandler { call, result ->
             when (call.method) {

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../push.dart';
 import '../widgets.dart';
 
-/// Notification preferences. Push needs the customer Firebase project, which is not set up yet, so this app does not
-/// register for push and says so honestly.
+/// Notification preferences. App notifications work only in a build that includes the customer Firebase config;
+/// otherwise the screen says so honestly.
 class AlertsScreen extends StatefulWidget {
-  const AlertsScreen({super.key, required this.api});
+  const AlertsScreen({super.key, required this.api, this.push});
   final PortalApi api;
+  final PushService? push;
   @override
   State<AlertsScreen> createState() => _AlertsScreenState();
 }
@@ -39,7 +41,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
       SwitchListTile(key: const Key('pref-email'), value: p['email'] == true, onChanged: (v) => _set(email: v), title: const Text('Email updates'),
           subtitle: Text(p['emailAvailable'] == true ? 'Sent to the email on your account.' : 'Email updates are not switched on yet. Your choice is saved for when they are.')),
       SwitchListTile(key: const Key('pref-push'), value: p['push'] == true, onChanged: (v) => _set(push: v), title: const Text('App notifications'),
-          subtitle: const Text('Not available yet in this version of the app. Your choice is saved. Open the app to see the latest updates.', key: Key('push-status'))),
+          subtitle: ListenableBuilder(listenable: widget.push ?? ValueNotifier(0), builder: (_, _) => Text(
+              widget.push?.label ?? 'App notifications are not switched on yet for this app. Your choice is saved; open the app to see the latest updates.', key: const Key('push-status')))),
     ]);
   }
 }

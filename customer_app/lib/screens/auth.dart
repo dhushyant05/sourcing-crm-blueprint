@@ -21,9 +21,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await widget.session.signIn(_phone.text, _pw.text);
       _pw.clear();
     } on PortalError catch (e) {
-      setState(() => _err = e.message);
+      if (mounted) setState(() => _err = e.message);
     } catch (_) {
-      setState(() => _err = 'Could not reach Source Easy. Check your connection.');
+      if (mounted) setState(() => _err = 'Could not reach Source Easy. Check your connection.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -70,9 +70,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       await widget.session.changePassword(_cur.text, _new.text);
       if (!widget.forced && mounted) { Navigator.of(context).pop(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password saved.'))); }
     } on PortalError catch (e) {
-      setState(() => _err = e.message);
+      if (mounted) setState(() => _err = e.message);
     } catch (_) {
-      setState(() => _err = 'Could not reach Source Easy. Check your connection.');
+      if (mounted) setState(() => _err = 'Could not reach Source Easy. Check your connection.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
