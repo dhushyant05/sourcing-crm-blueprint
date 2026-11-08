@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
+import { diskOf, FILE_RE, inventory, KEY_RE, type StoredFile } from './storage.js';
 import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged, type Attachment } from './uploads.js';
 import { capabilities, isRole, manageableRoles, sides, type Role } from './roles.js';
 import { PermStore, PERMISSIONS } from './permissions.js';
@@ -2555,6 +2556,106 @@ export async function buildApp(o: AppOptions) {
       const ng = await greetings.setStatus(g.id, ['PUBLISHED'], 'UNPUBLISHED', u.id).catch(grErr);
       await greetings.audit(g.id, u.id, 'UNPUBLISHED', {}); return { data: grStaff(ng) };
     });
+    // ===================== Storage Manager (super admin only) =====================
+    // Cross-record view of managed uploads, largest first. Deletes only manifest-listed files inside the upload root,
+    // clears every reference to them in one go (after the super admin confirmed the exact place count), keeps an audit
+    // row forever, and logs customer-safe timeline lines. No automatic / age / orphan-scan deletion exists.
+    const saOnly = (u: User) => { if (u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can manage storage'); };
+    type Place = { kind: string; ref: string | null; recordId: string | null; customerVisible?: boolean };
+    const storageCtx = async () => {
+      const leadsM = new Map((await o.db.all('SELECT id, lead_ref FROM leads')).map((r: any) => [String(r.id), r.lead_ref as string | null]));
+      const qM = new Map((await o.db.all('SELECT id, lead_id FROM quotes')).map((r: any) => [qKey(r.id), { id: r.id as string, leadId: r.lead_id as string }]));
+      const srM = new Map((await o.db.all('SELECT id, ref FROM shipping_requests')).map((r: any) => [srKey(r.id), { id: r.id as string, ref: r.ref as string }]));
+      const srf = new Map((await o.db.all('SELECT request_id, file_id, customer_visible FROM shipping_request_files')).map((r: any) => [`${srKey(r.request_id)}/${r.file_id}`, !!r.customer_visible]));
+      const grM = new Map((await o.db.all('SELECT id, name, status, image_desktop, image_mobile FROM greetings')).map((r: any) => [grKey(r.id), r]));
+      return (f: StoredFile): { places: Place[]; blocked: string | null; record: string | null } => {
+        const places: Place[] = [];
+        if (f.owner === 'LEAD') { const ok = leadsM.has(f.key); places.push({ kind: ok ? 'LEAD_ATTACHMENT' : 'NO_RECORD', ref: leadsM.get(f.key) ?? null, recordId: ok ? f.key : null }); return { places, blocked: null, record: ok ? f.key : null }; }
+        if (f.owner === 'QUOTE') {
+          const q = qM.get(f.key); if (!q) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
+          places.push({ kind: 'QUOTE_FILE', ref: leadsM.get(q.leadId) ?? null, recordId: q.id });
+          if (/^image\/(png|jpe?g)$/.test(f.mime)) places.push({ kind: 'QUOTE_PDF_PHOTO', ref: leadsM.get(q.leadId) ?? null, recordId: q.id });
+          return { places, blocked: null, record: q.id };
+        }
+        if (f.owner === 'SHIPPING') {
+          const r = srM.get(f.key); if (!r) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
+          const vis = srf.get(`${f.key}/${f.id}`);
+          places.push({ kind: 'SHIPPING_FILE', ref: r.ref, recordId: r.id, customerVisible: !!vis });
+          if (vis) places.push({ kind: 'CUSTOMER_PORTAL', ref: r.ref, recordId: r.id, customerVisible: true });
+          return { places, blocked: null, record: r.id };
+        }
+        const g = grM.get(f.key); if (!g) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
+        if (g.image_desktop === f.id) places.push({ kind: 'GREETING_DESKTOP', ref: g.name, recordId: g.id });
+        if (g.image_mobile === f.id) places.push({ kind: 'GREETING_MOBILE', ref: g.name, recordId: g.id });
+        if (!places.length) places.push({ kind: 'GREETING_UNUSED', ref: g.name, recordId: g.id });
+        return { places, blocked: g.status === 'PUBLISHED' && places.some((p) => p.kind !== 'GREETING_UNUSED') ? 'published_greeting' : null, record: g.id };
+      };
+    };
+    api.get<{ Querystring: Record<string, string | undefined> }>('/api/storage', async (req) => {
+      saOnly(req.user!);
+      const q = req.query, all = inventory(uploads.root), ctx = await storageCtx();
+      const type = ['image', 'video', 'document'].includes(q.type ?? '') ? q.type : null, owner = ['LEAD', 'QUOTE', 'SHIPPING', 'GREETING'].includes(q.owner ?? '') ? q.owner : null;
+      const search = String(q.q ?? '').trim().toLowerCase().slice(0, 100);
+      const rows = all.map((f) => ({ ...f, ...ctx(f) }))
+        .filter((f) => (!type || f.type === type) && (!owner || f.owner === owner) && (!search || f.name.toLowerCase().includes(search) || f.places.some((p) => (p.ref ?? '').toLowerCase().includes(search))))
+        .sort((a, b) => b.size - a.size || a.key.localeCompare(b.key) || a.id.localeCompare(b.id));
+      const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200), offset = Math.max(Number(q.offset) || 0, 0);
+      const byType: Record<string, { files: number; bytes: number }> = {};
+      for (const f of all) { const t = (byType[f.type] ??= { files: 0, bytes: 0 }); t.files++; t.bytes += f.size; }
+      let disk: ReturnType<typeof diskOf> | null = null; try { disk = diskOf(uploads.root); } catch { /* unsupported fs */ }
+      return { data: {
+        disk, uploads: { files: all.length, bytes: all.reduce((n, f) => n + f.size, 0), missing: all.filter((f) => f.missing).length, byType },
+        total: rows.length, offset, limit, items: rows.slice(offset, offset + limit),
+      } };
+    });
+    api.get<{ Params: { key: string; fid: string } }>('/api/storage/files/:key/:fid', async (req, reply) => {
+      saOnly(req.user!); const { key, fid } = req.params;
+      if (!KEY_RE.test(key) || !FILE_RE.test(fid)) throw notFound();
+      const f = uploads.file(key, fid); if (!f) throw notFound();
+      const inline = /^(image\/(png|jpeg|webp)|application\/pdf|video\/(mp4|webm))$/.test(f.meta.mime);
+      return reply.header('content-type', f.meta.mime).header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename="${f.meta.name.replace(/[^\w.\- ]/g, '_')}"`)
+        .header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff').header('content-security-policy', "default-src 'none'; sandbox").send(createReadStream(f.path));
+    });
+    api.post<{ Body: { items?: { key?: unknown; id?: unknown; size?: unknown; places?: unknown }[]; confirm?: unknown; reason?: unknown } }>('/api/storage/delete', async (req) => {
+      const u = req.user!; saOnly(u); const b = req.body ?? {};
+      if (b.confirm !== true) throw Object.assign(new Error('Please confirm: deleting files is permanent'), { status: 400, appCode: 'confirm' });
+      const items = Array.isArray(b.items) ? b.items.slice(0, 100) : []; if (!items.length) throw bad('Choose at least one file');
+      const reason = String(b.reason ?? '').trim().slice(0, 300) || null;
+      const results: { key: string; id: string; ok: boolean; code?: string; freed?: number }[] = [];
+      for (const it of items) {
+        const key = String(it.key ?? ''), id = String(it.id ?? '');
+        const fail = (code: string) => results.push({ key, id, ok: false, code });
+        if (!KEY_RE.test(key) || !FILE_RE.test(id)) { fail('invalid'); continue; }
+        const f = inventory(uploads.root).find((x) => x.key === key && x.id === id); // fresh, per item
+        if (!f) { fail('not_found'); continue; }
+        const c = (await storageCtx())(f);
+        // The super admin confirmed a specific size + number of places; anything changed since → refuse and refresh.
+        if (Number(it.size) !== f.size || Number(it.places) !== c.places.length) { fail('stale'); continue; }
+        if (c.blocked) { fail(c.blocked); continue; }
+        try {
+          if (f.owner === 'GREETING' && c.record) {
+            const n = await o.db.run("UPDATE greetings SET image_desktop = CASE WHEN image_desktop = ? THEN NULL ELSE image_desktop END, image_mobile = CASE WHEN image_mobile = ? THEN NULL ELSE image_mobile END, updated_by = ?, updated_at = now() WHERE id = ? AND status <> 'PUBLISHED'", id, id, u.id, c.record);
+            if (!n && c.places.some((p) => p.kind !== 'GREETING_UNUSED')) { fail('published_greeting'); continue; } // published in the meantime
+          }
+          if (f.owner === 'SHIPPING' && c.record) await o.db.run('DELETE FROM shipping_request_files WHERE request_id = ? AND file_id = ?', c.record, id);
+          const rest = uploads.remove(key, id); if (!rest) { fail('not_found'); continue; }
+          if (f.owner === 'LEAD' || f.owner === 'QUOTE') await mediaSync(key, rest);
+          await o.db.run('INSERT INTO storage_deletions (owner_key, file_id, name, mime, size, places, by_user, reason) VALUES (?,?,?,?,?,?,?,?)', key, id, f.name, f.mime, f.size, JSON.stringify(c.places), u.id, reason);
+          if (f.owner === 'LEAD' && c.record) await ev(c.record, 'MEDIA_REMOVED', u, { name: f.name, storage: true });
+          if (f.owner === 'QUOTE' && c.record) { const q = await quotes.get(c.record); if (q) await ev(q.leadId, 'MEDIA_REMOVED', u, { quote: true, storage: true }); }
+          if (f.owner === 'SHIPPING' && c.record) {
+            const vis = c.places.some((p) => p.customerVisible);
+            await srs.log(c.record, 'FILE_REMOVED', srActor(u), { fileId: id, storage: true }, undefined, vis ? 'A file was removed by Source Easy' : null);
+            const r = await srs.get(c.record); if (r) await srLive(r);
+          }
+          if (f.owner === 'GREETING' && c.record) await greetings.audit(c.record, u.id, 'IMAGE_DELETED', { storage: true, fileId: id });
+          results.push({ key, id, ok: true, freed: f.size });
+        } catch (e) { app.log.error({ err: e }, 'storage delete failed'); fail('error'); }
+      }
+      return { data: { results, freed: results.reduce((n, r) => n + (r.freed ?? 0), 0) } };
+    });
+    api.get('/api/storage/deletions', async (req) => { saOnly(req.user!); return { data: await o.db.all('SELECT owner_key, file_id, name, mime, size, places, by_user, reason, at FROM storage_deletions ORDER BY id DESC LIMIT 200') }; });
+
     api.delete<{ Params: { id: string } }>('/api/greetings/:id', async (req, reply) => {
       const u = req.user!; need(u, 'greetings.manage'); const g = await grOf(req.params.id);
       if (g.status === 'PUBLISHED') throw Object.assign(new Error('Unpublish this greeting before deleting it'), { status: 409, appCode: 'published' });

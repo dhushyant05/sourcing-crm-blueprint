@@ -81,4 +81,26 @@ void main() {
     await t.pumpAndSettle();
     expect(find.textContaining('Source Easy will then book the shipment'), findsOneWidget);
   });
+
+  for (final stale in [false, true]) {
+    testWidgets('freight accept echoes the shown version/amount/currency${stale ? '; stale 409 refetches the new price' : ''}', (t) async {
+      final s = FakeServer()..mustChange = false..ships.add(freightShip())..fqStale = stale;
+      final api = PortalApi(baseUrl: 'https://x.test', client: s.client);
+      await api.login('9876543210', 'temp-pass-1');
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: ShippingDetailScreen(api: api, id: 'S1', changes: const Stream.empty()))));
+      await t.pumpAndSettle();
+      await t.scrollUntilVisible(find.byKey(const Key('fq-accept')), 200);
+      await t.tap(find.byKey(const Key('fq-accept'))); await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('fq-accept-confirm'))); await t.pumpAndSettle();
+      expect(s.fqAccepts, [{'version': 1, 'amount': 41500, 'currency': 'INR'}]);
+      final gets = s.calls.where((c) => c == 'GET /api/portal/shipping-requests/S1').length;
+      if (stale) {
+        expect(gets, greaterThanOrEqualTo(2)); // reloaded after the 409
+        expect(find.text('₹48,000'), findsOneWidget); expect(find.text('₹41,500'), findsNothing);
+        expect((s.ships.first['freightQuotes'] as List).first['status'], isNot('ACCEPTED'));
+      } else {
+        expect((s.ships.first['freightQuotes'] as List).first['status'], 'ACCEPTED');
+      }
+    });
+  }
 }

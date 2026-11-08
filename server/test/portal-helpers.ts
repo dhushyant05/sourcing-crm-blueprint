@@ -21,7 +21,8 @@ export function form(fields: Record<string, string>, files: { name: string; data
 export async function setup(extra: Record<string, unknown> & { makeNotifier?: (db: any) => unknown } = {}) {
   const { db, bus, users } = await testEnv(false);
   const { makeNotifier, ...rest } = extra; if (makeNotifier) rest.notifier = makeNotifier(db);
-  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir: mkdtempSync(join(tmpdir(), 'portal-')), ...rest });
+  const uploadsDir = mkdtempSync(join(tmpdir(), 'portal-'));
+  const app = await buildApp({ db, bus, users, jwtSecret: 'x'.repeat(40), uploadsDir, ...rest });
   opened.push(app);
   const ids: Record<string, string> = {};
   for (const [e, r] of [['sa', 'SUPER_ADMIN'], ['ia', 'INDIA_ADMIN'], ['is', 'INDIA_STAFF'], ['ca', 'CHINA_ADMIN'], ['cs', 'CHINA_STAFF']] as const) ids[e] = (await users.create(`${e}@x.in`, `Staff ${e}`, r, PW)).id;
@@ -65,7 +66,7 @@ export async function setup(extra: Record<string, unknown> & { makeNotifier?: (d
     await during(); await new Promise((r) => setTimeout(r, settleMs)); ac.abort(); await pump;
     return { status: res.status, text };
   };
-  return { app, db, call, as, ids, tok, enquire, login, customer, orderFor, sse };
+  return { app, db, call, as, ids, tok, enquire, login, customer, orderFor, sse, uploadsDir };
 }
 
 

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp, useLoad } from '../lib/store';
 import { CURRENCIES, label, symbol } from '../lib/currency';
 import { PageHeader } from '../components/ui';
+import { StorageCard } from '../components/Storage';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 
 export function Settings() {
@@ -57,6 +58,7 @@ export function Settings() {
         )}
       </div>
       {session?.role === 'SUPER_ADMIN' && api.notificationOutbox && <Outbox />}
+      {session?.role === 'SUPER_ADMIN' && api.storage && <StorageCard />}
     </>
   );
 }

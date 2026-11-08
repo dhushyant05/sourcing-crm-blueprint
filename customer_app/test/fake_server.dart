@@ -13,6 +13,9 @@ class FakeServer {
   final requests = <Map<String, dynamic>>[];
   final ships = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> greetings = [];
+  /// Freight accept bodies received; when [fqStale] the quote is "edited" first and the accept is refused like the server does.
+  final fqAccepts = <Map>[];
+  bool fqStale = false;
   Map<String, dynamic> prefs = {'email': true, 'push': true, 'emailAvailable': false, 'pushAvailable': false};
 
   http.Response _j(Object b, [int s = 200]) => http.Response(jsonEncode(b), s, headers: {'content-type': 'application/json'});
@@ -47,6 +50,15 @@ class FakeServer {
       if (req.method == 'PUT') prefs = {...prefs, ...(jsonDecode(req.body) as Map<String, dynamic>)};
       return _j({'data': prefs});
     }
+    final fqa = RegExp(r'^/api/portal/freight-quotes/(\w+)/accept$').firstMatch(p);
+    if (fqa != null) {
+      final b = jsonDecode(req.body) as Map; fqAccepts.add(b);
+      final r = ships.first; final q = (r['freightQuotes'] as List).first as Map;
+      if (fqStale) { q['amount'] = 48000; q['version'] = 2; return _j({'error': 'This quote was updated. Please review the new amount and terms before accepting.', 'code': 'stale'}, 409); }
+      if (b['version'] != q['version'] || b['amount'] != q['amount'] || b['currency'] != q['currency']) return _j({'error': 'stale', 'code': 'stale'}, 409);
+      q['status'] = 'ACCEPTED'; q['canDecide'] = false; r['status'] = 'ACCEPTED';
+      return _j({'data': r});
+    }
     final acc = RegExp(r'^/api/portal/quotes/(\w+)/accept$').firstMatch(p);
     if (acc != null) {
       final r = requests.first; final q = (r['quotes'] as List).first as Map;
@@ -69,6 +81,6 @@ Map<String, dynamic> quoteRequest() => {
 Map<String, dynamic> freightShip() => {
       'id': 'S1', 'type': 'SHIPPING', 'reference': 'SH-2611-0001', 'kind': 'FREIGHT_ONLY', 'status': 'QUOTED', 'goods': 'Lamps', 'quantity': null, 'unit': null, 'destCity': 'Chennai',
       'createdAt': '2026-11-01T05:30:00Z', 'leadReference': null, 'quoteWaiting': true, 'tracking': null, 'canCancel': true, 'canReply': false, 'files': [], 'timeline': [],
-      'freightQuotes': [{'id': 'F1', 'label': 'SH-2611-0001-F1', 'amount': 41500, 'currency': 'INR', 'mode': 'SEA', 'incoterm': null, 'transit': '25 days', 'validUntil': null,
+      'freightQuotes': [{'id': 'F1', 'label': 'SH-2611-0001-F1', 'version': 1, 'amount': 41500, 'currency': 'INR', 'mode': 'SEA', 'incoterm': null, 'transit': '25 days', 'validUntil': null,
         'note': null, 'status': 'SENT', 'createdAt': '2026-11-03T05:30:00Z', 'decidedAt': null, 'canDecide': true}],
     };

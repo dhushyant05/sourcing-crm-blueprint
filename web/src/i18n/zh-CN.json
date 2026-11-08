@@ -1404,5 +1404,56 @@
     "handover": "标记\"运输中\"后，由印度团队处理到港、清关和派送。",
     "indiaOwns": "该货运现由印度团队处理。",
     "saved": "已保存"
+  },
+  "storage": {
+    "title": "存储空间",
+    "hint": "已上传的照片、视频和文件，按大小排序。删除后无法恢复，并会释放磁盘空间。",
+    "disk": "磁盘：已用 {{used}} / 共 {{total}} · 剩余 {{free}}",
+    "diskNote": "为存放上传文件的磁盘在服务器上看到的数值（同一磁盘还包括数据库、应用镜像和备份）。",
+    "uploads": "上传文件：{{files}} 个 · {{size}}",
+    "missing": "{{n}} 个文件在磁盘上缺失",
+    "type": "类型",
+    "owner": "所属",
+    "allTypes": "全部类型",
+    "allOwners": "全部",
+    "search": "搜索文件名或编号",
+    "deleteSelected": "删除所选 ({{n}})",
+    "delete": "删除",
+    "name": "文件",
+    "size": "大小",
+    "used": "使用位置",
+    "date": "上传日期",
+    "prev": "上一页",
+    "next": "下一页",
+    "fileMissing": "（缺失）",
+    "reason": "原因（可选，记录在审计日志中）",
+    "confirm": "永久删除 {{files}} 个文件，共 {{size}}？\n\n此操作无法撤销。将从 {{places}} 个位置移除：{{where}}。",
+    "done": "已删除 {{n}} 个文件，释放 {{size}}。",
+    "failed": "{{n}} 个无法删除（已更改、正在使用或已不存在）— 列表已刷新。",
+    "t": {
+      "image": "图片",
+      "video": "视频",
+      "document": "文档"
+    },
+    "o": {
+      "LEAD": "询盘",
+      "QUOTE": "供应商报价",
+      "SHIPPING": "货运申请",
+      "GREETING": "问候横幅"
+    },
+    "place": {
+      "LEAD_ATTACHMENT": "询盘附件",
+      "QUOTE_FILE": "供应商报价文件",
+      "QUOTE_PDF_PHOTO": "报价单 PDF 图片",
+      "SHIPPING_FILE": "货运申请文件",
+      "CUSTOMER_PORTAL": "客户可见",
+      "GREETING_DESKTOP": "问候图片",
+      "GREETING_MOBILE": "问候手机图片",
+      "GREETING_UNUSED": "未使用的问候图片",
+      "NO_RECORD": "无关联记录"
+    },
+    "blocked": {
+      "published_greeting": "问候已发布 — 请先取消发布"
+    }
   }
 }

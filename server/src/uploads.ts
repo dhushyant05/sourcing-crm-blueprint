@@ -56,6 +56,8 @@ const safeName = (n: string) => n.replace(/[^\w.\- ()\u4e00-\u9fff]/g, '_').repl
 /** Files live on the API's private data volume (never served statically). One folder per lead + a manifest. */
 export class UploadStore {
   constructor(private dir: string) { mkdirSync(dir, { recursive: true }); }
+  /** Upload root (Storage Manager: inventory + disk figures only ever look inside it). */
+  get root() { return this.dir; }
   private leadDir(leadId: string) {
     if (!/^[\w-]{1,64}$/.test(leadId)) throw Object.assign(new Error('Bad lead id'), { status: 400 });
     return join(this.dir, leadId);
