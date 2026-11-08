@@ -1975,7 +1975,8 @@ export async function buildApp(o: AppOptions) {
     api.post<{ Params: { qid: string } }>('/api/portal/quotes/:qid/accept', async (req) => {
       const c = req.customer!, q = await ownQuote(c, req.params.qid);
       if (q.status !== 'SENT' || !(await quotes.claimSent(q.id, 'ACCEPTED'))) throw bad('This quote was already decided', 409);
-      await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'ACCEPTED' });
+      // The claim makes the decision atomic; if validation in applyQuoteStatus fails, hand the quote back to SENT.
+      try { await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'ACCEPTED' }); } catch (e) { await quotes.unclaim(q.id, 'ACCEPTED'); throw e; }
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'QUOTE_ACCEPTED', c.customerId, { quoteId: q.id });
       await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });
       return { data: await portalRequest((await leadDb.get(q.leadId))!, true) };
@@ -1983,7 +1984,8 @@ export async function buildApp(o: AppOptions) {
     api.post<{ Params: { qid: string }; Body: { reasonCode?: string; reason?: string } }>('/api/portal/quotes/:qid/reject', async (req) => {
       const c = req.customer!, q = await ownQuote(c, req.params.qid);
       if (q.status !== 'SENT' || !(await quotes.claimSent(q.id, 'REJECTED'))) throw bad('This quote was already decided', 409);
-      await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'REJECTED', reasonCode: String(req.body?.reasonCode ?? 'OTHER'), reason: String(req.body?.reason ?? '').slice(0, 500) });
+      // The claim makes the decision atomic; if validation in applyQuoteStatus fails, hand the quote back to SENT.
+      try { await applyQuoteStatus(null, { id: `customer:${c.id}`, name: c.name }, q, { status: 'REJECTED', reasonCode: String(req.body?.reasonCode ?? 'OTHER'), reason: String(req.body?.reason ?? '').slice(0, 500) }); } catch (e) { await quotes.unclaim(q.id, 'REJECTED'); throw e; }
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'QUOTE_REJECTED', c.customerId, { quoteId: q.id });
       await liveData({ type: 'quote', id: q.id, leadId: q.leadId, at: Date.now() });
       return { data: await portalRequest((await leadDb.get(q.leadId))!, true) };
@@ -2215,10 +2217,55 @@ export async function buildApp(o: AppOptions) {
       for (const k of ['carrier', 'tracking', 'container']) if (k in b) extra[k] = b[k] == null || b[k] === '' ? null : String(b[k]).trim().slice(0, 120);
       for (const k of ['etd', 'eta', 'deliveredAt']) if (k in b) { const v = b[k] == null || b[k] === '' ? null : String(b[k]); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw bad(`${k} must be YYYY-MM-DD`); extra[k] = v; }
       if (to === 'DELIVERED' && !extra.deliveredAt && !r.deliveredAt) extra.deliveredAt = new Date().toISOString().slice(0, 10);
+      // China books and ships (BOOKED → IN_TRANSIT, /api/china/shipping-requests); India takes over from IN_TRANSIT (ARRIVED onward). Super admin may do both.
+      if (!sides(u.role).superAdmin && (cur < SR_STAGES.indexOf('IN_TRANSIT') || ti < SR_STAGES.indexOf('ARRIVED') && ti !== cur))
+        throw Object.assign(new Error('China books and ships this request; India takes over once it is in transit'), { status: 409, appCode: 'china_books' });
       const nr = await srs.setStatus(r.id, [r.status], to, extra).catch(srErr);
       if (ti !== cur) await srs.log(r.id, 'SR_STAGE', srActor(u), { status: to }); else await srs.log(r.id, 'SR_TRACKING', srActor(u), extra);
       if (ti !== cur && (to === 'IN_TRANSIT' || to === 'DELIVERED')) await notifyCustomer(r.customerId, to === 'DELIVERED' ? 'DELIVERED' : 'SHIPPED', { reference: r.ref }, `${r.id}:${to}`);
       await srLive(nr); return { data: await srStaff(u, nr, true) };
+    });
+    // ---- China office: booking details of accepted shipping requests (both kinds). Strict allowlist: pickup + cargo + routing + booking.
+    // Never customer identity, destination address/pincode/contact, customer notes, files, prices/freight quotes, internal notes, assignee or SLA.
+    const CHINA_SR = new Set(['ACCEPTED', ...SR_STAGES]);
+    const srChinaGate = (u: User) => { if (!sides(u.role).china) throw new Forbidden('Only the China office books shipments'); need(u, 'orders.production'); };
+    const srChina = async (r: ShippingRequest) => {
+      const p = await srTracking(r);
+      return { id: r.id, ref: r.ref, kind: r.kind, status: r.status, goods: r.goods, quantity: r.quantity, unit: r.unit, packages: r.packages, weightKg: r.weightKg, cbm: r.cbm,
+        pickupContact: r.shipperName, pickupPhone: r.shipperPhone, pickupAddress: r.pickupAddress, pickupCity: r.pickupCity, readyDate: r.readyDate,
+        mode: r.mode, incoterm: r.incoterm, destCity: r.destCity,
+        carrier: p?.carrier ?? null, tracking: p?.tracking ?? null, container: p?.container ?? null, etd: p?.etd ?? null, eta: p?.eta ?? null, stage: p?.stage ?? 'PENDING',
+        shipmentRef: p?.shipmentRef ?? null, updatedAt: r.updatedAt,
+        // FREIGHT_ONLY: China updates booking/transit here. SOURCED: China books the linked shipment on the Shipping board (single source of truth).
+        canUpdate: r.kind === 'FREIGHT_ONLY' && ['ACCEPTED', 'BOOKED', 'IN_TRANSIT'].includes(r.status) };
+    };
+    const srChinaOf = async (id: string) => { const r = await srOf(id); if (!CHINA_SR.has(r.status)) throw Object.assign(new Error('Not found'), { status: 404 }); return r; };
+    api.get('/api/china/shipping-requests', async (req) => {
+      srChinaGate(req.user!);
+      return { data: await Promise.all((await srs.list({})).filter((r) => CHINA_SR.has(r.status)).map(srChina)) };
+    });
+    api.get<{ Params: { id: string } }>('/api/china/shipping-requests/:id', async (req) => { srChinaGate(req.user!); return { data: await srChina(await srChinaOf(req.params.id)) }; });
+    /** China: BOOKED / IN_TRANSIT + carrier, tracking, container, ETD, ETA. Only after the customer accepted a freight quote; forward only. */
+    api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/china/shipping-requests/:id/stage', async (req) => {
+      const u = req.user!; srChinaGate(u); const r = await srChinaOf(req.params.id), b = req.body ?? {};
+      if (r.kind === 'SOURCED') throw bad('Book the linked shipment on the Shipping board', 409);
+      for (const k of Object.keys(b)) if (!['status', 'carrier', 'tracking', 'container', 'etd', 'eta'].includes(k)) throw bad(`Unknown field ${k}`);
+      if (!(await srs.hasAccepted(r.id))) throw Object.assign(new Error('The customer has not accepted a freight quote yet'), { status: 409, appCode: 'freight_quote_required' });
+      const CH = ['BOOKED', 'IN_TRANSIT'], to = b.status == null || b.status === '' ? r.status : String(b.status).toUpperCase();
+      const cur = r.status === 'ACCEPTED' ? -1 : CH.indexOf(r.status), ti = CH.indexOf(to);
+      if (cur === -1 && r.status !== 'ACCEPTED') throw Object.assign(new Error('India has taken over this shipment'), { status: 409, appCode: 'india_owns' });
+      if (ti < 0) throw bad('China can set Booked or In transit only');
+      if (ti < cur || (ti === cur && !Object.keys(b).some((k) => k !== 'status'))) throw bad('Stages only move forward', 409);
+      const extra: Record<string, unknown> = {};
+      for (const k of ['carrier', 'tracking', 'container']) if (k in b) extra[k] = b[k] == null || b[k] === '' ? null : String(b[k]).trim().slice(0, 120);
+      for (const k of ['etd', 'eta']) if (k in b) { const v = b[k] == null || b[k] === '' ? null : String(b[k]); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw bad(`${k} must be YYYY-MM-DD`); extra[k] = v; }
+      const nr = await srs.setStatus(r.id, [r.status], to, extra).catch(srErr);
+      if (ti !== cur) await srs.log(r.id, 'SR_STAGE', srActor(u), { status: to }); else await srs.log(r.id, 'SR_TRACKING', srActor(u), extra);
+      if (ti !== cur && to === 'IN_TRANSIT') {
+        await notifyCustomer(r.customerId, 'SHIPPED', { reference: r.ref }, `${r.id}:${to}`);
+        await srNotify(nr, 'SHIP_REQUEST_UPDATE', u.name, 'In transit — India takes over from arrival');
+      }
+      await srLive(nr); return { data: await srChina(nr) };
     });
     api.post<{ Params: { id: string } }>('/api/shipping-requests/:id/files', async (req, reply) => {
       const u = req.user!; srIndia(u); const r = await srOf(req.params.id);

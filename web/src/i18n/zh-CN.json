@@ -1215,7 +1215,12 @@
       "WITHDRAWN": "已替换"
     },
     "slaDue": "截止 {{at}}",
-    "slaBreached": "已超时"
+    "slaBreached": "已超时",
+    "chinaBooks": "由中国团队订舱发运；运输中之后由印度团队接手。",
+    "kind": {
+      "SOURCED": "采购订单",
+      "FREIGHT_ONLY": "仅货运"
+    }
   },
   "gr": {
     "title": "节日问候",
@@ -1338,5 +1343,28 @@
       "status": "状态",
       "reason": "原因"
     }
+  },
+  "csr": {
+    "title": "运输请求 — 订舱",
+    "hint": "已接受的运输请求。安排提货并标记运输中；到港后由印度团队接手。不显示客户信息和价格。",
+    "none": "暂无需要订舱的运输请求。",
+    "pickup": "提货",
+    "contact": "联系人",
+    "phone": "电话",
+    "address": "地址",
+    "city": "城市",
+    "ready": "备货日期",
+    "cargo": "货物",
+    "qty": "数量",
+    "packages": "件数",
+    "weight": "重量（公斤）",
+    "mode": "运输方式 / 贸易条款",
+    "dest": "目的城市",
+    "booking": "订舱",
+    "shipment": "货运",
+    "sourced": "采购订单：请在下方的货运看板订舱。",
+    "handover": "标记\"运输中\"后，由印度团队处理到港、清关和派送。",
+    "indiaOwns": "该货运现由印度团队处理。",
+    "saved": "已保存"
   }
 }

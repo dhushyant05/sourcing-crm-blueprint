@@ -87,6 +87,8 @@ export class QuoteStore {
   async claimSent(id: string, status: 'ACCEPTED' | 'REJECTED'): Promise<boolean> {
     return (await this.db.run("UPDATE quotes SET status=?, decided_at=now(), updated_at=now() WHERE id=? AND status='SENT'", status, id)) === 1;
   }
+  /** Undo a claim whose follow-up validation failed. */
+  async unclaim(id: string, status: 'ACCEPTED' | 'REJECTED') { await this.db.run("UPDATE quotes SET status='SENT', decided_at=NULL WHERE id=? AND status=?", id, status); }
   async setStatus(id: string, status: QuoteStatus, reason?: string | null): Promise<Quote> {
     const at = new Date().toISOString();
     if (status === 'SENT') await this.db.run("UPDATE quotes SET status='SENT', sent_at=COALESCE(sent_at, ?), decided_at=NULL, reject_reason=NULL, updated_at=? WHERE id=?", at, at, id);

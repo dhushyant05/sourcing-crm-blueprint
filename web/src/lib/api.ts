@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff, GreetingStaff } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff, ShippingRequestChina, GreetingStaff } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -28,6 +28,9 @@ export interface Api {
   approvePortalRequest?(id: string, b: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean }): Promise<{ login: PortalLogin; tempPassword: string }>;
   portalLeads?(customerId: string): Promise<PortalLeadShare[]>;
   setPortalShare?(leadId: string, shared: boolean): Promise<{ shared: boolean }>;
+  /** Shipping Requests, China office booking view (accepted requests only). */
+  chinaShippingRequests?(): Promise<ShippingRequestChina[]>;
+  chinaSrStage?(id: string, body: Record<string, unknown>): Promise<ShippingRequestChina>;
   /** Shipping Requests (India office only). */
   shippingRequests?(status?: string): Promise<ShippingRequestStaff[]>;
   shippingRequest?(id: string): Promise<ShippingRequestStaff>;
@@ -267,6 +270,8 @@ export class ServerApi implements Api {
   approvePortalRequest(id: string, b: { customerId?: string; createNew?: boolean; confirmMismatch?: boolean; shareEnquiry?: boolean }) { return this.req<{ login: PortalLogin; tempPassword: string }>('POST', `/portal-admin/login-requests/${encodeURIComponent(id)}/approve`, b); }
   portalLeads(customerId: string) { return this.req<PortalLeadShare[]>('GET', `/customers/${encodeURIComponent(customerId)}/portal-leads`); }
   setPortalShare(leadId: string, shared: boolean) { return this.req<{ shared: boolean }>('POST', `/leads/${encodeURIComponent(leadId)}/portal-share`, { shared }); }
+  chinaShippingRequests() { return this.req<ShippingRequestChina[]>('GET', '/china/shipping-requests'); }
+  chinaSrStage(id: string, body: Record<string, unknown>) { return this.req<ShippingRequestChina>('POST', `/china/shipping-requests/${encodeURIComponent(id)}/stage`, body); }
   shippingRequests(status?: string) { return this.req<ShippingRequestStaff[]>('GET', `/shipping-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`); }
   shippingRequest(id: string) { return this.req<ShippingRequestStaff>('GET', `/shipping-requests/${encodeURIComponent(id)}`); }
   srAction(id: string, action: string, body: Record<string, unknown> = {}) { return this.req<ShippingRequestStaff>('POST', `/shipping-requests/${encodeURIComponent(id)}/${action}`, body); }

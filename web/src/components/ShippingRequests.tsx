@@ -42,7 +42,7 @@ export function ShippingRequests() {
 
 function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { api, session, perms } = useApp(); const { t } = useTranslation(); const st = (x: string) => t(`sr.st.${x}`, { defaultValue: x });
-  const admin = session?.role === 'SUPER_ADMIN' || session?.role === 'INDIA_ADMIN';
+  const admin = session?.role === 'SUPER_ADMIN' || session?.role === 'INDIA_ADMIN', sa = session?.role === 'SUPER_ADMIN';
   const [r, setR] = useState<ShippingRequestStaff | null>(null), [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false), [staff, setStaff] = useState<StaffLite[]>([]);
   const [q, setQ] = useState(''), [why, setWhy] = useState(''), [fq, setFq] = useState<Record<string, string>>({ amount: '', internalCost: '', mode: '', incoterm: '', transit: '', validUntil: '', customerNote: '' });
   const [stg, setStg] = useState<Record<string, string>>({ status: 'BOOKED', carrier: '', tracking: '', container: '', etd: '', eta: '' }), [note, setNote] = useState('');
@@ -96,10 +96,11 @@ function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; 
           <span className="font-mono">{x.label}</span><b>{inr(x.amount)}</b>{x.internalCost != null && <span className="text-ink-500">{t('sr.costLabel')} {inr(x.internalCost)}</span>}<span>{t(`sr.fqSt.${x.status}`, { defaultValue: x.status })}</span>
           {x.reasonCode && <span className="text-rose-600">{t(`sr.reason.${x.reasonCode}`, { defaultValue: x.reasonCode })}{x.reason ? `: ${x.reason}` : ''}</span>}<span className="text-ink-400">{when(x.createdAt)}</span>
           <button className="text-brand-600 underline" onClick={() => void api.srFqPdfUrl!(r.id, x.id).then((u) => window.open(u, '_blank', 'noopener')).catch((e) => setErr((e as Error).message))} data-testid="sr-fq-pdf">{t('sr.pdf')}</button></li>)}</ul></div>}
-        {r.kind === 'FREIGHT_ONLY' && (r.status === 'ACCEPTED' || STAGES.slice(0, -1).includes(r.status)) && perms.can('orders.production') && <div className="space-y-2 rounded-lg border border-ink-100 p-3 dark:border-ink-800" data-testid="sr-stage-form">
+        {r.kind === 'FREIGHT_ONLY' && !sa && ['ACCEPTED', 'BOOKED'].includes(r.status) && <p className="text-xs text-ink-500" data-testid="sr-china-books">{t('sr.chinaBooks')}</p>}
+        {r.kind === 'FREIGHT_ONLY' && (sa ? (r.status === 'ACCEPTED' || STAGES.slice(0, -1).includes(r.status)) : STAGES.slice(1, -1).includes(r.status)) && perms.can('orders.production') && <div className="space-y-2 rounded-lg border border-ink-100 p-3 dark:border-ink-800" data-testid="sr-stage-form">
           <div className="text-xs font-medium">{t(r.status === 'ACCEPTED' ? 'sr.book' : 'sr.updateTracking')}</div>
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs">{t('sr.stage')}<select className="input" value={stg.status} onChange={(e) => setStg({ ...stg, status: e.target.value })} data-testid="sr-stage">{STAGES.filter((s) => STAGES.indexOf(s) >= STAGES.indexOf(r.status)).map((s) => <option key={s} value={s}>{st(s)}</option>)}</select></label>
+            <label className="text-xs">{t('sr.stage')}<select className="input" value={stg.status} onChange={(e) => setStg({ ...stg, status: e.target.value })} data-testid="sr-stage">{STAGES.filter((s) => STAGES.indexOf(s) >= STAGES.indexOf(r.status) && (sa || s === r.status || STAGES.indexOf(s) >= STAGES.indexOf('ARRIVED'))).map((s) => <option key={s} value={s}>{st(s)}</option>)}</select></label>
             {(['carrier', 'tracking', 'container'] as const).map((k) => <label key={k} className="text-xs">{t(`sr.${k}`)}<input className="input" value={stg[k]} onChange={(e) => setStg({ ...stg, [k]: e.target.value })} /></label>)}
             <label className="text-xs">ETD<input className="input" type="date" value={stg.etd} onChange={(e) => setStg({ ...stg, etd: e.target.value })} /></label>
             <label className="text-xs">ETA<input className="input" type="date" value={stg.eta} onChange={(e) => setStg({ ...stg, eta: e.target.value })} /></label>

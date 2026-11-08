@@ -1215,7 +1215,12 @@
       "WITHDRAWN": "Replaced"
     },
     "slaDue": "Due {{at}}",
-    "slaBreached": "Overdue"
+    "slaBreached": "Overdue",
+    "chinaBooks": "China books pickup and ships it; India takes over once it is in transit.",
+    "kind": {
+      "SOURCED": "Sourced order",
+      "FREIGHT_ONLY": "Freight only"
+    }
   },
   "gr": {
     "title": "Greetings",
@@ -1338,5 +1343,28 @@
       "status": "Status",
       "reason": "Reason"
     }
+  },
+  "csr": {
+    "title": "Shipping requests — booking",
+    "hint": "Accepted shipping requests. Book pickup and mark in transit; India takes over from arrival. Customer details and prices are not shown.",
+    "none": "No accepted shipping requests to book.",
+    "pickup": "Pickup",
+    "contact": "Contact",
+    "phone": "Phone",
+    "address": "Address",
+    "city": "City",
+    "ready": "Ready date",
+    "cargo": "Cargo",
+    "qty": "Quantity",
+    "packages": "Packages",
+    "weight": "Weight (kg)",
+    "mode": "Mode / Incoterm",
+    "dest": "Destination city",
+    "booking": "Booking",
+    "shipment": "Shipment",
+    "sourced": "Sourced order: book it on the Shipping board below.",
+    "handover": "After \"In transit\", India handles arrival, customs and delivery.",
+    "indiaOwns": "India handles this shipment now.",
+    "saved": "Saved"
   }
 }

@@ -80,15 +80,16 @@ describe('shipping requests (SH-YYMM-NNNN)', () => {
     const acc = (await as(A.token, 'POST', `/api/portal/freight-quotes/${q2}/accept`)).json().data;
     expect(acc).toMatchObject({ status: 'ACCEPTED', canCancel: false });
     expect((await as(A.token, 'POST', `/api/portal/shipping-requests/${r.id}/cancel`)).statusCode).toBe(409);
-    // Now India books manually; stages move forward only; tracking is customer-visible. SSE announces own changes only.
+    // Now China books (India cannot book; China has no access to India's staff routes); stages move forward only; tracking is customer-visible. SSE announces own changes only.
     expect((await call('cs', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).statusCode).toBe(403);
+    expect((await call('is', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).json().code).toBe('china_books');
     const s = await sse(A.token, async () => {
-      expect((await call('is', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-20', eta: '2026-12-15' })).json().data.status).toBe('BOOKED');
+      expect((await call('cs', 'POST', `/api/china/shipping-requests/${r.id}/stage`, { status: 'BOOKED', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-20', eta: '2026-12-15' })).json().data.status).toBe('BOOKED');
       await call('is', 'PATCH', `/api/shipping-requests/${r2.id}`, { internalNote: 'b only' });
     });
     expect(s.text).toContain(`"id":"${r.id}"`); expect(s.text).not.toContain(r2.id);
-    expect((await call('is', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'IN_TRANSIT' })).statusCode).toBe(200);
-    expect((await call('is', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).statusCode).toBe(409);
+    expect((await call('cs', 'POST', `/api/china/shipping-requests/${r.id}/stage`, { status: 'IN_TRANSIT' })).statusCode).toBe(200);
+    expect((await call('cs', 'POST', `/api/china/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).statusCode).toBe(409);
     d = (await as(A.token, 'GET', `/api/portal/shipping-requests/${r.id}`)).json().data;
     expect(d.tracking).toMatchObject({ stage: 'IN_TRANSIT', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-20', eta: '2026-12-15' });
     expect(d.timeline.map((e: any) => e.text)).toEqual(['Shipping request received', 'Being reviewed by Source Easy', 'More information needed: Please send the packing list',
