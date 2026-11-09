@@ -36,21 +36,49 @@ function Login({ api, onIn }: { api: PortalApi; onIn: (mustChange: boolean) => v
     catch (x) { setErr(x instanceof PortalHttpError && x.status === 429 ? 'Too many attempts. Please wait a few minutes and try again.' : 'Wrong mobile number or password.'); }
     finally { setBusy(false); }
   };
+  // Split layout mirrors the staff /app login: left panel describes the portal; right holds phone/password + APK.
+  const points: [typeof Package, string, string][] = [
+    [Package, 'Raise sourcing requests', 'Ask Source Easy to find products in China, with quantity, destination and notes.'],
+    [FileText, 'Review and accept quotes', 'Open each quote PDF, compare terms and accept or decline from here.'],
+    [Truck, 'Track shipping', 'Raise a freight-only or sourced shipment, see the timeline and booking status.'],
+    [CheckCircle2, 'Orders and payments', 'See order value and payment status once a quote becomes an order.'],
+  ];
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-10">
-      <div className="mb-8"><Brand /></div>
-      <h1 className="text-2xl font-semibold text-ink-900">Sign in</h1>
-      <p className="mb-6 mt-1 text-sm text-ink-500">Track your sourcing requests, quotes and shipments.</p>
-      <form onSubmit={submit} className="space-y-4" data-testid="portal-login">
-        <div><label htmlFor="p-phone" className="mb-1 block text-xs font-medium text-ink-600">Mobile number</label>
-          <input id="p-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="98765 43210" className={field} /></div>
-        <div><label htmlFor="p-pw" className="mb-1 block text-xs font-medium text-ink-600">Password</label>
-          <input id="p-pw" name="password" type="password" autoComplete="current-password" required className={field} /></div>
-        {err && <p role="alert" className="text-sm text-rose-600">{err}</p>}
-        <button disabled={busy} className={`${primary} w-full`}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      </form>
-      <p className="mt-6 text-sm text-ink-500">No login yet? Tick “Request a customer portal login” when you send an enquiry on <a className="text-brand-600 underline" href="/#contact">our website</a>. Forgot your password? Contact Source Easy and we will reset it.</p>
-      <div className="mt-6 rounded-xl border border-ink-100 p-4"><a href="/download/source-easy-customer.apk" download data-testid="portal-customer-apk" className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-brand-600 px-4 font-medium text-brand-700 hover:bg-brand-50">Customer Android App (APK)</a><p className="mt-2 text-xs text-ink-500">Direct download from sourceeasy.in (not on Google Play). Android may ask you to allow installs from your browser.</p></div>
+    <div className="grid min-h-screen lg:grid-cols-2" data-testid="portal-login-page">
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-accent-600 p-10 text-white lg:flex lg:flex-col lg:p-12">
+        <a href="/" aria-label="Source Easy home" className="flex w-fit items-center gap-2.5 hover:opacity-90"><div className="grid h-11 w-11 place-items-center rounded-xl bg-white p-1 shadow"><img src="/brand/mark.png" alt="" className="h-full w-full object-contain" /></div><span className="text-lg font-semibold">Source Easy</span></a>
+        <div className="mt-10 max-w-md">
+          <p className="text-sm font-medium text-brand-100">Customer portal</p>
+          <h1 className="mt-2 text-3xl font-semibold leading-tight tracking-tight">Your sourcing and shipping, in one place.</h1>
+          <p className="mt-4 text-brand-100">Sign in with the mobile number Source Easy shared with you. Follow requests, quotes and shipments without waiting on WhatsApp.</p>
+          <ul className="mt-8 space-y-4">{points.map(([Icon, title, body]) => <li key={title} className="flex gap-3"><span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/15"><Icon size={18} aria-hidden="true" /></span><span><span className="block font-medium">{title}</span><span className="mt-0.5 block text-sm text-brand-100">{body}</span></span></li>)}</ul>
+        </div>
+        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -left-16 h-72 w-72 rounded-full bg-accent-400/20 blur-3xl" />
+      </div>
+      <div className="relative flex items-center justify-center px-5 py-10 sm:p-8">
+        <a href="/" className="absolute left-5 top-5 inline-flex min-h-[36px] items-center gap-1 text-sm font-medium text-brand-600 hover:underline sm:left-6 sm:top-6">← Back to website</a>
+        <div className="w-full max-w-sm">
+          <a href="/" aria-label="Source Easy home" className="inline-block lg:hidden"><img src="/brand/lockup.png" alt="Source Easy" className="mb-2 h-20 w-auto object-contain" /></a>
+          <div className="mb-6 hidden lg:block"><Brand /></div>
+          <div className="mb-6 rounded-2xl border border-brand-100 bg-brand-50/60 p-4 lg:hidden" data-testid="portal-login-mobile-blurb">
+            <p className="text-sm font-semibold text-ink-900">Customer portal</p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-600">Raise sourcing and shipping requests, review quote PDFs, track the timeline, and see order value and payment status.</p>
+          </div>
+          <h1 className="text-2xl font-semibold text-ink-900">Sign in</h1>
+          <p className="mb-6 mt-1 text-sm text-ink-500">Use the mobile number and password Source Easy sent you.</p>
+          <form onSubmit={submit} className="space-y-4" data-testid="portal-login">
+            <div><label htmlFor="p-phone" className="mb-1 block text-xs font-medium text-ink-600">Mobile number</label>
+              <input id="p-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="98765 43210" className={field} /></div>
+            <div><label htmlFor="p-pw" className="mb-1 block text-xs font-medium text-ink-600">Password</label>
+              <input id="p-pw" name="password" type="password" autoComplete="current-password" required className={field} /></div>
+            {err && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</p>}
+            <button disabled={busy} className={`${primary} w-full`}>{busy ? 'Signing in…' : 'Sign in'}</button>
+          </form>
+          <p className="mt-6 text-sm text-ink-500">No login yet? Tick “Request a customer portal login” when you send an enquiry on <a className="text-brand-600 underline" href="/#contact">our website</a>. Forgot your password? Contact Source Easy and we will reset it.</p>
+          <div className="mt-6 rounded-xl border border-ink-100 p-4"><a href="/download/source-easy-customer.apk" download data-testid="portal-customer-apk" className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-brand-600 px-4 font-medium text-brand-700 hover:bg-brand-50">Customer Android App (APK)</a><p className="mt-2 text-xs text-ink-500">Direct download from sourceeasy.in (not on Google Play). Android may ask you to allow installs from your browser.</p></div>
+        </div>
+      </div>
     </div>
   );
 }

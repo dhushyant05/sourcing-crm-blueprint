@@ -28,10 +28,10 @@ export function Landing() {
           <nav className="ml-8 hidden gap-6 text-sm text-white/70 lg:flex">
             {(['how', 'services', 'categories', 'contact'] as const).map((k) => <a key={k} href={`#${k}`} className="transition hover:text-white">{l(`nav.${k}`)}</a>)}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <LanguageSwitch />
-            <a href={PORTAL} data-testid="nav-customer-portal" className="inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"><UserRound size={16} aria-hidden="true" />{l('customer.portal')}</a>
-            <a href="/app" data-testid="staff-login" className="inline-flex min-h-[36px] items-center whitespace-nowrap rounded-lg border border-white/25 px-3 text-sm font-medium text-white/90 transition hover:bg-white/10">{l('staffLogin')}</a>
+          <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
+            <LanguageSwitch className="shrink-0" />
+            <a href={PORTAL} data-testid="nav-customer-portal" className="inline-flex min-h-[36px] shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-2.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 sm:gap-1.5 sm:px-3 sm:text-sm"><UserRound size={16} className="hidden sm:block" aria-hidden="true" />{l('customer.portal')}</a>
+            <a href="/app" data-testid="staff-login" className="inline-flex min-h-[36px] shrink-0 items-center whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-2.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 sm:px-3 sm:text-sm">{l('staffLogin')}</a>
           </div>
         </div>
       </header>
