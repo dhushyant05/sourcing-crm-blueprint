@@ -1070,6 +1070,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get cqCreateOrder => '创建订单';
 
   @override
+  String get cqConvertToOrder => '转为订单';
+
+  @override
   String get cqOrderCreated => '订单已创建';
 
   @override

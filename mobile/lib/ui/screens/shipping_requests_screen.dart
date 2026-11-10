@@ -7,11 +7,8 @@ import '../../services/session.dart';
 import '../widgets/live_refresh.dart';
 
 /// Shipping requests on Android, matching the web (same server routes, same EN / 中文 strings).
-///  - China: accepted requests' booking details only (server allowlist: pickup, cargo, routing city, booking fields; never customer
-///    identity, destination contact, notes, files or prices). China sets Booked / In transit for freight-only requests after the
-///    customer accepted a freight quote; India takes over from arrival. Sourced requests are booked on the Shipping board.
-///  - India: the request list (customer, status, SLA) and, once China marked it in transit, arrival → delivery stages.
-///    Freight quotes and needs-info stay on the web; claim/assign is on this screen.
+///  India staff, China staff with shipping permission, and the super admin can see, claim and progress every stage.
+///  China's DTO is redacted (no customer identity, dest address, files or prices). Freight quotes stay on the web (India/SA).
 const srStages = ['BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
 const _chinaStages = ['BOOKED', 'IN_TRANSIT'];
 final _ymd = RegExp(r'^\d{4}-\d{2}-\d{2}$');
@@ -187,8 +184,7 @@ class _IndiaState extends State<IndiaShippingRequestsScreen> with LiveRefresh {
         else if (rows.isEmpty) Padding(padding: const EdgeInsets.all(32), child: Center(child: Text(tw(context, 'sr.none'))))
         else for (final r in rows) Card(child: ListTile(key: Key('sr-${r['ref']}'), onTap: () => _detail(r['id'] as String),
           title: Text('${r['ref']} · ${r['goods']}'),
-          subtitle: Text('${_dash((r['customer'] as Map?)?['company'] ?? (r['customer'] as Map?)?['name'])} · ${_st(context, r['status'])}'
-              '${r['assignedToName'] != null ? ' · ${r['assignedToName']}' : ' · ${tw(context, 'sr.unclaimed')}'}'),
+          subtitle: Text([if ((r['customer'] as Map?)?['company'] != null || (r['customer'] as Map?)?['name'] != null) _dash((r['customer'] as Map?)?['company'] ?? (r['customer'] as Map?)?['name']), _st(context, r['status']), r['assignedToName'] ?? tw(context, 'sr.unclaimed'), if (r['destCity'] != null) r['destCity']].join(' · ')),
           trailing: (r['sla'] as Map?) == null ? null : Text((r['sla'] as Map)['breached'] == true ? tw(context, 'sr.slaBreached') : tw(context, 'sr.slaDue', {'at': _when((r['sla'] as Map)['dueAt'])}),
               style: TextStyle(fontSize: 11, color: (r['sla'] as Map)['breached'] == true ? cs.error : (r['sla'] as Map)['warned'] == true ? Colors.orange.shade800 : cs.onSurfaceVariant)),
         )),
@@ -216,12 +212,10 @@ class _IndiaDetailState extends State<IndiaShippingRequestDetail> {
   @override
   Widget build(BuildContext context) {
     final r = this.r, s = context.read<Session>();
-    final sa = s.perms.isSuperAdmin, st = '${r?['status']}';
+    final st = '${r?['status']}';
     final ci = srStages.indexOf(st);
-    // India moves ARRIVED onward once China marked it in transit (server rule); the super admin may do every stage.
     final stages = r == null || r['kind'] != 'FREIGHT_ONLY' || !s.perms.can('orders.production') ? const <String>[]
-        : sa ? (st == 'ACCEPTED' ? srStages : ci >= 0 && ci < srStages.length - 1 ? srStages.sublist(ci) : const <String>[])
-        : ci >= srStages.indexOf('IN_TRANSIT') && ci < srStages.length - 1 ? srStages.sublist(ci).where((x) => x == st || srStages.indexOf(x) >= srStages.indexOf('ARRIVED')).toList() : const <String>[];
+        : st == 'ACCEPTED' ? srStages : (ci >= 0 && ci < srStages.length - 1 ? srStages.sublist(ci) : const <String>[]);
     final cust = r?['customer'] as Map?, sla = r?['sla'] as Map?, p = r?['progress'] as Map?;
     return Scaffold(
       appBar: AppBar(title: Text(r == null ? tw(context, 'sr.title') : '${r['ref']}')),
@@ -229,7 +223,7 @@ class _IndiaDetailState extends State<IndiaShippingRequestDetail> {
           : RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(16), children: [
               Text('${r['goods']}', style: Theme.of(context).textTheme.titleMedium),
               _row(context, tw(context, 'sr.stage'), _st(context, st)),
-              _row(context, tw(context, 'orders.customer'), cust == null ? null : [cust['company'], cust['name'], cust['phone']].where((x) => x != null).join(' · ')),
+              if (cust != null) _row(context, tw(context, 'orders.customer'), [cust['company'], cust['name'], cust['phone']].where((x) => x != null).join(' · ')),
               _row(context, tw(context, 'sr.col.owner'), r['assignedToName'] ?? tw(context, 'sr.unclaimed')),
               if (sla != null) _row(context, tw(context, 'sr.col.sla'), sla['breached'] == true ? tw(context, 'sr.slaBreached') : tw(context, 'sr.slaDue', {'at': _when(sla['dueAt'])})),
               _head(context, tw(context, 'csr.pickup')),
@@ -238,7 +232,7 @@ class _IndiaDetailState extends State<IndiaShippingRequestDetail> {
               _head(context, tw(context, 'csr.cargo')),
               _row(context, tw(context, 'csr.qty'), r['quantity'] == null ? null : '${r['quantity']} ${r['unit'] ?? ''}'),
               _row(context, tw(context, 'csr.packages'), r['packages']), _row(context, tw(context, 'csr.weight'), r['weightKg']), _row(context, 'CBM', r['cbm']),
-              _row(context, tw(context, 'csr.dest'), [r['destAddress'], r['destCity'], r['destPincode']].where((x) => x != null).join(', ')),
+              _row(context, tw(context, 'csr.dest'), [if (cust != null) r['destAddress'], r['destCity'], if (cust != null) r['destPincode']].where((x) => x != null).join(', ')),
               if (p != null) ...[
                 _head(context, tw(context, 'csr.booking')),
                 _row(context, tw(context, 'sr.carrier'), p['carrier']), _row(context, tw(context, 'sr.tracking'), p['tracking']),
@@ -249,7 +243,6 @@ class _IndiaDetailState extends State<IndiaShippingRequestDetail> {
                 key: const Key('sr-claim'), icon: const Icon(Icons.person_add_alt_1, size: 18), label: Text(tw(context, 'sr.claim')),
                 onPressed: () async { try { final n = await s.repo.claimShippingRequest(widget.id); if (context.mounted) setState(() { this.r = n; err = null; }); }
                   catch (e) { if (context.mounted) setState(() => err = '\$e'); } })),
-              if (r['kind'] == 'FREIGHT_ONLY' && !sa && (st == 'ACCEPTED' || st == 'BOOKED')) Text(tw(context, 'sr.chinaBooks'), key: const Key('sr-china-books'), style: Theme.of(context).textTheme.bodySmall),
               if (r['kind'] == 'SOURCED' && st == 'ACCEPTED') Text(tw(context, 'sr.sourcedTrack'), style: Theme.of(context).textTheme.bodySmall),
               if (stages.isNotEmpty) _StageForm(key: Key('sr-form-${r['updatedAt']}'), r: r, stages: stages,
                   fields: const ['carrier', 'tracking', 'container', 'etd', 'eta', 'deliveredAt'],

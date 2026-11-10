@@ -144,3 +144,89 @@ export const customerText = (kind: string, data: Record<string, unknown>) => {
   const f = CUSTOMER_EVENT_TEXT[kind]; if (!f) return null;
   const n = Number(data.n); return f(Number.isInteger(n) && n > 0 && n < 1000 ? { n } : {});
 };
+
+
+/** Customer-visible progress tracker. Labels are English (portal/app are English-only). Dates only from customer-visible records. */
+export type FlowStep = { key: string; label: string; state: 'done' | 'current' | 'upcoming'; at: string | null };
+export type Flow = { steps: FlowStep[]; outcome: 'cancelled' | 'rejected' | null };
+
+const iso = (v: unknown) => { const t = v == null ? null : (v instanceof Date ? v.toISOString() : String(v)); return t && !Number.isNaN(Date.parse(t)) ? t : null; };
+const pick = (rows: { at?: string; kind?: string }[] | undefined, kind: string) => iso(rows?.find((e) => e.kind === kind)?.at);
+const later = (st: string | null | undefined, from: string[]) => from.includes(st ?? '');
+function finish(marks: { key: string; label: string; at: string | null; on: boolean }[], outcome: Flow['outcome']): Flow {
+  const firstOpen = marks.findIndex((m) => !m.on);
+  return {
+    outcome,
+    steps: marks.map((m, i) => ({
+      key: m.key, label: m.label, at: m.on ? m.at : null,
+      state: m.on ? 'done' : (!outcome && firstOpen === i ? 'current' : 'upcoming'),
+    })),
+  };
+}
+
+/** Sourcing request: Enquiry → Quoted → Accepted → Order confirmed → Payment → Shipped → In transit → Arrived → Delivered. */
+export function sourcingFlow(x: {
+  createdAt: unknown;
+  quotes: { status: string; sentAt?: unknown; decidedAt?: unknown }[];
+  orders: { createdAt?: unknown; paymentStatus?: string | null }[];
+  shipment?: { status?: string | null; deliveredAt?: unknown } | null;
+  lost?: boolean;
+  events?: { at?: string; kind?: string }[];
+}): Flow {
+  const qs = x.quotes ?? [];
+  const sent = qs.find((q) => q.status === 'SENT' || q.status === 'ACCEPTED' || q.status === 'REJECTED');
+  const acc = qs.find((q) => q.status === 'ACCEPTED');
+  const rejOnly = !acc && !qs.some((q) => q.status === 'SENT') && qs.some((q) => q.status === 'REJECTED');
+  const ord = x.orders[0];
+  const paid = !!(ord && ord.paymentStatus && ord.paymentStatus !== 'PENDING');
+  const sh = x.shipment?.status ?? null;
+  const shipOn = later(sh, ['BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+  const transitOn = later(sh, ['IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+  const arrivedOn = later(sh, ['ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+  const deliveredOn = sh === 'DELIVERED' || !!x.shipment?.deliveredAt;
+  const outcome: Flow['outcome'] = rejOnly ? 'rejected' : (x.lost && !deliveredOn ? 'cancelled' : null);
+  return finish([
+    { key: 'enquiry', label: 'Enquiry', at: iso(x.createdAt) || pick(x.events, 'CREATED'), on: true },
+    { key: 'quoted', label: 'Quoted', at: iso(sent?.sentAt) || pick(x.events, 'CQ_SENT'), on: !!sent },
+    { key: 'accepted', label: 'Accepted', at: iso(acc?.decidedAt) || pick(x.events, 'CQ_ACCEPTED'), on: !!acc },
+    { key: 'order', label: 'Order confirmed', at: iso(ord?.createdAt) || pick(x.events, 'ORDER_CREATED'), on: !!ord },
+    { key: 'payment', label: 'Payment', at: null, on: paid },
+    { key: 'shipped', label: 'Shipped', at: pick(x.events, 'SHIPPED'), on: shipOn || transitOn || arrivedOn || deliveredOn },
+    { key: 'transit', label: 'In transit', at: null, on: transitOn || arrivedOn || deliveredOn },
+    { key: 'arrived', label: 'Arrived', at: null, on: arrivedOn || deliveredOn },
+    { key: 'delivered', label: 'Delivered', at: iso(x.shipment?.deliveredAt) || pick(x.events, 'COMPLETED'), on: deliveredOn },
+  ], outcome);
+}
+
+/** Freight-only shipping request: Submitted → Quoted → Accepted → Booked → In transit → Arrived → Delivered. */
+export function freightFlow(x: {
+  createdAt: unknown;
+  status: string;
+  quotes?: { status: string; createdAt?: unknown; decidedAt?: unknown }[];
+  tracking?: { stage?: string | null; deliveredAt?: unknown } | null;
+  events?: { at?: string; kind?: string }[];
+}): Flow {
+  const st = x.status;
+  const stage = x.tracking?.stage ?? (later(st, ['BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']) ? st : null);
+  const qs = x.quotes ?? [];
+  const quoted = later(st, ['QUOTED', 'ACCEPTED', 'PENDING', 'REJECTED', 'BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'])
+    || qs.some((q) => q.status === 'SENT' || q.status === 'ACCEPTED');
+  const accepted = later(st, ['ACCEPTED', 'PENDING', 'BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'])
+    || qs.some((q) => q.status === 'ACCEPTED');
+  const booked = later(stage ?? st, ['BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+  const transit = later(stage, ['IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+  const arrived = later(stage, ['ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+  const delivered = stage === 'DELIVERED' || st === 'DELIVERED' || !!x.tracking?.deliveredAt;
+  const outcome: Flow['outcome'] = st === 'CANCELLED' ? 'cancelled' : st === 'REJECTED' ? 'rejected' : null;
+  const sentQ = qs.find((q) => q.status === 'SENT' || q.status === 'ACCEPTED');
+  const accQ = qs.find((q) => q.status === 'ACCEPTED');
+  return finish([
+    { key: 'submitted', label: 'Submitted', at: iso(x.createdAt) || pick(x.events, 'SR_CREATED'), on: true },
+    { key: 'quoted', label: 'Quoted', at: iso(sentQ?.createdAt) || pick(x.events, 'FQ_SENT') || pick(x.events, 'FQ_REVISED'), on: quoted },
+    { key: 'accepted', label: 'Accepted', at: iso(accQ?.decidedAt) || pick(x.events, 'FQ_ACCEPTED'), on: accepted },
+    { key: 'booked', label: 'Booked', at: pick(x.events, 'SR_STAGE'), on: booked },
+    { key: 'transit', label: 'In transit', at: null, on: transit },
+    { key: 'arrived', label: 'Arrived', at: null, on: arrived },
+    { key: 'delivered', label: 'Delivered', at: iso(x.tracking?.deliveredAt), on: delivered },
+  ], outcome);
+}

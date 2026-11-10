@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Camera, ChevronRight, ImagePlus, Send, Ship, X } from 'lucide-react';
 import type { PortalApi, PortalFreightQuote, PortalShippableOrder, PortalShipping } from './api';
+import { WorkflowTracker } from './Workflow';
 import { PortalHttpError } from './api';
 import { ACCEPT, EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
 
@@ -65,6 +66,7 @@ export function ShippingList({ list, go }: { list: PortalShipping[] | null; go: 
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${['REJECTED', 'CANCELLED'].includes(st) ? 'bg-ink-100 text-ink-500' : st === 'NEEDS_INFO' || r.quoteWaiting ? 'bg-amber-50 text-amber-800' : 'bg-brand-50 text-brand-700'}`}>{SR_STATUS[st] ?? st}</span></div>
             <div className="mt-1 flex items-center justify-between gap-2"><span className="line-clamp-2 text-ink-900">{r.goods}</span><ChevronRight size={18} className="shrink-0 text-ink-300" /></div>
             <div className="mt-1 text-xs text-ink-400">{r.kind === 'SOURCED' ? `Our order ${r.leadReference ?? ''} · ` : 'Your own goods · '}to {r.destCity ?? '—'} · {when(r.createdAt)}</div>
+            {r.workflow && <div className="mt-2"><WorkflowTracker flow={r.workflow} compact /></div>}
           </button></li>
         ); })}
       </ul>
@@ -183,7 +185,7 @@ export function ShippingDetail({ api, id, back, reasons }: { api: PortalApi; id:
         {r.leadReference && <span className="text-xs text-ink-400">for order {r.leadReference}</span>}</div>
         <h1 className="mt-1 text-xl font-semibold text-ink-900">{r.goods}</h1>
         <p className="text-sm text-ink-500">{SR_STATUS[st] ?? st} · {r.kind === 'SOURCED' ? 'Order from Source Easy' : 'Your own goods'}</p></div>
-      {!closed && <ol className="flex flex-wrap gap-1.5" aria-label="Progress">{STEPS.map((k, i) => <li key={k} className={`rounded-full px-2.5 py-1 text-xs font-medium ${i < si ? 'bg-brand-100 text-brand-700' : i === si ? 'bg-brand-600 text-white' : 'bg-ink-50 text-ink-400'}`} aria-current={i === si ? 'step' : undefined}>{SR_STATUS[k]}</li>)}</ol>}
+      {r.workflow ? <WorkflowTracker flow={r.workflow} /> : !closed && <ol className="flex flex-wrap gap-1.5" aria-label="Progress">{STEPS.map((k, i) => <li key={k} className={`rounded-full px-2.5 py-1 text-xs font-medium ${i < si ? 'bg-brand-100 text-brand-700' : i === si ? 'bg-brand-600 text-white' : 'bg-ink-50 text-ink-400'}`} aria-current={i === si ? 'step' : undefined}>{SR_STATUS[k]}</li>)}</ol>}
       {r.canReply && <form onSubmit={reply} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="sr-reply">
         <p className="text-sm font-medium text-amber-900">Source Easy needs more information</p>
         {r.question && <p className="whitespace-pre-line text-sm text-amber-900">{r.question}</p>}

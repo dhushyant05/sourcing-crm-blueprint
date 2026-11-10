@@ -332,6 +332,7 @@
   "cqReject": "客户已拒绝",
   "cqReason": "原因（必填）",
   "cqCreateOrder": "创建订单",
+  "cqConvertToOrder": "转为订单",
   "cqOrderCreated": "订单已创建",
   "cqErr": "请输入数量和价格",
   "orTitle": "订单",

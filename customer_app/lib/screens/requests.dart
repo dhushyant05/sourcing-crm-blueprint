@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../format.dart';
 import '../widgets.dart';
+import '../workflow.dart';
 
 class RequestTile extends StatelessWidget {
   const RequestTile(this.r, {super.key, required this.onTap});
@@ -23,10 +24,12 @@ class RequestTile extends StatelessWidget {
 }
 
 class Progress extends StatelessWidget {
-  const Progress(this.r, {super.key});
+  const Progress(this.r, {super.key, this.compact = false});
   final Json r;
+  final bool compact;
   @override
   Widget build(BuildContext context) {
+    if (r['workflow'] is Map) return WorkflowTracker(r['workflow'] as Json, compact: compact);
     final i = (r['stageIndex'] as num?)?.toInt() ?? 0, closed = r['closed'] == true;
     return Wrap(spacing: 6, runSpacing: 6, children: [
       for (var k = 0; k < stages.length; k++)

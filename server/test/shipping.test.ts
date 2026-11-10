@@ -31,14 +31,18 @@ describe('shipping requests (SH-YYMM-NNNN)', () => {
     expect((await as(B.token, 'POST', `/api/portal/shipping-requests/${r.id}/cancel`)).statusCode).toBe(404);
     expect((await as(A.token, 'GET', '/api/portal/shipping-requests')).json().data.map((x: any) => x.reference)).toEqual([r.reference]);
     expect((await as(A.token, 'GET', `/api/portal/shipping-requests/${r.id}/files/${r.files[0].id}`)).statusCode).toBe(200);
-    // Staff: India only; China never.
+    // China shipping staff see the queue (redacted); customers cannot use staff routes.
     for (const who of ['ca', 'cs']) {
-      expect((await call(who, 'GET', '/api/shipping-requests')).statusCode).toBe(403);
-      expect((await call(who, 'GET', `/api/shipping-requests/${r.id}`)).statusCode).toBe(403);
+      expect((await call(who, 'GET', '/api/shipping-requests')).statusCode).toBe(200);
+      const ch = (await call(who, 'GET', `/api/shipping-requests/${r.id}`)).json().data;
+      expect(ch).toMatchObject({ ref: r.reference, goods: '200 cartons of LED bulbs', destCity: 'Chennai', pickupCity: 'Yiwu', quantity: 200, weightKg: 1800, cbm: 6.5, customer: null, canPrice: false });
+      const raw = JSON.stringify(ch);
+      for (const secret of ['Asha', 'Asha Traders', '9876543210', 'Parrys', '600001']) expect(raw).not.toContain(secret);
     }
     expect((await as(A.token, 'GET', '/api/shipping-requests')).statusCode).toBe(401);
     expect((await call('is', 'GET', '/api/notifications')).json().data.some((n: any) => n.kind === 'SHIP_REQUEST' && n.leadRef === r.reference)).toBe(true);
-    for (const who of ['is', 'ia', 'sa']) {
+    expect((await call('cs', 'GET', '/api/notifications')).json().data.some((n: any) => n.kind === 'SHIP_REQUEST' && n.leadRef === r.reference)).toBe(true);
+    for (const who of ['is', 'ia', 'sa', 'cs', 'ca']) {
       const listed = (await call(who, 'GET', '/api/shipping-requests')).json().data as { id: string; status: string; assignedTo: string | null }[];
       expect(listed.some((x) => x.id === r.id && x.status === 'SUBMITTED' && !x.assignedTo)).toBe(true);
     }
@@ -84,11 +88,9 @@ describe('shipping requests (SH-YYMM-NNNN)', () => {
     const acc = (await acceptFq(as, A.token, q2)).json().data;
     expect(acc).toMatchObject({ status: 'ACCEPTED', canCancel: false });
     expect((await as(A.token, 'POST', `/api/portal/shipping-requests/${r.id}/cancel`)).statusCode).toBe(409);
-    // Now China books (India cannot book; China has no access to India's staff routes); stages move forward only; tracking is customer-visible. SSE announces own changes only.
-    expect((await call('cs', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).statusCode).toBe(403);
-    expect((await call('is', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED' })).json().code).toBe('china_books');
+    // Both India and China shipping staff can book after the customer accepted; stages move forward only; tracking is customer-visible. SSE announces own changes only.
     const s = await sse(A.token, async () => {
-      expect((await call('cs', 'POST', `/api/china/shipping-requests/${r.id}/stage`, { status: 'BOOKED', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-20', eta: '2026-12-15' })).json().data.status).toBe('BOOKED');
+      expect((await call('cs', 'POST', `/api/shipping-requests/${r.id}/stage`, { status: 'BOOKED', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-20', eta: '2026-12-15' })).json().data.status).toBe('BOOKED');
       await call('is', 'PATCH', `/api/shipping-requests/${r2.id}`, { internalNote: 'b only' });
     });
     expect(s.text).toContain(`"id":"${r.id}"`); expect(s.text).not.toContain(r2.id);

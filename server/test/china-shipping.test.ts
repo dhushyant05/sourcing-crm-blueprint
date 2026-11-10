@@ -16,10 +16,11 @@ describe('China shipping-request booking view', () => {
     expect((await call('cs', 'GET', '/api/china/shipping-requests')).json().data).toHaveLength(0);
     expect((await call('cs', 'GET', `/api/china/shipping-requests/${id}`)).statusCode).toBe(404);
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'BOOKED' })).statusCode).toBe(404);
-    // India-only and portal routes stay closed to China.
-    for (const u of ['/api/shipping-requests', `/api/shipping-requests/${id}`, '/api/customers', '/api/portal-admin/login-requests'])
-      expect((await call('cs', 'GET', u)).statusCode).toBe(403);
-    expect((await call('ca', 'POST', `/api/shipping-requests/${id}/assign`, { userId: null })).statusCode).toBe(403);
+    // The shared staff list is open to China (redacted); customer directory, portal-admin and freight quotes stay closed.
+    expect((await call('cs', 'GET', '/api/shipping-requests')).statusCode).toBe(200);
+    expect((await call('cs', 'GET', `/api/shipping-requests/${id}`)).statusCode).toBe(200);
+    expect((await call('cs', 'GET', '/api/customers')).statusCode).toBe(403);
+    expect((await call('cs', 'GET', '/api/portal-admin/login-requests')).statusCode).toBe(403);
     expect((await call('ca', 'POST', `/api/shipping-requests/${id}/freight-quotes`, { amount: 1 })).statusCode).toBe(403);
     expect((await call('cs', 'GET', '/api/portal/shipping-requests')).statusCode).toBe(401); // staff token never works in the portal realm
 
@@ -54,18 +55,17 @@ describe('China shipping-request booking view', () => {
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'BOOKED', carrier: 'COSCO', etd: 'soon' })).statusCode).toBe(400);
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'BOOKED', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-28', eta: '2026-12-20' })).json().data)
       .toMatchObject({ status: 'BOOKED', carrier: 'COSCO', container: 'CSNU1234567', etd: '2026-11-28' });
-    expect((await call('is', 'POST', `/api/shipping-requests/${id}/stage`, { status: 'IN_TRANSIT' })).json().code).toBe('china_books');
-    expect((await call('is', 'POST', `/api/shipping-requests/${id}/stage`, { status: 'ARRIVED' })).json().code).toBe('china_books');
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { tracking: 'TRK1' })).json().data.tracking).toBe('TRK1');
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'IN_TRANSIT' })).json().data.canUpdate).toBe(true);
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { status: 'BOOKED' })).statusCode).toBe(409);
 
-    // India takes over from arrival; China can no longer change it.
+    // The legacy China booking route still stops at in-transit; both offices continue later stages on the shared staff route.
     expect((await call('is', 'POST', `/api/shipping-requests/${id}/stage`, { status: 'ARRIVED' })).json().data.status).toBe('ARRIVED');
     expect((await call('cs', 'POST', `/api/china/shipping-requests/${id}/stage`, { tracking: 'TRK2' })).json().code).toBe('india_owns');
     expect((await call('cs', 'GET', `/api/china/shipping-requests/${id}`)).json().data).toMatchObject({ status: 'ARRIVED', canUpdate: false, tracking: 'TRK1' });
+    expect((await call('cs', 'POST', `/api/shipping-requests/${id}/stage`, { status: 'CUSTOMS' })).json().data.status).toBe('CUSTOMS');
     // Customer sees the China booking in its own fixed-text timeline.
-    expect((await as(A.token, 'GET', `/api/portal/shipping-requests/${id}`)).json().data.tracking).toMatchObject({ stage: 'ARRIVED', carrier: 'COSCO', tracking: 'TRK1' });
+    expect((await as(A.token, 'GET', `/api/portal/shipping-requests/${id}`)).json().data.tracking).toMatchObject({ stage: 'CUSTOMS', carrier: 'COSCO', tracking: 'TRK1' });
   });
 
   it('India staff and customers cannot use the China booking routes', async () => {

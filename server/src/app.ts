@@ -29,7 +29,7 @@ import { ShipmentStore, SHIP_CHINA_KEYS, SHIP_INDIA_KEYS, CHINA_SHIP_STATUS, IND
 import { PushStore } from './push.js';
 import { AssignStore, type Assignment, type Office, type NotifKind } from './assign.js';
 import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from './workflow.js';
-import { PortalStore, PortalError, loginView, tempPassword, customerStage, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
+import { PortalStore, PortalError, loginView, tempPassword, customerStage, sourcingFlow, freightFlow, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
 
 export interface AppOptions {
@@ -1014,11 +1014,21 @@ export async function buildApp(o: AppOptions) {
     };
     api.post<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid/order', async (req, reply) => {
       const u = req.user!; indiaOnly(u.role); const q = await quoteOf(req);
-      if (q.status !== 'ACCEPTED') throw bad('Only an accepted quote can become an order');
-      if (await orders.byQuote(q.id)) throw bad('This quote already has an order', 409);
       const lead = await leadOf(q.leadId), b = req.body ?? {};
-      const ord = await orders.create({ leadId: q.leadId, quoteId: q.id, leadRef: (lead.leadRef as string) ?? null, product: q.product },
-        { qty: q.cq?.qty, agreedPrice: q.cq?.unitPrice, ...b }, u.id);
+      let ord;
+      try {
+        ord = await o.db.tx(async (t) => {
+          const row = await t.get<{ status: string }>('SELECT status FROM quotes WHERE id = ? FOR UPDATE', q.id);
+          if (!row) throw bad('Quote not found', 404);
+          if (row.status !== 'ACCEPTED') throw bad('Only an accepted quote can become an order');
+          if (await orders.byQuote(q.id, t)) throw bad('This quote already has an order', 409);
+          return orders.create({ leadId: q.leadId, quoteId: q.id, leadRef: (lead.leadRef as string) ?? null, product: q.product },
+            { qty: q.cq?.qty, agreedPrice: q.cq?.unitPrice, ...b }, u.id, t);
+        });
+      } catch (e: any) {
+        if (e?.code === '23505' || /unique|duplicate key/i.test(String(e?.message ?? e))) throw bad('This quote already has an order', 409);
+        throw e;
+      }
       await shipFor(ord);
       await tell(await chinaPeople(q), lead, 'ORDER_NEW', 'CHINA', u);
       await ev(q.leadId, 'ORDER_CREATED', u, { qty: ord.qty });
@@ -1897,8 +1907,12 @@ export async function buildApp(o: AppOptions) {
       const id = String(l.id), a = await assign.get(id), meta = await wf.meta(id);
       const st = await stageOf(l, (a?.ownerOffice as Office) ?? null), cs = customerStage(st.stage, st.lost || !!meta?.closedAt || String(l.status) === 'CLOSED');
       const qs = await quotes.list(id), ref = (l.leadRef as string) ?? null;
+      const ords = await orders.byLead(id);
+      const sh0 = ords[0] ? await ships.byOrder(ords[0].id) : null;
+      const evs = full ? await wf.customerEvents(id) : [];
+      const workflow = sourcingFlow({ createdAt: l.createdAt, quotes: qs, orders: ords, shipment: sh0, lost: st.lost, events: evs });
       const base = { id, type: 'SOURCING' as const, reference: ref, product: l.productInterest ?? null, quantity: l.quantity ?? null, unit: l.unit ?? null,
-        createdAt: l.createdAt, stage: cs.stage, stageIndex: cs.index, closed: cs.closed, quotesWaiting: qs.filter((q) => q.status === 'SENT' && q.cq).length };
+        createdAt: l.createdAt, stage: cs.stage, stageIndex: cs.index, closed: cs.closed, quotesWaiting: qs.filter((q) => q.status === 'SENT' && q.cq).length, workflow };
       if (!full) return base;
       const tp = l.targetPrice as { amountMicros?: number | null; currencyCode?: string } | undefined;
       const quoteRows = [];
@@ -1918,7 +1932,7 @@ export async function buildApp(o: AppOptions) {
       return { ...base, deliveryCity: l.deliveryCity ?? null, message: l.enquiryMessage ?? null,
         targetPrice: tp?.amountMicros != null ? { amount: tp.amountMicros / 1e6, currency: tp.currencyCode || 'INR' } : null,
         files: uploads.list(id).filter((f) => mine.has(f.id)).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, createdAt: f.createdAt })),
-        quotes: quoteRows, orders: orderRows, timeline: await wf.customerEvents(id) };
+        quotes: quoteRows, orders: orderRows, timeline: evs };
     };
     api.get('/api/portal/requests', async (req) => {
       const c = req.customer!, out = [];
@@ -2027,10 +2041,19 @@ export async function buildApp(o: AppOptions) {
 
 
     // ======================= Shipping Requests (SH-YYMM-NNNN) =======================
-    // India side only (China never sees customers). Ownership = shipping_requests.customer_id, set from the portal token or explicitly by staff.
+    // India staff, China staff with orders.production, and super admin handle requests (see, claim, progress).
+    // China never sees customer identity, destination contact/address, prices or freight amounts. Freight quotes and
+    // priced customer messaging stay India / super admin. Ownership = shipping_requests.customer_id.
     const srErr = (e: unknown): never => { if (e instanceof SrError) throw Object.assign(new Error(e.message), { status: e.status, appCode: e.code }); throw e; };
-    const srIndia = (u: User) => { if (!sides(u.role).india) throw new Forbidden('Only the India office handles shipping requests'); };
-    const srAdmin = (u: User) => u.role === 'SUPER_ADMIN' || u.role === 'INDIA_ADMIN';
+    const srIndia = (u: User) => { if (!sides(u.role).india) throw new Forbidden('Only the India office or the super admin can do this'); };
+    const srHandle = (u: User) => {
+      if (sides(u.role).india) return;
+      if (sides(u.role).china && can(u, 'orders.production')) return;
+      throw new Forbidden('Only India staff, China shipping staff, or the super admin can handle shipping requests');
+    };
+    const srChinaView = (u: User) => sides(u.role).china && !sides(u.role).superAdmin;
+    const srAdmin = (u: User) => !!sides(u.role).admin;
+    const srAssigneeOk = (t: User | undefined) => !!t && t.active && (sides(t.role).india || (sides(t.role).china && can(t, 'orders.production')));
     const srOf = async (id: string) => { const r = await srs.get(String(id)); if (!r) throw Object.assign(new Error('Not found'), { status: 404 }); return r; };
     const srActor = (u: User) => ({ kind: 'STAFF' as const, id: u.id, name: u.name });
     /** SLA (lead settings, normal hours): runs while India owes a response (SUBMITTED / UNDER_REVIEW); stops on any India answer or close. */
@@ -2057,9 +2080,13 @@ export async function buildApp(o: AppOptions) {
         if (!n) continue;
         const owner = x.assigned_to && o.users.byId(x.assigned_to)?.active ? [x.assigned_to as string] : [];
         const sa = o.users.list().filter((u) => u.active && u.role === 'SUPER_ADMIN').map((u) => u.id);
-        const recips = kind === 'SHIP_SLA_WARN' ? [...new Set([...(owner.length ? owner : queueWatchers('INDIA')), ...sa])] : [...new Set([...queueWatchers('INDIA'), ...owner])];
+        const chinaWatch = o.users.list().filter((u) => u.active && sides(u.role).china && !sides(u.role).superAdmin && can(u, 'orders.production')).map((u) => u.id);
+        const recips = kind === 'SHIP_SLA_WARN' ? [...new Set([...(owner.length ? owner : [...queueWatchers('INDIA'), ...chinaWatch]), ...sa])] : [...new Set([...queueWatchers('INDIA'), ...chinaWatch, ...owner])];
         if (kind === 'SHIP_SLA_BREACH') { await srs.log(x.id, 'SR_SLA_BREACH', { kind: 'SYSTEM', id: null, name: null }, { dueAt: new Date(due).toISOString() }); breach++; } else warn++;
-        await assign.notify(recips, { leadId: x.id, leadRef: x.ref, product: x.goods ?? null, kind, office: 'INDIA', byName: null });
+        const indiaRecips = recips.filter((id) => { const u = o.users.byId(id); return u && (sides(u.role).india || u.role === 'SUPER_ADMIN'); });
+        const chinaRecips = recips.filter((id) => { const u = o.users.byId(id); return u && sides(u.role).china && u.role !== 'SUPER_ADMIN'; });
+        if (indiaRecips.length) await assign.notify(indiaRecips, { leadId: x.id, leadRef: x.ref, product: x.goods ?? null, kind, office: 'INDIA', byName: null });
+        if (chinaRecips.length) await assign.notify(chinaRecips, { leadId: x.id, leadRef: x.ref, product: x.goods ?? null, kind, office: 'CHINA', byName: null });
       }
       return { warn, breach };
     };
@@ -2067,9 +2094,16 @@ export async function buildApp(o: AppOptions) {
       return x?.sla_due_at ? { startedAt: new Date(x.sla_started_at).toISOString(), dueAt: new Date(x.sla_due_at).toISOString(), warned: !!x.sla_warned, breached: !!x.sla_breached || Date.now() > new Date(x.sla_due_at).getTime() } : null; };
     const srLive = async (r: ShippingRequest) => { await srSlaSync(r.id); return liveData({ type: 'shipping', id: r.id, shippingRequestId: r.id, at: Date.now() }); };
     const srIndiaPeople = () => o.users.list().filter((x) => x.active && sides(x.role).india).map((x) => x.id);
+    const srChinaPeople = () => o.users.list().filter((x) => x.active && sides(x.role).china && !sides(x.role).superAdmin && can(x, 'orders.production')).map((x) => x.id);
     const srNotify = async (r: ShippingRequest, kind: 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE', byName: string | null, detail?: string) => {
-      const to = r.assignedTo && kind === 'SHIP_REQUEST_UPDATE' ? [r.assignedTo, ...queueWatchers('INDIA')] : srIndiaPeople();
-      await assign.notify(to, { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind, office: 'INDIA', byName, detail: detail ?? null });
+      const watch = [...new Set([...queueWatchers('INDIA'), ...srChinaPeople()])];
+      const to = r.assignedTo && kind === 'SHIP_REQUEST_UPDATE' ? [r.assignedTo, ...watch] : [...srIndiaPeople(), ...srChinaPeople()];
+      const ids = [...new Set(to)];
+      const india = ids.filter((id) => { const u = o.users.byId(id); return u && (sides(u.role).india || u.role === 'SUPER_ADMIN'); });
+      const china = ids.filter((id) => { const u = o.users.byId(id); return u && sides(u.role).china && u.role !== 'SUPER_ADMIN'; });
+      // Goods / SH ref only — never customer identity. China recipients are tagged CHINA so their clients stay in the China realm.
+      if (india.length) await assign.notify(india, { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind, office: 'INDIA', byName, detail: detail ?? null });
+      if (china.length) await assign.notify(china, { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind, office: 'CHINA', byName: null, detail: detail ?? null });
     };
     /** Tracking of a SOURCED request comes from its order's Shipment (single source of truth). */
     const srTracking = async (r: ShippingRequest) => {
@@ -2079,12 +2113,25 @@ export async function buildApp(o: AppOptions) {
     };
     const srFiles = (r: ShippingRequest, only?: Set<string>) => uploads.list(srKey(r.id)).filter((f) => !only || only.has(f.id)).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, createdAt: f.createdAt }));
     const srLeadRef = async (id: string | null) => (id ? (((await leadDb.get(id)) as Rec | null)?.leadRef as string) ?? null : null);
-    /** Staff DTO (India): everything incl. internal note and internal freight cost. */
+    /** Staff DTO: India / super admin see the full record; China gets a strict allowlist (no customer identity, dest contact/address, prices or files). */
     const srStaff = async (u: User, r: ShippingRequest, full: boolean) => {
-      const names = userNames(), c = await customers.get(r.customerId);
-      const base = { ...r, customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, assignedToName: (r.assignedTo && names.get(r.assignedTo)) || null,
-        leadRef: await srLeadRef(r.leadId), progress: await srTracking(r), sla: await srSla(r.id), canEdit: true };
+      const names = userNames(), hide = srChinaView(u);
+      const progress = await srTracking(r);
+      const base = hide
+        ? { id: r.id, ref: r.ref, kind: r.kind, status: r.status, goods: r.goods, quantity: r.quantity, unit: r.unit, packages: r.packages, weightKg: r.weightKg, cbm: r.cbm,
+            shipperName: r.shipperName, shipperPhone: r.shipperPhone, pickupAddress: r.pickupAddress, pickupCity: r.pickupCity, readyDate: r.readyDate,
+            mode: r.mode, incoterm: r.incoterm, destCity: r.destCity, carrier: progress?.carrier ?? r.carrier, tracking: progress?.tracking ?? r.tracking,
+            container: progress?.container ?? r.container, etd: progress?.etd ?? r.etd, eta: progress?.eta ?? r.eta, deliveredAt: progress?.deliveredAt ?? r.deliveredAt,
+            createdAt: r.createdAt, updatedAt: r.updatedAt, assignedTo: r.assignedTo, assignedToName: (r.assignedTo && names.get(r.assignedTo)) || null,
+            leadRef: await srLeadRef(r.leadId), progress, sla: await srSla(r.id), customer: null, canEdit: true, canPrice: false, canMessage: false }
+        : await (async () => { const c = await customers.get(r.customerId);
+            return { ...r, customer: c ? { id: c.id, name: c.name, company: c.company, phone: c.phone } : null, assignedToName: (r.assignedTo && names.get(r.assignedTo)) || null,
+              leadRef: await srLeadRef(r.leadId), progress, sla: await srSla(r.id), canEdit: true, canPrice: true, canMessage: true }; })();
       if (!full) return base;
+      if (hide) {
+        const events = (await srs.events(r.id)).map((e: any) => ({ at: e.at, kind: e.kind, by: e.actor_kind === 'CUSTOMER' ? 'Customer' : e.actor_name, data: { status: e.data?.status ?? undefined }, customerVisible: false, customerText: null }));
+        return { ...base, freightQuotes: [], files: [], events };
+      }
       const fqs = (await srs.quotes(r.id)).map((q) => ({ ...q, label: `${r.ref}-F${q.n}`, internalCost: can(u, 'prices.inr') ? q.internalCost : null, createdByName: (q.createdBy && names.get(q.createdBy)) || null }));
       const shared = await srs.customerFileIds(r.id);
       return { ...base, freightQuotes: fqs, files: srFiles(r).map((f) => ({ ...f, customerVisible: shared.has(f.id) })),
@@ -2092,17 +2139,20 @@ export async function buildApp(o: AppOptions) {
     };
     /** Customer DTO: an allowlist. Never internal note, internal cost, assignee, reject reason, staff names or other customers. */
     const srCustomer = async (r: ShippingRequest, full: boolean) => {
+      const tracking = await srTracking(r);
+      const fqs = await srs.quotes(r.id);
+      const evs = full ? await srs.customerEvents(r.id) : [];
+      const workflow = freightFlow({ createdAt: r.createdAt, status: r.status, quotes: fqs, tracking, events: evs });
       const base = { id: r.id, type: 'SHIPPING' as const, reference: r.ref, kind: r.kind, status: r.status, goods: r.goods, quantity: r.quantity, unit: r.unit,
-        destCity: r.destCity, createdAt: r.createdAt, leadReference: await srLeadRef(r.leadId), quoteWaiting: false, tracking: await srTracking(r),
-        canCancel: SR_OPEN.includes(r.status as never), canReply: r.status === 'NEEDS_INFO' };
-      const fqs = await srs.quotes(r.id); base.quoteWaiting = fqs.some((q) => q.status === 'SENT');
+        destCity: r.destCity, createdAt: r.createdAt, leadReference: await srLeadRef(r.leadId), quoteWaiting: fqs.some((q) => q.status === 'SENT'), tracking,
+        canCancel: SR_OPEN.includes(r.status as never), canReply: r.status === 'NEEDS_INFO', workflow };
       if (!full) return base;
       return { ...base, packages: r.packages, weightKg: r.weightKg, cbm: r.cbm, shipperName: r.shipperName, shipperPhone: r.shipperPhone, pickupAddress: r.pickupAddress, pickupCity: r.pickupCity,
         destAddress: r.destAddress, destPincode: r.destPincode, mode: r.mode, incoterm: r.incoterm, readyDate: r.readyDate, customerNote: r.customerNote,
         question: r.status === 'NEEDS_INFO' ? r.question : null,
         freightQuotes: fqs.map((q) => ({ id: q.id, label: `${r.ref}-F${q.n}`, version: q.customerRev, amount: q.amount, currency: q.currency, mode: q.mode, incoterm: q.incoterm,
           transit: q.transit, validUntil: q.validUntil, note: q.customerNote, status: q.status, createdAt: q.createdAt, decidedAt: q.decidedAt, canDecide: q.status === 'SENT' && r.status === 'QUOTED' })),
-        files: srFiles(r, await srs.customerFileIds(r.id)), timeline: await srs.customerEvents(r.id) };
+        files: srFiles(r, await srs.customerFileIds(r.id)), timeline: evs };
     };
     const readSrBody = async (req: FastifyRequest, reply: any): Promise<{ b: Record<string, string>; files: Staged[] } | null> => {
       const b: Record<string, string> = {}; let files: Staged[] = [];
@@ -2124,13 +2174,13 @@ export async function buildApp(o: AppOptions) {
       return ord;
     };
 
-    // ---- Staff (India) ----
+    // ---- Staff (India, China shipping, super admin) ----
     api.get<{ Querystring: { status?: string; customerId?: string } }>('/api/shipping-requests', async (req) => {
-      const u = req.user!; srIndia(u);
-      const list = await srs.list({ status: req.query?.status ? String(req.query.status) : undefined, customerId: req.query?.customerId ? String(req.query.customerId) : undefined });
+      const u = req.user!; srHandle(u);
+      const list = await srs.list({ status: req.query?.status ? String(req.query.status) : undefined, customerId: srChinaView(u) ? undefined : (req.query?.customerId ? String(req.query.customerId) : undefined) });
       return { data: await Promise.all(list.map((r) => srStaff(u, r, false))) };
     });
-    api.get<{ Params: { id: string } }>('/api/shipping-requests/:id', async (req) => { const u = req.user!; srIndia(u); return { data: await srStaff(u, await srOf(req.params.id), true) }; });
+    api.get<{ Params: { id: string } }>('/api/shipping-requests/:id', async (req) => { const u = req.user!; srHandle(u); return { data: await srStaff(u, await srOf(req.params.id), true) }; });
     /** Staff raise one on behalf of a customer they name explicitly. */
     api.post('/api/shipping-requests', async (req, reply) => {
       const u = req.user!; srIndia(u);
@@ -2147,23 +2197,28 @@ export async function buildApp(o: AppOptions) {
         return reply.code(201).send({ data: await srStaff(u, r, true) });
       } catch (e) { uploads.discard(files); throw e; }
     });
+    const SR_CHINA_EDIT = ['goods', 'quantity', 'unit', 'packages', 'weightKg', 'cbm', 'shipperName', 'shipperPhone', 'pickupAddress', 'pickupCity', 'readyDate', 'mode', 'incoterm', 'destCity', 'carrier', 'tracking', 'container', 'etd', 'eta', 'deliveredAt'];
     api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id', async (req) => {
-      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const u = req.user!; srHandle(u); const r = await srOf(req.params.id);
       if (['REJECTED', 'CANCELLED', 'DELIVERED'].includes(r.status)) throw bad('This request is closed', 409);
-      const f = (() => { try { return cleanFields(req.body ?? {}, [...CUSTOMER_FIELDS, 'internalNote']); } catch (e) { return srErr(e); } })();
+      const allowed = srChinaView(u) ? SR_CHINA_EDIT : [...CUSTOMER_FIELDS, 'internalNote'];
+      const f = (() => { try { return cleanFields(req.body ?? {}, allowed); } catch (e) { return srErr(e); } })();
       if ('goods' in f && !f.goods) throw bad('Describe the goods to ship');
       const nr = (await srs.edit(r.id, f))!; await srs.log(r.id, 'SR_EDITED', srActor(u), { fields: Object.keys(f) }); await srLive(nr);
       return { data: await srStaff(u, nr, true) };
     });
     api.post<{ Params: { id: string }; Body: { userId?: string | null } }>('/api/shipping-requests/:id/assign', async (req) => {
-      const u = req.user!; srIndia(u); const r = await srOf(req.params.id);
+      const u = req.user!; srHandle(u); const r = await srOf(req.params.id);
       const to = req.body?.userId === undefined ? u.id : req.body.userId ? String(req.body.userId) : null;
-      if (to !== u.id && !srAdmin(u)) throw new Forbidden('Only an India admin can assign to someone else');
-      if (to) { const t = o.users.list().find((x) => x.id === to); if (!t || !t.active || !sides(t.role).india) throw bad('Assign to an active India office user'); }
+      if (to !== u.id && !srAdmin(u)) throw new Forbidden('Only an admin can assign to someone else');
+      if (to) { const t = o.users.list().find((x) => x.id === to); if (!srAssigneeOk(t)) throw bad('Assign to an active India or China shipping user'); }
       let nr = (await srs.assign(r.id, to))!;
       if (to && nr.status === 'SUBMITTED') { nr = await srs.setStatus(r.id, ['SUBMITTED'], 'UNDER_REVIEW').catch(srErr); await srs.log(r.id, 'SR_REVIEW', srActor(u)); }
       await srs.log(r.id, 'SR_ASSIGNED', srActor(u), { to });
-      if (to && to !== u.id) await assign.notify([to], { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind: 'SHIP_REQUEST_UPDATE', office: 'INDIA', byName: u.name, detail: 'Assigned to you' });
+      if (to && to !== u.id) {
+        const tu = o.users.byId(to)!;
+        await assign.notify([to], { leadId: r.id, leadRef: r.ref, product: r.goods.slice(0, 120), kind: 'SHIP_REQUEST_UPDATE', office: sides(tu.role).china && !sides(tu.role).superAdmin ? 'CHINA' : 'INDIA', byName: u.name, detail: 'Assigned to you' });
+      }
       await srLive(nr); return { data: await srStaff(u, nr, true) };
     });
     /** "More info needed": the question is written FOR the customer (it is shown to them verbatim). */
@@ -2274,7 +2329,7 @@ export async function buildApp(o: AppOptions) {
     });
     /** FREIGHT_ONLY tracking (India). Booking needs an ACCEPTED freight quote; stages only move forward. SOURCED requests follow their Shipment. */
     api.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/shipping-requests/:id/stage', async (req) => {
-      const u = req.user!; srIndia(u); need(u, 'orders.production'); const r = await srOf(req.params.id), b = req.body ?? {};
+      const u = req.user!; srHandle(u); need(u, 'orders.production'); const r = await srOf(req.params.id), b = req.body ?? {};
       if (r.kind === 'SOURCED') throw bad('Update the linked shipment instead (Shipping page)', 409);
       const to = String(b.status ?? '').toUpperCase(); const ti = SR_STAGES.indexOf(to as never); if (ti < 0) throw bad(`Status must be one of ${SR_STAGES.join(', ')}`);
       if (!(await srs.hasAccepted(r.id))) throw Object.assign(new Error('The customer has not accepted a freight quote yet'), { status: 409, appCode: 'freight_quote_required' });
@@ -2285,9 +2340,7 @@ export async function buildApp(o: AppOptions) {
       for (const k of ['carrier', 'tracking', 'container']) if (k in b) extra[k] = b[k] == null || b[k] === '' ? null : String(b[k]).trim().slice(0, 120);
       for (const k of ['etd', 'eta', 'deliveredAt']) if (k in b) { const v = b[k] == null || b[k] === '' ? null : String(b[k]); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw bad(`${k} must be YYYY-MM-DD`); extra[k] = v; }
       if (to === 'DELIVERED' && !extra.deliveredAt && !r.deliveredAt) extra.deliveredAt = new Date().toISOString().slice(0, 10);
-      // China books and ships (BOOKED → IN_TRANSIT, /api/china/shipping-requests); India takes over from IN_TRANSIT (ARRIVED onward). Super admin may do both.
-      if (!sides(u.role).superAdmin && (cur < SR_STAGES.indexOf('IN_TRANSIT') || ti < SR_STAGES.indexOf('ARRIVED') && ti !== cur))
-        throw Object.assign(new Error('China books and ships this request; India takes over once it is in transit'), { status: 409, appCode: 'china_books' });
+      // India staff, China shipping staff and super admin may move any forward stage after the freight quote is accepted.
       const nr = await srs.setStatus(r.id, [r.status], to, extra).catch(srErr);
       if (ti !== cur) await srs.log(r.id, 'SR_STAGE', srActor(u), { status: to }); else await srs.log(r.id, 'SR_TRACKING', srActor(u), extra);
       if (ti !== cur && (to === 'IN_TRANSIT' || to === 'DELIVERED')) await notifyCustomer(r.customerId, to === 'DELIVERED' ? 'DELIVERED' : 'SHIPPED', { reference: r.ref }, `${r.id}:${to}`);
