@@ -38,6 +38,10 @@ describe('shipping requests (SH-YYMM-NNNN)', () => {
     }
     expect((await as(A.token, 'GET', '/api/shipping-requests')).statusCode).toBe(401);
     expect((await call('is', 'GET', '/api/notifications')).json().data.some((n: any) => n.kind === 'SHIP_REQUEST' && n.leadRef === r.reference)).toBe(true);
+    for (const who of ['is', 'ia', 'sa']) {
+      const listed = (await call(who, 'GET', '/api/shipping-requests')).json().data as { id: string; status: string; assignedTo: string | null }[];
+      expect(listed.some((x) => x.id === r.id && x.status === 'SUBMITTED' && !x.assignedTo)).toBe(true);
+    }
     const staff = (await call('is', 'GET', `/api/shipping-requests/${r.id}`)).json().data;
     expect(staff).toMatchObject({ ref: r.reference, customer: { id: A.customerId }, status: 'SUBMITTED', shipperName: 'My Yiwu supplier' });
     // India staff claims → under review; staff adds an internal note + file (never shown to the customer).

@@ -33,11 +33,18 @@ export function ShippingRequests() {
             <td className="py-2 pr-3 font-mono font-semibold text-brand-700 dark:text-brand-300">{r.ref}</td><td className="pr-3">{r.customer?.company || r.customer?.name}</td>
             <td className="max-w-[16rem] truncate pr-3">{r.goods}</td><td className="pr-3 text-xs">{r.kind === 'SOURCED' ? `${t('sr.sourced')} ${r.leadRef ?? ''}` : t('sr.freightOnly')}</td>
             <td className="pr-3"><span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">{st(r.status)}</span></td>
-            <td className="pr-3 text-xs">{r.assignedToName ?? t('sr.unclaimed')}</td><td className={`pr-3 text-xs ${r.sla?.breached ? 'font-semibold text-rose-600' : r.sla?.warned ? 'text-amber-700' : 'text-ink-500'}`} data-testid={`sr-sla-${r.ref}`}>{r.sla ? (r.sla.breached ? t('sr.slaBreached') : t('sr.slaDue', { at: when(r.sla.dueAt) })) : '—'}</td><td className="text-xs text-ink-500">{when(r.createdAt)}</td></tr>)}</tbody></table></div>)}
+            <td className="pr-3 text-xs">{r.assignedToName ?? t('sr.unclaimed')}{!r.assignedTo && <ClaimButton id={r.id} onDone={() => void load()} />}</td><td className={`pr-3 text-xs ${r.sla?.breached ? 'font-semibold text-rose-600' : r.sla?.warned ? 'text-amber-700' : 'text-ink-500'}`} data-testid={`sr-sla-${r.ref}`}>{r.sla ? (r.sla.breached ? t('sr.slaBreached') : t('sr.slaDue', { at: when(r.sla.dueAt) })) : '—'}</td><td className="text-xs text-ink-500">{when(r.createdAt)}</td></tr>)}</tbody></table></div>)}
       {creating && <NewSr onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); void load(); setOpenId(id); }} />}
       {openId && <SrPanel id={openId} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
     </div>
   );
+}
+
+
+/** Claim from the list (India staff / super admin). Stops the row from opening while the request is taken. */
+function ClaimButton({ id, onDone }: { id: string; onDone: () => void }) {
+  const { api } = useApp(); const { t } = useTranslation(); const [busy, setBusy] = useState(false);
+  return <button disabled={busy} className="ml-2 text-brand-600 underline" data-testid="sr-claim-row" onClick={(e) => { e.stopPropagation(); setBusy(true); api.srAction!(id, 'assign').then(onDone).catch(() => setBusy(false)); }}>{t('sr.claim')}</button>;
 }
 
 function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
