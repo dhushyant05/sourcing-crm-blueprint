@@ -30,16 +30,18 @@ class ShippingScreen extends StatefulWidget {
 
 class _ShippingScreenState extends State<ShippingScreen> with LiveRefresh {
   @override
-  Set<String> get liveTypes => const {'order', 'shipment'};
+  Set<String> get liveTypes => const {'order', 'shipment', 'shipping'};
   @override
   String? get liveLeadId => widget.leadId;
   @override
   void liveRefresh() => _load();
 
   List<Map<String, dynamic>>? _all;
+  List<Map<String, dynamic>>? _srs;
   String? _err;
   bool _closed = false;
   String _filter = '', _q = '';
+  static const _srOpen = ['SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO', 'QUOTED', 'ACCEPTED'];
 
   @override
   void initState() { super.initState(); _load(); startLive(); }
@@ -47,10 +49,16 @@ class _ShippingScreenState extends State<ShippingScreen> with LiveRefresh {
   void dispose() { stopLive(); super.dispose(); }
 
   Future<void> _load() async {
+    final repo = context.read<Session>().repo;
+    final india = context.read<Session>().perms.canHandleShippingRequests && widget.leadId == null;
+    String? err;
+    List<Map<String, dynamic>>? all = _all, srs = _srs;
     try {
-      final r = await context.read<Session>().repo.shipments();
-      if (mounted) setState(() { _all = r.where((s) => widget.leadId == null || s['leadId'] == widget.leadId).toList(); _err = null; });
-    } catch (e) { if (mounted) setState(() { _all ??= []; _err = '$e'; }); }
+      final r = await repo.shipments();
+      all = r.where((s) => widget.leadId == null || s['leadId'] == widget.leadId).toList();
+    } catch (e) { err = '$e'; all ??= []; }
+    if (india) { try { srs = await repo.shippingRequests(); } catch (_) { srs ??= []; } }
+    if (mounted) setState(() { _all = all; if (india) _srs = srs; _err = err; });
   }
 
   void _replace(Map<String, dynamic> n) => setState(() => _all = _all?.map((x) => x['id'] == n['id'] ? n : x).toList());
@@ -61,17 +69,22 @@ class _ShippingScreenState extends State<ShippingScreen> with LiveRefresh {
     final nC = all?.where((s) => s['closed'] == true).length ?? 0;
     final rows = pool?.where((s) => (_filter.isEmpty || s['status'] == _filter) && (_q.isEmpty ||
         ['ref', 'leadRef', 'product', 'customer', 'supplier', 'tracking', 'container'].map((k) => '${s[k] ?? ''}').join(' ').toLowerCase().contains(_q))).toList();
-    final cs = Theme.of(context).colorScheme;
+    final session = context.read<Session>(), cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(tw(context, 'shipping.title')), actions: [
         // Shipping requests: India gets the request list, China the booking view of accepted requests (server enforces both).
-        if (context.read<Session>().perms.canSeeCustomers) IconButton(key: const Key('open-sr'), tooltip: tw(context, 'sr.title'), icon: const Icon(Icons.assignment_outlined),
+        if (context.read<Session>().perms.canHandleShippingRequests) IconButton(key: const Key('open-sr'), tooltip: tw(context, 'sr.title'), icon: const Icon(Icons.assignment_outlined),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IndiaShippingRequestsScreen()))),
         if (const {'CHINA_ADMIN', 'CHINA_STAFF', 'SUPER_ADMIN'}.contains(context.read<Session>().role.code)) IconButton(key: const Key('open-csr'), tooltip: tw(context, 'csr.title'), icon: const Icon(Icons.sailing_outlined),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChinaShippingRequestsScreen()))),
       ]),
       body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: [
         Text(tw(context, 'shipping.subtitle'), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+        if (session.perms.canHandleShippingRequests && widget.leadId == null) ...[
+          const SizedBox(height: 8),
+          _SrOnShipping(all: _srs, open: _srOpen, onOpenList: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IndiaShippingRequestsScreen())).then((_) => _load()),
+            onOpen: (id) => Navigator.push(context, MaterialPageRoute(builder: (_) => IndiaShippingRequestDetail(id: id))).then((_) => _load())),
+        ],
         const SizedBox(height: 8),
         SegTabs<bool>(key: const Key('ship-tabs'), value: _closed, onChanged: (v) => setState(() => _closed = v),
             items: [(false, tw(context, 'closedOrder.active'), (all?.length ?? 0) - nC), (true, tw(context, 'closedOrder.closed'), nC)]),
@@ -245,5 +258,36 @@ class _ShipCardState extends State<ShipCard> {
       if (busy) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
       if (msg != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(msg!, style: t.textTheme.bodySmall?.copyWith(color: cs.error))),
     ])));
+  }
+}
+
+
+/// Open shipping requests (SH-…) on the Shipping page so a portal-created request is visible here, not only in a notification.
+class _SrOnShipping extends StatelessWidget {
+  const _SrOnShipping({required this.all, required this.open, required this.onOpenList, required this.onOpen});
+  final List<Map<String, dynamic>>? all;
+  final List<String> open;
+  final VoidCallback onOpenList;
+  final void Function(String id) onOpen;
+  @override
+  Widget build(BuildContext context) {
+    final rows = all?.where((r) => open.contains('${r['status']}')).toList();
+    final n = rows?.length ?? 0;
+    return Card(key: const Key('sr-on-shipping'), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ListTile(
+        leading: const Icon(Icons.assignment_outlined),
+        title: Text(tw(context, 'sr.title')),
+        subtitle: Text(n == 0 ? tw(context, 'sr.none') : '$n ${tw(context, 'sr.title')}'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onOpenList,
+      ),
+      if (rows != null) for (final r in rows.take(8)) ListTile(
+        key: Key('sr-ship-${r['ref']}'),
+        dense: true,
+        title: Text('${r['ref']} · ${r['goods']}'),
+        subtitle: Text('${r['assignedToName'] ?? tw(context, 'sr.unclaimed')} · ${r['status']}'),
+        onTap: () => onOpen(r['id'] as String),
+      ),
+    ]));
   }
 }

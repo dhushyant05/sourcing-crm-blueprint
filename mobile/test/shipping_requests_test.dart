@@ -16,6 +16,7 @@ import 'package:source_easy/services/session.dart';
 import 'package:source_easy/ui/screens/lead_detail_screen.dart';
 import 'package:source_easy/ui/screens/notifications_screen.dart';
 import 'package:source_easy/ui/screens/shipping_requests_screen.dart';
+import 'package:source_easy/ui/screens/shipping_screen.dart';
 import 'package:sqflite/sqflite.dart';
 
 class _NoDb implements Database {
@@ -34,16 +35,23 @@ Map<String, dynamic> _china({String status = 'ACCEPTED', String kind = 'FREIGHT_
 void main() {
   late List<Map<String, dynamic>> list;
   final posts = <String, Map<String, dynamic>>{};
-  Session session(Role role) {
+  Session session(Role role, {Set<String>? granted, List<Map<String, dynamic>> shipments = const []}) {
     final mock = MockClient((req) async {
+      final path = req.url.path;
       if (req.method == 'POST') {
-        final b = (jsonDecode(req.body) as Map).cast<String, dynamic>(); posts[req.url.path] = b;
-        final n = {...list.first, ...b, 'status': b['status'] ?? list.first['status']};
+        final b = (jsonDecode(req.body) as Map).cast<String, dynamic>(); posts[path] = b;
+        Map<String, dynamic> n = {...list.first, ...b};
+        if (path.endsWith('/assign')) n = {...n, 'assignedTo': 'me', 'assignedToName': 'Me', 'status': n['status'] == 'SUBMITTED' ? 'UNDER_REVIEW' : n['status']};
+        else n = {...n, 'status': b['status'] ?? list.first['status']};
+        if (list.isNotEmpty) list[0] = n;
         return http.Response(jsonEncode({'data': n}), 200);
       }
+      if (path == '/api/shipments') return http.Response(jsonEncode({'data': shipments}), 200);
+      if (path.endsWith('/api/shipping-requests') || path == '/api/shipping-requests') return http.Response(jsonEncode({'data': list}), 200);
+      if (list.isNotEmpty && path.endsWith(list.first['id'])) return http.Response(jsonEncode({'data': list.first}), 200);
       return http.Response(jsonEncode({'data': list}), 200);
     });
-    return Session()..role = role..debugRepo = SourceEasyRepository(api: ServerClient(baseUrl: 'http://x', httpClient: mock), store: LocalStore(_NoDb()), perms: Permissions(role));
+    return Session()..role = role..debugRepo = SourceEasyRepository(api: ServerClient(baseUrl: 'http://x', httpClient: mock), store: LocalStore(_NoDb()), perms: Permissions(role, granted));
   }
   Widget app(Session s, Widget home, {Locale locale = const Locale('en')}) => ChangeNotifierProvider.value(value: s,
       child: MaterialApp(locale: locale, supportedLocales: AppLocalizations.supportedLocales,
@@ -89,5 +97,29 @@ void main() {
     expect((notifTarget(n('SHIP_READY')) as ChinaShippingRequestsScreen).openId, 'sr1');
     for (final k in ['SHIP_REQUEST', 'SHIP_REQUEST_UPDATE', 'SHIP_SLA_WARN', 'SHIP_SLA_BREACH']) { expect(notifTarget(n(k)), isA<IndiaShippingRequestsScreen>()); }
     expect(notifTarget(n('ASSIGNED')), isA<LeadDetailScreen>());
+  });
+
+  Map<String, dynamic> _indiaSr() => {
+    'id': 'sr1', 'ref': 'SH-2611-0004', 'kind': 'FREIGHT_ONLY', 'status': 'SUBMITTED', 'goods': 'LED', 'assignedTo': null, 'assignedToName': null,
+    'customer': {'id': 'c1', 'name': 'Asha', 'company': 'Asha Traders'}, 'pickupCity': 'Yiwu', 'destCity': 'Chennai', 'createdAt': '2026-11-10T21:31:25.911Z',
+  };
+
+  testWidgets('India staff without customers.view still see a portal request on Shipping and can claim it', (t) async {
+    list = [_indiaSr()]; posts.clear();
+    // Default India staff grants do not include customers.view — that used to hide the Shipping Requests entry.
+    final grants = {'quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all'};
+    final s = session(Role.indiaStaff, granted: grants);
+    await t.pumpWidget(app(s, const ShippingScreen()));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('open-sr')), findsOneWidget);
+    expect(find.byKey(const Key('sr-on-shipping')), findsOneWidget);
+    expect(find.byKey(const Key('sr-ship-SH-2611-0004')), findsOneWidget);
+    expect(find.textContaining('SH-2611-0004'), findsWidgets);
+    await t.tap(find.byKey(const Key('sr-ship-SH-2611-0004'))); await t.pumpAndSettle();
+    expect(find.byKey(const Key('sr-claim')), findsOneWidget);
+    await t.tap(find.byKey(const Key('sr-claim'))); await t.pumpAndSettle();
+    expect(posts['/api/shipping-requests/sr1/assign'], {});
+    expect(find.text('Unclaimed'), findsNothing);
+    await t.pumpWidget(const SizedBox()); await t.pump(const Duration(seconds: 1));
   });
 }

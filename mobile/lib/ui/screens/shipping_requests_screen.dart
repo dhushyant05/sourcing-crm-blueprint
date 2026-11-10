@@ -11,7 +11,7 @@ import '../widgets/live_refresh.dart';
 ///    identity, destination contact, notes, files or prices). China sets Booked / In transit for freight-only requests after the
 ///    customer accepted a freight quote; India takes over from arrival. Sourced requests are booked on the Shipping board.
 ///  - India: the request list (customer, status, SLA) and, once China marked it in transit, arrival → delivery stages.
-///    Freight quotes, needs-info and assignment stay on the web.
+///    Freight quotes and needs-info stay on the web; claim/assign is on this screen.
 const srStages = ['BOOKED', 'IN_TRANSIT', 'ARRIVED', 'CUSTOMS', 'CLEARED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
 const _chinaStages = ['BOOKED', 'IN_TRANSIT'];
 final _ymd = RegExp(r'^\d{4}-\d{2}-\d{2}$');
@@ -245,6 +245,10 @@ class _IndiaDetailState extends State<IndiaShippingRequestDetail> {
                 _row(context, tw(context, 'sr.container'), p['container']), _row(context, 'ETD', p['etd']), _row(context, 'ETA', p['eta']),
               ],
               const SizedBox(height: 8),
+              if (r['assignedTo'] == null) Padding(padding: const EdgeInsets.only(bottom: 8), child: FilledButton.icon(
+                key: const Key('sr-claim'), icon: const Icon(Icons.person_add_alt_1, size: 18), label: Text(tw(context, 'sr.claim')),
+                onPressed: () async { try { final n = await s.repo.claimShippingRequest(widget.id); if (context.mounted) setState(() { this.r = n; err = null; }); }
+                  catch (e) { if (context.mounted) setState(() => err = '\$e'); } })),
               if (r['kind'] == 'FREIGHT_ONLY' && !sa && (st == 'ACCEPTED' || st == 'BOOKED')) Text(tw(context, 'sr.chinaBooks'), key: const Key('sr-china-books'), style: Theme.of(context).textTheme.bodySmall),
               if (r['kind'] == 'SOURCED' && st == 'ACCEPTED') Text(tw(context, 'sr.sourcedTrack'), style: Theme.of(context).textTheme.bodySmall),
               if (stages.isNotEmpty) _StageForm(key: Key('sr-form-${r['updatedAt']}'), r: r, stages: stages,
@@ -257,4 +261,4 @@ class _IndiaDetailState extends State<IndiaShippingRequestDetail> {
   }
 }
 
-String tDelHint(BuildContext c) => Localizations.localeOf(c).languageCode == 'zh' ? '运费报价、补充信息和分配请在网页端处理。' : 'Freight quotes, info requests and assignment are on the web app.';
+String tDelHint(BuildContext c) => Localizations.localeOf(c).languageCode == 'zh' ? '运费报价和补充信息请在网页端处理。' : 'Freight quotes and info requests are on the web app.';
