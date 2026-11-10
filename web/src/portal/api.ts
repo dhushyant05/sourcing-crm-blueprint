@@ -5,15 +5,17 @@ export interface PortalQuote { id: string; label: string; product: string; statu
   qty: number | null; unitPrice: number | null; currency: string; total: number; moq: string | null; leadTime: string | null; validity: string | null; pdfUrl: string; canDecide: boolean }
 export interface PortalOrder { id: string; product: string; qty: number; value: number; currency: string; paymentStatus: string; createdAt: string;
   shipment: { reference: string; status: string; mode: string | null; etd: string | null; eta: string | null; tracking: string | null; container: string | null; deliveredAt: string | null } | null }
+export interface PortalFlowStep { key: string; label: string; state: 'done' | 'current' | 'upcoming'; at: string | null }
+export interface PortalFlow { steps: PortalFlowStep[]; outcome: 'cancelled' | 'rejected' | null }
 export interface PortalRequest { id: string; type: 'SOURCING'; reference: string | null; product: string | null; quantity: number | null; unit: string | null; createdAt: string;
-  stage: string; stageIndex: number; closed: boolean; quotesWaiting: number;
+  stage: string; stageIndex: number; closed: boolean; quotesWaiting: number; workflow?: PortalFlow;
   deliveryCity?: string | null; message?: string | null; targetPrice?: { amount: number; currency: string } | null;
   files?: PortalFile[]; quotes?: PortalQuote[]; orders?: PortalOrder[]; timeline?: { at: string; kind: string; text: string }[] }
 export interface PortalTracking { stage: string; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null; shipmentRef: string | null }
 export interface PortalFreightQuote { id: string; label: string; version: number; amount: number; currency: string; mode: string | null; incoterm: string | null; transit: string | null; validUntil: string | null;
   note: string | null; status: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'; createdAt: string; decidedAt: string | null; canDecide: boolean }
 export interface PortalShipping { id: string; type: 'SHIPPING'; reference: string; kind: 'SOURCED' | 'FREIGHT_ONLY'; status: string; goods: string; quantity: number | null; unit: string | null;
-  destCity: string | null; createdAt: string; leadReference: string | null; quoteWaiting: boolean; tracking: PortalTracking | null; canCancel: boolean; canReply: boolean;
+  destCity: string | null; createdAt: string; leadReference: string | null; quoteWaiting: boolean; tracking: PortalTracking | null; canCancel: boolean; canReply: boolean; workflow?: PortalFlow;
   packages?: number | null; weightKg?: number | null; cbm?: number | null; shipperName?: string | null; shipperPhone?: string | null; pickupAddress?: string | null; pickupCity?: string | null;
   destAddress?: string | null; destPincode?: string | null; mode?: string | null; incoterm?: string | null; readyDate?: string | null; customerNote?: string | null; question?: string | null;
   freightQuotes?: PortalFreightQuote[]; files?: PortalFile[]; timeline?: { at: string; kind: string; text: string }[] }

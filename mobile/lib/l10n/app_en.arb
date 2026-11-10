@@ -595,6 +595,7 @@
   "cqReject": "Customer rejected",
   "cqReason": "Reason (required)",
   "cqCreateOrder": "Create order",
+  "cqConvertToOrder": "Convert to order",
   "cqOrderCreated": "Order created",
   "cqErr": "Enter quantity and price",
   "orTitle": "Orders",

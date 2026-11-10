@@ -3,6 +3,7 @@ import { ArrowLeft, Camera, CheckCircle2, ChevronRight, FileText, ImagePlus, Log
 import { PortalApi, PortalHttpError, portalToken, type PortalMe, type PortalQuote, type PortalRequest } from './api';
 import { ACCEPT, EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
 import { NewShipping, ShippingDetail, ShippingList } from './Shipping';
+import { WorkflowTracker } from './Workflow';
 import type { PortalShipping, PortalNotifyPrefs } from './api';
 import { PortalGreeting } from '../greetings/Portal';
 
@@ -107,6 +108,7 @@ function ChangePassword({ api, forced, onDone, onCancel }: { api: PortalApi; for
 }
 
 function Progress({ r }: { r: PortalRequest }) {
+  if (r.workflow) return <WorkflowTracker flow={r.workflow} />;
   return (
     <ol className="flex flex-wrap gap-1.5" aria-label="Progress">
       {STAGES.map(([k, label], i) => (
@@ -138,6 +140,7 @@ function Home({ list, ships, go }: { list: PortalRequest[] | null; ships: Portal
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.closed ? 'bg-ink-100 text-ink-500' : 'bg-brand-50 text-brand-700'}`}>{r.closed ? 'Closed' : stageLabel(r.stage)}</span></div>
               <div className="mt-1 flex items-center justify-between gap-2"><span className="line-clamp-2 text-ink-900">{r.product}</span><ChevronRight size={18} className="shrink-0 text-ink-300" /></div>
               <div className="mt-1 text-xs text-ink-400">{r.quantity ? `${r.quantity} ${r.unit ?? ''} · ` : ''}{when(r.createdAt)}{r.quotesWaiting > 0 && <span className="ml-2 font-medium text-amber-700">· Quote waiting</span>}</div>
+              {r.workflow && <div className="mt-2"><WorkflowTracker flow={r.workflow} compact /></div>}
             </button></li>
           ))}
         </ul>

@@ -1084,6 +1084,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cqCreateOrder => 'Create order';
 
   @override
+  String get cqConvertToOrder => 'Convert to order';
+
+  @override
   String get cqOrderCreated => 'Order created';
 
   @override

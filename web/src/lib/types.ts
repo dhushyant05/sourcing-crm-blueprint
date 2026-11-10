@@ -145,6 +145,7 @@ export interface ShippingRequestStaff {
   progress: { stage: string; carrier: string | null; tracking: string | null; container: string | null; etd: string | null; eta: string | null; deliveredAt: string | null; shipmentRef: string | null } | null;
   freightQuotes?: FreightQuoteStaff[]; files?: (Attachment & { customerVisible: boolean })[];
   events?: { at: string; kind: string; by: string | null; data: Record<string, unknown>; customerVisible: boolean; customerText: string | null }[];
+  canPrice?: boolean; canMessage?: boolean; canEdit?: boolean;
 }
 
 /** Staff view of a greeting banner (GET /api/greetings). `preview` is the customer-safe DTO with staff image URLs. */

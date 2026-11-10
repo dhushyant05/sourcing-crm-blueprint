@@ -51,9 +51,9 @@ class Permissions {
   bool get canCreateLead => _india;
   /// India-side customer directory (never China).
   bool get canSeeCustomers => _india && can('customers.view');
-  /// Shipping requests (SH-…): every India-office role and the super admin, even without customers.view.
-  /// India staff must be able to see and claim a customer-portal request; this is not a customer-directory permission.
-  bool get canHandleShippingRequests => _india;
+  /// Shipping requests (SH-…): India staff, China staff with orders.production, and the super admin — even without customers.view.
+  /// China still never sees customer identity or prices (the server redacts the DTO).
+  bool get canHandleShippingRequests => _india || (_china && can('orders.production'));
   bool get canEditCustomers => _india && can('customers.edit');
   bool get canRecordApproval => _india && can('quotes.customer');
   bool get canGenerateClientQuote => _india && can('quotes.customer');

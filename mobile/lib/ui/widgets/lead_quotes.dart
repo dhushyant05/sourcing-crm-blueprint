@@ -72,6 +72,19 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
     await _load();
   }
 
+  Future<void> _convert(LeadQuote q) async {
+    try {
+      await context.read<Session>().repo.createOrder(q.id, {'qty': q.cq?['qty'], 'agreedPrice': q.cq?['unitPrice'], 'paymentStatus': 'PENDING'});
+    } catch (e) {
+      if (!'$e'.toLowerCase().contains('already has an order')) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        return;
+      }
+    }
+    await _load();
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.cqOrderCreated)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = context.l10n, t = Theme.of(context), p = context.watch<Session>().perms;
@@ -80,6 +93,8 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(child: Text('${l.lqTitle}${list != null && list.isNotEmpty ? ' · ${list.length}' : ''}', style: t.textTheme.titleSmall)),
+        if (india && p.canCreateOrder && list != null && list.any((q) => q.status == 'ACCEPTED' && q.orderId == null))
+          FilledButton.icon(key: const Key('lead-convert-order'), onPressed: () => _convert(list.firstWhere((q) => q.status == 'ACCEPTED' && q.orderId == null)), icon: const Icon(Icons.inventory_2_outlined), label: Text(l.cqConvertToOrder)),
         if (china) FilledButton.tonalIcon(key: const Key('quote-add'), onPressed: () => _edit(), icon: const Icon(Icons.add), label: Text(l.lqAdd)),
       ]),
       if (_failed) Text(l.lqLoadFail, style: TextStyle(color: t.colorScheme.error)),

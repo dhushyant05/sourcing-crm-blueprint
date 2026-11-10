@@ -221,3 +221,37 @@ describe('notification stream', () => {
     ac.abort(); await app.close();
   });
 });
+
+describe('convert accepted quote to order', () => {
+  it('prefills from the accepted customer quote, is idempotent, and serializes a double submit', async () => {
+    const { call, ids } = await setup();
+    const lead = (await call('is', 'POST', '/api/records/leads', { name: 'L', clientName: 'Cust', productInterest: 'P' })).json().data;
+    await call('is', 'POST', `/api/leads/${lead.id}/assign`, { office: 'CHINA', assignedTo: ids.cs });
+    const q = (await call('cs', 'POST', `/api/leads/${lead.id}/quotes`, { product: 'Widget', unitPrice: 12, currency: 'USD' })).json().data;
+    await call('is', 'PUT', `/api/quotes/${q.id}/customer`, { qty: 80, unitPrice: 250 });
+    await call('is', 'POST', `/api/quotes/${q.id}/status`, { status: 'SENT' });
+    await call('is', 'POST', `/api/quotes/${q.id}/status`, { status: 'ACCEPTED' });
+    expect((await call('cs', 'POST', `/api/quotes/${q.id}/order`, {})).statusCode).toBe(403);
+    const first = await call('is', 'POST', `/api/quotes/${q.id}/order`, {});
+    expect(first.statusCode).toBe(201);
+    expect(first.json().data).toMatchObject({ qty: 80, agreedPrice: 250, paymentStatus: 'PENDING', advance: 0, product: 'Widget' });
+    const again = await call('is', 'POST', `/api/quotes/${q.id}/order`, {});
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toMatch(/already has an order/i);
+    expect((await call('is', 'GET', '/api/orders')).json().data.filter((o: any) => o.quoteId === q.id || o.id === first.json().data.id)).toHaveLength(1);
+
+    const lead2 = (await call('is', 'POST', '/api/records/leads', { name: 'L2', clientName: 'Cust', productInterest: 'P2' })).json().data;
+    await call('is', 'POST', `/api/leads/${lead2.id}/assign`, { office: 'CHINA', assignedTo: ids.cs });
+    const q2 = (await call('cs', 'POST', `/api/leads/${lead2.id}/quotes`, { product: 'Widget2', unitPrice: 1, currency: 'USD' })).json().data;
+    await call('is', 'PUT', `/api/quotes/${q2.id}/customer`, { qty: 5, unitPrice: 10 });
+    await call('is', 'POST', `/api/quotes/${q2.id}/status`, { status: 'SENT' });
+    await call('is', 'POST', `/api/quotes/${q2.id}/status`, { status: 'ACCEPTED' });
+    const raced = await Promise.all([0, 1, 2].map(() => call('is', 'POST', `/api/quotes/${q2.id}/order`, {})));
+    const oks = raced.filter((r) => r.statusCode === 201);
+    const dups = raced.filter((r) => r.statusCode === 409);
+    expect(oks).toHaveLength(1);
+    expect(dups).toHaveLength(2);
+    expect((await call('is', 'GET', '/api/orders')).json().data.filter((o: any) => o.leadId === lead2.id)).toHaveLength(1);
+    expect((await call('sa', 'POST', `/api/quotes/${q2.id}/order`, {})).statusCode).toBe(409);
+  });
+});

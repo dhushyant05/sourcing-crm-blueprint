@@ -148,7 +148,11 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
   Future<void> _order() async {
     final repo = context.read<Session>().repo, l = context.l10n;
     await _run(() async {
-      await repo.createOrder(q.id, {'qty': q.cq?['qty'], 'agreedPrice': q.cq?['unitPrice'], 'paymentStatus': 'PENDING'});
+      try {
+        await repo.createOrder(q.id, {'qty': q.cq?['qty'], 'agreedPrice': q.cq?['unitPrice'], 'paymentStatus': 'PENDING'});
+      } catch (e) {
+        if (!'$e'.toLowerCase().contains('already has an order')) rethrow;
+      }
       final nq = (await repo.leadQuotes(q.leadId ?? widget.lead?.id ?? '')).where((x) => x.id == q.id).firstOrNull;
       if (nq != null) setState(() => q = nq);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.cqOrderCreated)));
@@ -201,7 +205,7 @@ class _CustomerQuoteScreenState extends State<CustomerQuoteScreen> {
           FilledButton(key: const Key('cq-accept'), onPressed: _busy ? null : () => _status('ACCEPTED'), child: Text(l.cqAccept)),
           OutlinedButton(key: const Key('cq-reject'), onPressed: _busy ? null : _reject, child: Text(l.cqReject)),
         ]),
-        if (q.status == 'ACCEPTED' && q.orderId == null) FilledButton.icon(key: const Key('cq-order'), onPressed: _busy ? null : _order, icon: const Icon(Icons.inventory_2_outlined), label: Text(l.cqCreateOrder)),
+        if (q.status == 'ACCEPTED' && q.orderId == null && context.read<Session>().perms.canCreateOrder) FilledButton.icon(key: const Key('cq-order'), onPressed: _busy ? null : _order, icon: const Icon(Icons.inventory_2_outlined), label: Text(l.cqConvertToOrder)),
         if (q.status == 'ACCEPTED' && context.read<Session>().role.code == 'SUPER_ADMIN') Padding(padding: const EdgeInsets.only(top: 8),
             child: OutlinedButton.icon(key: const Key('cq-revert'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red), onPressed: _busy ? null : _revert,
                 icon: const Icon(Icons.undo), label: Text(tw(context, 'cq.revert')))),

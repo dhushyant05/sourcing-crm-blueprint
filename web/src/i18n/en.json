@@ -640,6 +640,7 @@
     "decided": "{{s}} on {{d}}",
     "reopen": "Reopen as draft",
     "createOrder": "Create order",
+    "convertToOrder": "Convert to order",
     "viewOrder": "Order created — view in Orders",
     "noCustomerSide": "Hidden from China: customer price and details.",
     "msg": "Hello {{name}}, please find our quotation {{ref}} for {{product}}: {{url}}\n— Source Easy · Sourcing made easy · sourceeasy.in",

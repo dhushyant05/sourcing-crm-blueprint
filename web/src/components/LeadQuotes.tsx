@@ -23,7 +23,15 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
   // Live: another user added/removed a quote or quote file on this lead.
   useEffect(() => { const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.leadId === leadId && d?.type === 'quote') void load(); }; addEventListener('se:data', h); return () => removeEventListener('se:data', h); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
   const canEdit = (q: LeadQuote) => !!q.canEdit;
+  const convertibles = (list ?? []).filter((q) => q.status === 'ACCEPTED' && !q.orderId);
   const replace = (q: LeadQuote) => setList((l) => l && (l.some((x) => x.id === q.id) ? l.map((x) => (x.id === q.id ? q : x)) : [...l, q]));
+  const [convBusy, setConvBusy] = useState(false), [convErr, setConvErr] = useState<string | null>(null);
+  const convert = async (q: LeadQuote) => {
+    setConvBusy(true); setConvErr(null);
+    try { const o = await api.createOrder(q.id, {}); replace({ ...q, orderId: o.id }); if (onLeadStatus) onLeadStatus('WON'); }
+    catch (e) { const m = (e as Error).message; if (/already has an order/i.test(m)) { void load(); } else setConvErr(m); }
+    finally { setConvBusy(false); }
+  };
   const del = async (q: LeadQuote) => {
     if (!confirm(t('lq.confirmDelete', { p: q.product }))) return;
     try { await api.deleteQuote(q.id); setList((l) => l && l.filter((x) => x.id !== q.id)); } catch (e) { setErr((e as Error).message); }
@@ -31,9 +39,12 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
   return (<section data-testid="lead-quotes">
     <div className="mt-6 flex items-center justify-between">
       <h3 className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('lq.title')}{list && list.length > 0 && ` · ${list.length}`}</h3>
-      {china && perms.can('quotes.create') && !form && <button data-testid="quote-add" className="btn-primary !py-1.5 text-sm" onClick={() => setForm('new')}><Plus size={15} />{t('lq.add')}</button>}
+      <div className="flex items-center gap-2">
+        {india && perms.can('orders.create') && convertibles[0] && <button data-testid="lead-convert-order" className="btn-primary !py-1.5 text-sm" disabled={convBusy} onClick={() => void convert(convertibles[0])}><Play size={15} />{t('cq.convertToOrder')}</button>}
+        {china && perms.can('quotes.create') && !form && <button data-testid="quote-add" className="btn-primary !py-1.5 text-sm" onClick={() => setForm('new')}><Plus size={15} />{t('lq.add')}</button>}
+      </div>
     </div>
-    {err && <p role="alert" className="mt-2 text-sm text-rose-600">{err}</p>}
+    {(err || convErr) && <p role="alert" className="mt-2 text-sm text-rose-600">{err || convErr}</p>}
     {form && <QuoteForm leadId={leadId} quote={form === 'new' ? null : form} onDone={(q) => { if (q) replace(q); setForm(null); }} />}
     {!list ? <p className="mt-2 text-sm text-ink-400">{t('leads.loadingFiles')}</p> : list.length === 0 ? <p className="mt-2 text-sm text-ink-400">{china ? t('lq.noneChina') : t('lq.none')}</p> : (
       <ul className="mt-3 space-y-3">

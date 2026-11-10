@@ -2090,6 +2090,12 @@ abstract class AppLocalizations {
   /// **'Create order'**
   String get cqCreateOrder;
 
+  /// No description provided for @cqConvertToOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Convert to order'**
+  String get cqConvertToOrder;
+
   /// No description provided for @cqOrderCreated.
   ///
   /// In en, this message translates to:

@@ -140,6 +140,11 @@ describe('customer portal: realm separation and per-customer isolation', () => {
     expect(acc.statusCode).toBe(200);
     expect(acc.json().data.quotes[0]).toMatchObject({ status: 'ACCEPTED', canDecide: false });
     expect(acc.json().data.orders).toHaveLength(0);
+    const accFlow = acc.json().data.workflow;
+    expect(accFlow.outcome).toBeNull();
+    expect(accFlow.steps.find((s: any) => s.key === 'accepted')).toMatchObject({ state: 'done', label: 'Accepted' });
+    expect(accFlow.steps.find((s: any) => s.key === 'order')).toMatchObject({ state: 'current', label: 'Order confirmed' });
+    expect(JSON.stringify(accFlow)).not.toMatch(/Ningbo|supplier|Staff /);
     expect((await as(A.token, 'POST', `/api/portal/quotes/${q.id}/accept`)).statusCode).toBe(409);
     expect((await call('is', 'GET', `/api/records/leads/${req.id}`)).json().data.status).toBe('WON');
     expect((await call('is', 'GET', '/api/orders')).json().data.filter((o: any) => o.leadId === req.id)).toHaveLength(0);
@@ -160,6 +165,9 @@ describe('customer portal: realm separation and per-customer isolation', () => {
     expect(d.orders[0]).toMatchObject({ qty: 500, value: 120000, currency: 'INR', paymentStatus: 'PENDING' });
     expect(Object.keys(d.orders[0]).sort()).toEqual(['createdAt', 'currency', 'id', 'paymentStatus', 'product', 'qty', 'shipment', 'value']);
     expect(d.timeline.map((e: any) => e.text)).toContain('Order confirmed');
+    expect(d.workflow.steps.find((s: any) => s.key === 'order')).toMatchObject({ state: 'done', label: 'Order confirmed' });
+    expect(d.workflow.steps.find((s: any) => s.key === 'payment').state).toBe('current');
+    expect(d.workflow.steps.find((s: any) => s.key === 'order').at).toBeTruthy();
     // B still sees only its own.
     expect((await as(B.token, 'GET', '/api/portal/requests')).json().data.map((x: any) => x.reference)).toEqual([B.ref]);
   });
@@ -176,6 +184,8 @@ describe('customer portal: realm separation and per-customer isolation', () => {
     const r = await as(A.token, 'POST', `/api/portal/quotes/${q.id}/reject`, { reasonCode: 'PRICE', reason: 'Too high' });
     expect(r.statusCode).toBe(200);
     expect(r.json().data.quotes[0].status).toBe('REJECTED');
+    expect(r.json().data.workflow.outcome).toBe('rejected');
+    expect(r.json().data.workflow.steps.some((s: any) => s.state === 'current')).toBe(false);
     const l = (await call('ia', 'GET', `/api/records/leads/${lead.id}`)).json().data;
     expect(l.ownerOffice).toBe('INDIA');
     expect(l.rejection.actionNeeded).toBe(true);

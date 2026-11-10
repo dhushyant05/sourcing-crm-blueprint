@@ -6,6 +6,7 @@ import '../api.dart';
 import '../format.dart';
 import '../widgets.dart';
 import 'requests.dart' show SectionTitle, declineDialog, kv;
+import '../workflow.dart';
 
 class ShippingTile extends StatelessWidget {
   const ShippingTile(this.r, {super.key, required this.onTap});
@@ -74,6 +75,8 @@ class _ShippingDetailScreenState extends State<ShippingDetailScreen> {
       appBar: AppBar(title: Text('${r['reference']}')),
       body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(16), children: [
         Row(children: [Expanded(child: Text('${r['goods']}', style: Theme.of(context).textTheme.titleLarge)), Pill(srStatus[srShown(r)] ?? srShown(r))]),
+        const SizedBox(height: 12),
+        WorkflowTracker(r['workflow'] is Map ? r['workflow'] as Json : null),
         const SizedBox(height: 8),
         kv('Type', r['kind'] == 'SOURCED' ? 'Sourced order ${r['leadReference'] ?? ''}' : 'Freight only'),
         kv('Quantity', r['quantity'] != null ? '${r['quantity']} ${r['unit'] ?? ''}' : null),

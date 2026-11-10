@@ -33,14 +33,19 @@ export class OrderStore {
     etd: r.etd, eta: r.eta, indiaStatus: r.india_status, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at, closedAt: r.closed_at ?? null });
   async all(): Promise<Order[]> { return ((await this.db.all('SELECT * FROM orders ORDER BY created_at DESC, id')) as any[]).map(this.o); }
   async byLead(leadId: string): Promise<Order[]> { return (await this.db.all('SELECT * FROM orders WHERE lead_id = ? ORDER BY created_at DESC, id', leadId)).map(this.o); }
-  async get(id: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE id = ?', id)); return r ? this.o(r) : null; }
-  async byQuote(qid: string): Promise<Order | null> { const r = (await this.db.get('SELECT * FROM orders WHERE quote_id = ?', qid)); return r ? this.o(r) : null; }
-  async create(x: { leadId: string; quoteId: string; leadRef: string | null; product: string }, b: Record<string, unknown>, by: string): Promise<Order> {
+  async get(id: string, db: Db = this.db): Promise<Order | null> { const r = (await db.get('SELECT * FROM orders WHERE id = ?', id)); return r ? this.o(r) : null; }
+  async byQuote(qid: string, db: Db = this.db): Promise<Order | null> { const r = (await db.get('SELECT * FROM orders WHERE quote_id = ?', qid)); return r ? this.o(r) : null; }
+  async create(x: { leadId: string; quoteId: string; leadRef: string | null; product: string }, b: Record<string, unknown>, by: string, db: Db = this.db): Promise<Order> {
     const id = randomUUID(), at = new Date().toISOString();
-    (await this.db.run(`INSERT INTO orders (id, lead_id, quote_id, lead_ref, product, qty, agreed_price, advance, payment_status, expected_ship, production, india_status, created_by, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, x.leadId, x.quoteId, x.leadRef, x.product, n(b.qty, 'Quantity', true), n(b.agreedPrice, 'Agreed price', true), n(b.advance, 'Advance'),
-      one(b.paymentStatus ?? 'PENDING', PAYMENT, 'Payment status'), date(b.expectedShip, 'Expected ship date'), 'NEW', 'NONE', by, at, at));
-    return (await this.get(id))!;
+    try {
+      await db.run(`INSERT INTO orders (id, lead_id, quote_id, lead_ref, product, qty, agreed_price, advance, payment_status, expected_ship, production, india_status, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, x.leadId, x.quoteId, x.leadRef, x.product, n(b.qty, 'Quantity', true), n(b.agreedPrice, 'Agreed price', true), n(b.advance, 'Advance'),
+        one(b.paymentStatus ?? 'PENDING', PAYMENT, 'Payment status'), date(b.expectedShip, 'Expected ship date'), 'NEW', 'NONE', by, at, at);
+    } catch (e: any) {
+      if (e?.code === '23505' || /unique|duplicate key/i.test(String(e?.message ?? e))) { const err = new BadQuote('This quote already has an order'); err.status = 409; throw err; }
+      throw e;
+    }
+    return (await this.get(id, db))!;
   }
   async update(id: string, b: Record<string, unknown>): Promise<Order> {
     const c = (await this.get(id))!, h = (k: string) => k in b;
