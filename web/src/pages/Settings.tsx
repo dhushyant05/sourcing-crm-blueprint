@@ -7,6 +7,7 @@ import { useApp, useLoad } from '../lib/store';
 import { CURRENCIES, label, symbol } from '../lib/currency';
 import { PageHeader } from '../components/ui';
 import { StorageCard } from '../components/Storage';
+import { staffReq } from '../catalog/api';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 
 export function Settings() {
@@ -58,6 +59,7 @@ export function Settings() {
         )}
       </div>
       {session?.role === 'SUPER_ADMIN' && api.notificationOutbox && <Outbox />}
+      {session?.role === 'SUPER_ADMIN' && <CatalogSettingsCard />}
       {session?.role === 'SUPER_ADMIN' && api.storage && <StorageCard />}
     </>
   );
@@ -108,6 +110,65 @@ function Outbox() {
           {(['at', 'channel', 'template', 'customer', 'status', 'reason'] as const).map((c) => <th key={c} className="pr-3">{t(`outbox.col.${c}`)}</th>)}</tr></thead>
           <tbody>{d.rows.map((r) => <tr key={r.id} className="border-t border-ink-100 dark:border-ink-800"><td className="py-1 pr-3">{when(r.createdAt)}</td><td className="pr-3">{r.channel}</td><td className="pr-3">{r.template}</td>
             <td className="pr-3 font-mono">{r.label || r.reference || ''}</td><td className="pr-3">{r.status}</td><td>{r.reason ?? ''}</td></tr>)}</tbody></table></div>}</>}
+    </section>
+  );
+}
+
+function CatalogSettingsCard() {
+  const { session } = useApp();
+  const [homepageEnabled, setHomepageEnabled] = useState(false);
+  const [direction, setDirection] = useState<'LTR' | 'RTL'>('LTR');
+  const [interval, setInterval] = useState(5);
+  const [msg, setMsg] = useState<string | null>(null);
+  const demo = !!session?.demo;
+  useEffect(() => {
+    if (demo) { setHomepageEnabled(true); return; }
+    void staffReq<{ data: any }>('GET', '/api/catalog/settings').then((r) => {
+      setHomepageEnabled(!!r.data.homepageEnabled);
+      setDirection(r.data.direction === 'RTL' ? 'RTL' : 'LTR');
+      setInterval(Number(r.data.intervalSeconds) || 5);
+    }).catch(() => undefined);
+  }, [demo]);
+  const save = async () => {
+    if (demo) { setMsg('Saved in demo (not sent to the server).'); return; }
+    await staffReq('PATCH', '/api/catalog/settings', { homepageEnabled, bannerDirection: direction, bannerIntervalSeconds: interval });
+    setMsg('Marketplace settings saved.');
+  };
+  const seed = async () => {
+    if (demo) { setMsg('Demo already includes sample products.'); return; }
+    const r = await staffReq<{ data: { products: number; banners: number } }>('POST', '/api/catalog/samples/seed', {});
+    setMsg(`Added ${r.data.products} sample products and ${r.data.banners} banners. Turn the homepage on when you are ready.`);
+  };
+  const remove = async () => {
+    if (!confirm('Remove every sample product and sample banner? This is a soft delete; you can restore products individually.')) return;
+    if (demo) { setMsg('Samples would be removed on a live server.'); return; }
+    const r = await staffReq<{ data: { products: number; banners: number } }>('POST', '/api/catalog/samples/remove', {});
+    setMsg(`Removed ${r.data.products} sample products.`);
+  };
+  return (
+    <section className="card mt-6 p-6" data-testid="catalog-settings">
+      <h2 className="font-semibold text-ink-900 dark:text-white">Marketplace</h2>
+      <p className="mt-1 text-sm text-ink-500">The public catalog stays hidden until this switch is on and at least one product is published. Sample products are added only when you ask — they are labelled Sample and can be removed in one action.</p>
+      <label className="mt-4 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={homepageEnabled} onChange={(e) => setHomepageEnabled(e.target.checked)} /> Show the marketplace as the homepage
+      </label>
+      <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        <label className="flex items-center gap-2">Banner direction
+          <select className="input w-auto" value={direction} onChange={(e) => setDirection(e.target.value as 'LTR' | 'RTL')}>
+            <option value="LTR">Left to right</option>
+            <option value="RTL">Right to left</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2">Interval (seconds)
+          <input className="input w-20" type="number" min={3} max={10} value={interval} onChange={(e) => setInterval(Number(e.target.value))} />
+        </label>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="btn-primary" onClick={() => void save().catch((e) => setMsg((e as Error).message))}>Save settings</button>
+        <button className="btn-outline" onClick={() => void seed().catch((e) => setMsg((e as Error).message))}>Add sample products</button>
+        <button className="btn-outline text-red-600" onClick={() => void remove().catch((e) => setMsg((e as Error).message))}>Remove all samples</button>
+      </div>
+      {msg && <p className="mt-3 text-sm text-ink-600">{msg}</p>}
     </section>
   );
 }

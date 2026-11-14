@@ -21,7 +21,9 @@
     "toggleSidebar": "切换侧栏",
     "orders": "订单",
     "customers": "客户",
-    "greetings": "节日问候"
+    "greetings": "节日问候",
+    "products": "产品",
+    "banners": "横幅"
   },
   "header": {
     "search": "按参考编号、线索、产品搜索…",
@@ -36,14 +38,16 @@
     "CHINA_STAFF": "中国员工",
     "INDIA_ADMIN": "印度管理员",
     "CHINA_ADMIN": "中国管理员",
-    "SUPER_ADMIN": "超级管理员"
+    "SUPER_ADMIN": "超级管理员",
+    "MARKETPLACE_TEAM": "商城团队"
   },
   "office": {
     "INDIA_STAFF": "印度办公室用户",
     "INDIA_ADMIN": "印度办公室用户",
     "CHINA_STAFF": "中国办公室用户",
     "CHINA_ADMIN": "中国办公室用户",
-    "SUPER_ADMIN": "所有办公室"
+    "SUPER_ADMIN": "所有办公室",
+    "MARKETPLACE_TEAM": "商城团队"
   },
   "status": {
     "NEW": "新建",
@@ -911,7 +915,8 @@
       "reports": "报表与导出",
       "leads": "线索",
       "admin": "管理",
-      "customers": "客户"
+      "customers": "客户",
+      "catalog": "产品目录"
     },
     "k": {
       "suppliers.view": "查看供应商列表",
@@ -933,7 +938,12 @@
       "customers.edit": "添加 / 编辑 / 合并客户",
       "portal.logins.manage": "开通客户门户登录",
       "greetings.manage": "管理问候横幅",
-      "greetings.publish": "发布问候横幅"
+      "greetings.publish": "发布问候横幅",
+      "catalog.edit": "添加和编辑产品",
+      "catalog.price": "设置售价",
+      "catalog.publish": "发布产品",
+      "catalog.delete": "删除产品",
+      "catalog.banners": "管理商城横幅"
     }
   },
   "del": {

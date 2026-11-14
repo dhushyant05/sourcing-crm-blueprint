@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'api.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
+import 'screens/marketplace.dart';
 import 'push.dart';
 import 'session.dart';
 import 'updater.dart';
@@ -53,9 +54,22 @@ class CustomerApp extends StatelessWidget {
         theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: brand), useMaterial3: true),
         home: ListenableBuilder(listenable: session, builder: (context, _) {
           if (session.restoring) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-          if (!session.signedIn) return LoginScreen(key: const Key('login'), session: session);
+          if (!session.signedIn) return _GuestShell(session: session);
           if (session.mustChangePassword) return ChangePasswordScreen(key: const Key('forced-pw'), session: session, forced: true);
           return UpdateGate(updater: updater, child: HomeScreen(key: ValueKey('home-${session.api.token.hashCode}'), session: session, live: live));
+        }),
+      );
+}
+
+
+class _GuestShell extends StatelessWidget {
+  const _GuestShell({required this.session});
+  final Session session;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Row(children: [Image.asset('assets/brand/mark.png', height: 28), const SizedBox(width: 8), const Text('Source Easy')])),
+        body: MarketplaceTab(api: session.api, onSignIn: () {
+          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LoginScreen(key: const Key('login'), session: session)));
         }),
       );
 }

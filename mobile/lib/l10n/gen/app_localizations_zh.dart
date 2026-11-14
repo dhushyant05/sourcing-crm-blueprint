@@ -554,6 +554,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get codeSuperAdmin => '超级管理员';
 
   @override
+  String get codeMarketplaceTeam => '商城团队';
+
+  @override
   String get client => '客户';
 
   @override

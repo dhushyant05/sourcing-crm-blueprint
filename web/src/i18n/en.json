@@ -21,7 +21,9 @@
     "toggleSidebar": "Toggle sidebar",
     "orders": "Orders",
     "customers": "Customers",
-    "greetings": "Greetings"
+    "greetings": "Greetings",
+    "products": "Products",
+    "banners": "Banners"
   },
   "header": {
     "search": "Search by reference, lead, product…",
@@ -36,14 +38,16 @@
     "CHINA_STAFF": "China staff",
     "INDIA_ADMIN": "India admin",
     "CHINA_ADMIN": "China admin",
-    "SUPER_ADMIN": "Super admin"
+    "SUPER_ADMIN": "Super admin",
+    "MARKETPLACE_TEAM": "Marketplace team"
   },
   "office": {
     "INDIA_STAFF": "India office users",
     "INDIA_ADMIN": "India office users",
     "CHINA_STAFF": "China office users",
     "CHINA_ADMIN": "China office users",
-    "SUPER_ADMIN": "All offices"
+    "SUPER_ADMIN": "All offices",
+    "MARKETPLACE_TEAM": "Catalog only"
   },
   "status": {
     "NEW": "New",
@@ -911,7 +915,8 @@
       "reports": "Reports & export",
       "leads": "Leads",
       "admin": "Administration",
-      "customers": "Customers"
+      "customers": "Customers",
+      "catalog": "Catalog"
     },
     "k": {
       "suppliers.view": "View suppliers list",
@@ -933,7 +938,12 @@
       "customers.edit": "Add / edit / merge customers",
       "portal.logins.manage": "Issue customer portal logins",
       "greetings.manage": "Manage greeting banners",
-      "greetings.publish": "Publish greeting banners"
+      "greetings.publish": "Publish greeting banners",
+      "catalog.edit": "Add and edit products",
+      "catalog.price": "Set selling prices",
+      "catalog.publish": "Publish products",
+      "catalog.delete": "Delete products",
+      "catalog.banners": "Manage marketplace banners"
     }
   },
   "del": {

@@ -13,21 +13,27 @@ import { Login } from './pages/Login';
 import { Team } from './pages/Team';
 import { Greetings } from './pages/Greetings';
 import { Landing } from './pages/Landing';
+import { Marketplace } from './catalog/Marketplace';
+import { publicCatalog } from './catalog/api';
+import { Products } from './pages/Products';
+import { Banners } from './pages/Banners';
 import { DownloadPage } from './pages/Download';
 import { Portal } from './portal/Portal';
 import type { Lead } from './lib/types';
 
-const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'greetings', 'users', 'settings'];
-const fromHash = (): Route => (routes.find((r) => location.hash === `#/${r}`) ?? 'dashboard');
+const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'greetings', 'products', 'banners', 'users', 'settings'];
+const fromHash = (fallback: Route = 'dashboard'): Route => (routes.find((r) => location.hash === `#/${r}`) ?? fallback);
 
 function Shell() {
   const { session, perms, api } = useApp();
-  const [route, setRoute] = useState<Route>(fromHash);
+  const catalogOnly = session?.role === 'MARKETPLACE_TEAM';
+  const [route, setRoute] = useState<Route>(() => fromHash(catalogOnly ? 'products' : 'dashboard'));
   const [search, setSearch] = useState('');
   const [lead, setLead] = useState<Lead | null>(null);
-  useEffect(() => { const h = () => setRoute(fromHash()); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, []);
-  if (!session) return <Login />;
   const go = (r: Route) => { location.hash = `/${r}`; };
+  useEffect(() => { const h = () => setRoute(fromHash(catalogOnly ? 'products' : 'dashboard')); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, [catalogOnly]);
+  useEffect(() => { if (catalogOnly && !['products', 'banners', 'settings'].includes(route)) go('products'); }, [catalogOnly, route]);
+  if (!session) return <Login />;
   return (
     <Layout openLeadId={(id) => { void api.lead(id).then((l) => l && setLead(l)); }} route={route} go={go} search={search} setSearch={(s) => { setSearch(s); if (s && route === 'dashboard') go('leads'); }}>
       {route === 'dashboard' && <Dashboard openLead={setLead} />}
@@ -38,6 +44,8 @@ function Shell() {
       {route === 'customers' && perms.customers && perms.can('customers.view') && <Customers search={search} openLead={(id) => { void api.lead(id).then((l) => l && setLead(l)); }} />}
       {route === 'suppliers' && perms.suppliers && perms.can('suppliers.view') && <Suppliers search={search} />}
       {route === 'greetings' && perms.can('greetings.manage') && <Greetings />}
+      {route === 'products' && perms.can('catalog.edit') && <Products />}
+      {route === 'banners' && perms.can('catalog.banners') && <Banners />}
       {route === 'users' && perms.manageUsers && <Team />}
       {route === 'settings' && <Settings />}
       <LeadPanel lead={lead} onClose={() => setLead(null)} />
@@ -52,4 +60,11 @@ const isDownload = () => /^\/download\/?$/.test(location.pathname);
 // Customer portal at /portal: its own login realm, English only.
 const isPortal = () => /^\/portal(\/|$)/.test(location.pathname);
 
-export default function App() { if (isPortal()) return <Portal />; return <AppProvider>{isDownload() ? <DownloadPage /> : isApp() ? <Shell /> : <Landing />}</AppProvider>; }
+function PublicSite() {
+  const [mode, setMode] = useState<'loading' | 'landing' | 'market'>('loading');
+  useEffect(() => { publicCatalog.status().then((s) => setMode(s.showMarketplace ? 'market' : 'landing')).catch(() => setMode('landing')); }, []);
+  if (mode === 'loading') return <div className="min-h-screen bg-white" />;
+  return mode === 'market' ? <Marketplace /> : <Landing />;
+}
+
+export default function App() { if (isPortal()) return <Portal />; return <AppProvider>{isDownload() ? <DownloadPage /> : isApp() ? <Shell /> : <PublicSite />}</AppProvider>; }

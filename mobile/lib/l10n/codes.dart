@@ -58,6 +58,7 @@ String codeLabel(BuildContext context, String? code) {
     'INDIA_ADMIN' => l.codeIndiaAdmin,
     'CHINA_ADMIN' => l.codeChinaAdmin,
     'SUPER_ADMIN' => l.codeSuperAdmin,
+    'MARKETPLACE_TEAM' => l.codeMarketplaceTeam,
     _ => code.split('_').map((w) => w.isEmpty ? w : w[0] + w.substring(1).toLowerCase()).join(' '),
   };
 }

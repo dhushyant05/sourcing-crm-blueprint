@@ -8,8 +8,8 @@ import type { Attachment } from './uploads.js';
  * unlisted files) is ignored — never scanned for deletion. Nothing here deletes.
  */
 export const KEY_RE = /^[\w-]{1,64}$/, FILE_RE = /^[\w-]{1,32}$/;
-export type OwnerKind = 'LEAD' | 'QUOTE' | 'SHIPPING' | 'GREETING';
-export const ownerKind = (key: string): OwnerKind => key.startsWith('q_') ? 'QUOTE' : key.startsWith('sr_') ? 'SHIPPING' : key.startsWith('gr_') ? 'GREETING' : 'LEAD';
+export type OwnerKind = 'LEAD' | 'QUOTE' | 'SHIPPING' | 'GREETING' | 'PRODUCT' | 'BANNER';
+export const ownerKind = (key: string): OwnerKind => key.startsWith('q_') ? 'QUOTE' : key.startsWith('sr_') ? 'SHIPPING' : key.startsWith('gr_') ? 'GREETING' : key.startsWith('p_') ? 'PRODUCT' : key.startsWith('bn_') ? 'BANNER' : 'LEAD';
 export const fileType = (mime: string) => mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'document';
 
 export interface StoredFile { key: string; id: string; name: string; mime: string; type: string; size: number; createdAt: string; missing: boolean; owner: OwnerKind }

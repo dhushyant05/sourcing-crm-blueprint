@@ -1148,6 +1148,12 @@ abstract class AppLocalizations {
   /// **'Super Admin'**
   String get codeSuperAdmin;
 
+  /// No description provided for @codeMarketplaceTeam.
+  ///
+  /// In en, this message translates to:
+  /// **'Marketplace team'**
+  String get codeMarketplaceTeam;
+
   /// No description provided for @client.
   ///
   /// In en, this message translates to:

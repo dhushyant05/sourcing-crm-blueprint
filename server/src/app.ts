@@ -31,6 +31,7 @@ import { AssignStore, type Assignment, type Office, type NotifKind } from './ass
 import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 import { PortalStore, PortalError, loginView, tempPassword, customerStage, sourcingFlow, freightFlow, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
+import { registerPublicCatalog, registerStaffCatalog, marketplaceTeamAllowed, CatalogStore } from './catalog.js';
 
 export interface AppOptions {
   db: Db;
@@ -516,8 +517,73 @@ export async function buildApp(o: AppOptions) {
     return reply.code(201).send({ ok: true, reference: leadRef, attachments: files.length, ...(loginRequested ? { loginRequested } : {}) });
   });
 
+  const createCatalogEnquiry = async (input: {
+    product: { id: string; title: string; slug: string };
+    name: string; phone: string; phoneCode: string; email?: string; company?: string;
+    quantity?: number; unit?: string; message?: string; city?: string; requestLogin?: boolean; customerId?: string;
+  }) => {
+    const code = input.phoneCode || '+91';
+    let digits = input.phone.replace(/[\s\-().]/g, '');
+    if (digits.startsWith(code)) digits = digits.slice(code.length);
+    if (!/^\+\d{1,4}$/.test(code) || !/^\d{6,14}$/.test(digits) || (code === '+91' && !/^[6-9]\d{9}$/.test(digits)))
+      throw Object.assign(new Error('Invalid mobile number'), { status: 400, appCode: 'phone' });
+    if (input.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email))
+      throw Object.assign(new Error('Invalid email'), { status: 400, appCode: 'email' });
+    const leadRef = await nextRef();
+    const company = (input.company || input.name).slice(0, 160);
+    const product = input.product.title;
+    const lead = await leadDb.create({
+      name: `${company} — ${product}`.slice(0, 200), clientName: company, productInterest: product,
+      ...(input.quantity && input.quantity > 0 ? { quantity: input.quantity, unit: input.unit || 'pcs' } : {}),
+      contactPhone: { primaryPhoneNumber: digits, primaryPhoneCallingCode: code },
+      ...(input.email ? { contactEmail: { primaryEmail: input.email } } : {}),
+      ...(input.city ? { deliveryCity: input.city } : {}),
+      ...(input.message ? { enquiryMessage: input.message } : {}),
+      contactName: input.name, leadRef, sourceChannel: 'CATALOG', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
+    } as Rec);
+    await o.db.run('UPDATE leads SET catalog_product_id = ? WHERE id = ?', input.product.id, String(lead.id));
+    await ev(String(lead.id), 'CREATED', null, { channel: 'CATALOG', productId: input.product.id });
+    await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null);
+    {
+      const admins = new Set(queueWatchers('INDIA'));
+      const staff = o.users.list().filter((u) => u.active && officeOf(u.role) === 'INDIA' && !admins.has(u.id)).map((u) => u.id);
+      if (staff.length) await assign.notify(staff, { leadId: String(lead.id), leadRef, product, kind: 'QUEUE', office: 'INDIA', byName: null });
+      await liveData({ type: 'lead', id: String(lead.id), leadId: String(lead.id), created: true, at: Date.now() });
+    }
+    let loginRequested = false;
+    if (input.requestLogin) {
+      const r = await portal.request({ leadId: String(lead.id), name: input.name, phone: `${code} ${digits}`, email: input.email || null, company: company || null });
+      if (r) {
+        loginRequested = true;
+        await portal.audit({ id: null, kind: 'PUBLIC' }, 'LOGIN_REQUESTED', r.id, { leadRef });
+        await assign.notify(queueWatchers('INDIA'), { leadId: String(lead.id), leadRef, product, kind: 'LOGIN_REQUEST', office: 'INDIA', byName: null });
+      }
+    }
+    return { leadId: String(lead.id), leadRef, loginRequested };
+  };
+
+  const catalogDeps = {
+    db: o.db, uploads, perms, mediaSync, createEnquiry: createCatalogEnquiry,
+    livePublicGreetings: async () => {
+      const live = await greetings.live('PUBLIC');
+      return live.filter((g) => g.imageDesktop).map((g, i) => ({
+        id: `gr-${g.id}`, sort: -100 - i, altText: g.altText || g.heading || 'Source Easy',
+        imageUrl: `/api/public/greetings/${g.id}/image/desktop?v=${g.version}`,
+        mobileUrl: g.imageMobile ? `/api/public/greetings/${g.id}/image/mobile?v=${g.version}` : null,
+        href: g.linkPath ?? null, source: 'greeting' as const,
+      }));
+    },
+  };
+  registerPublicCatalog(app, catalogDeps);
+
   app.register(async (api) => {
     api.addHook('preHandler', auth);
+    api.addHook('preHandler', async (req, reply) => {
+      const u = req.user; if (!u || u.role !== 'MARKETPLACE_TEAM') return;
+      const path = req.routeOptions.url ?? '';
+      if (!marketplaceTeamAllowed(path)) return reply.code(403).send({ error: 'This login can only manage the catalog' });
+    });
+    registerStaffCatalog(api, catalogDeps);
     // Feature permissions: one 403 gate per endpoint (route pattern + method), after authentication.
     const PAY = ['qty', 'agreedPrice', 'advance', 'paymentStatus'], INR = ['agreedPrice', 'advance'];
     const GATES: Record<string, (u: User, b: Rec) => string[]> = {
@@ -1986,6 +2052,32 @@ export async function buildApp(o: AppOptions) {
       await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'REQUEST_CREATED', c.customerId, { leadRef });
       return reply.code(201).send({ data: await portalRequest((await leadDb.get(lid))!, true) });
     });
+    api.post('/api/portal/catalog/enquire', async (req, reply) => {
+      const c = req.customer!;
+      const b = (req.body ?? {}) as Rec;
+      const productId = String(b.productId ?? '').trim();
+      if (!productId) return reply.code(400).send({ error: 'Choose a product', code: 'product' });
+      const product = await new CatalogStore(o.db).get(productId);
+      if (!product || product.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Product not found' });
+      const cust = await customers.get(c.customerId);
+      const qty = Number(b.quantity ?? 0);
+      try {
+        const out = await createCatalogEnquiry({
+          product: { id: product.id, title: product.title, slug: product.slug },
+          name: c.name, phone: String(c.phone ?? ''), phoneCode: '+91',
+          email: c.email || cust?.email || undefined, company: cust?.company || c.name,
+          quantity: qty > 0 ? qty : undefined, unit: String(b.unit ?? 'pcs'),
+          message: String(b.message ?? '').slice(0, 2000) || undefined,
+          city: String(b.city ?? cust?.city ?? '') || undefined, customerId: c.customerId,
+        });
+        await o.db.run('UPDATE leads SET customer_id = ?, portal_customer_id = ?, portal_user_id = ?, portal_shared_at = now() WHERE id = ?', c.customerId, c.customerId, c.id, out.leadId);
+        await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'CATALOG_ENQUIRY', c.customerId, { leadRef: out.leadRef, productId: product.id });
+        return reply.code(201).send({ data: { leadRef: out.leadRef, leadId: out.leadId } });
+      } catch (e) {
+        const err = e as { status?: number; appCode?: string; message?: string };
+        return reply.code(err.status ?? 400).send({ error: err.message ?? 'Could not send enquiry', code: err.appCode });
+      }
+    });
     const ownQuote = async (c: CustomerUser, qid: string) => {
       const q = await quotes.get(String(qid)); if (!q) throw notFound();
       await ownLead(c, q.leadId); if (!PUBLISHED.has(q.status) || !q.cq) throw notFound();
@@ -2639,6 +2731,8 @@ export async function buildApp(o: AppOptions) {
       const srM = new Map((await o.db.all('SELECT id, ref, deleted_at FROM shipping_requests')).map((r: any) => [srKey(r.id), { id: r.id as string, ref: r.ref as string, deleted: !!r.deleted_at }]));
       const srf = new Map((await o.db.all('SELECT request_id, file_id, customer_visible FROM shipping_request_files')).map((r: any) => [`${srKey(r.request_id)}/${r.file_id}`, !!r.customer_visible]));
       const grM = new Map((await o.db.all('SELECT id, name, status, image_desktop, image_mobile FROM greetings')).map((r: any) => [grKey(r.id), r]));
+      const prM = new Map((await o.db.all("SELECT id, title, status FROM products")).map((r: any) => [r.id as string, r]));
+      const bnM = new Map((await o.db.all("SELECT id, alt_text FROM banner_slides")).map((r: any) => [r.id as string, r]));
       return (f: StoredFile): { places: Place[]; blocked: string | null; record: string | null } => {
         const places: Place[] = [];
         if (f.owner === 'LEAD') { const ok = leadsM.has(f.key); places.push({ kind: ok ? 'LEAD_ATTACHMENT' : 'NO_RECORD', ref: leadsM.get(f.key) ?? null, recordId: ok ? f.key : null }); return { places, blocked: null, record: ok ? f.key : null }; }
@@ -2655,6 +2749,20 @@ export async function buildApp(o: AppOptions) {
           places.push({ kind: 'SHIPPING_FILE', ref: r.ref, recordId: r.id, customerVisible: !!vis });
           if (vis) places.push({ kind: 'CUSTOMER_PORTAL', ref: r.ref, recordId: r.id, customerVisible: true });
           return { places, blocked: null, record: r.id };
+        }
+        if (f.owner === 'PRODUCT' || f.key.startsWith('p_')) {
+          const id = f.key.startsWith('p_') ? f.key.slice(2) : f.key;
+          const rec = prM.get(id);
+          if (!rec) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
+          places.push({ kind: 'PRODUCT_IMAGE', ref: rec.title as string, recordId: rec.id as string });
+          return { places, blocked: rec.status === 'PUBLISHED' ? 'published_product' : null, record: rec.id as string };
+        }
+        if (f.owner === 'BANNER' || f.key.startsWith('bn_')) {
+          const id = f.key.startsWith('bn_') ? f.key.slice(3) : f.key;
+          const rec = bnM.get(id);
+          if (!rec) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
+          places.push({ kind: 'BANNER_IMAGE', ref: (rec.alt_text as string) || 'Banner', recordId: rec.id as string });
+          return { places, blocked: null, record: rec.id as string };
         }
         const g = grM.get(f.key); if (!g) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
         if (g.image_desktop === f.id) places.push({ kind: 'GREETING_DESKTOP', ref: g.name, recordId: g.id });

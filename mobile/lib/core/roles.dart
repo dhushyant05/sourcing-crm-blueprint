@@ -11,7 +11,8 @@ enum Role {
   chinaStaff('CHINA_STAFF', Office.china, isAdmin: false),
   indiaAdmin('INDIA_ADMIN', Office.india, isAdmin: true),
   chinaAdmin('CHINA_ADMIN', Office.china, isAdmin: true),
-  superAdmin('SUPER_ADMIN', null, isAdmin: true);
+  superAdmin('SUPER_ADMIN', null, isAdmin: true),
+  marketplaceTeam('MARKETPLACE_TEAM', null, isAdmin: false);
 
   const Role(this.code, this.office, {required this.isAdmin});
   final String code;
@@ -27,6 +28,7 @@ enum Role {
         Role.indiaAdmin => 'India admin',
         Role.chinaAdmin => 'China admin',
         Role.superAdmin => 'Super admin',
+        Role.marketplaceTeam => 'Marketplace team',
       };
 }
 
@@ -40,8 +42,8 @@ class Permissions {
   /// Per-user feature permission (e.g. 'quotes.create'); true when unknown so offline mode keeps working.
   bool can(String key) => granted == null || role == Role.superAdmin || granted!.contains(key);
 
-  bool get _india => role.office == null || role.office == Office.india;
-  bool get _china => role.office == null || role.office == Office.china;
+  bool get _india => role == Role.superAdmin || role.office == Office.india;
+  bool get _china => role == Role.superAdmin || role.office == Office.china;
 
   // Customer side (India)
   bool get isSuperAdmin => role == Role.superAdmin;
@@ -78,4 +80,11 @@ class Permissions {
   // Admin
   bool get canManageUsers => role.isAdmin && can('staff.manage');
   bool get canDownloadBackups => role == Role.superAdmin;
+
+  bool get catalogOnly => role == Role.marketplaceTeam;
+  bool get canEditCatalog => role == Role.superAdmin || can('catalog.edit');
+  bool get canDeleteCatalog => role == Role.superAdmin || can('catalog.delete');
+  bool get canPriceCatalog => role == Role.superAdmin || can('catalog.price');
+  bool get canPublishCatalog => role == Role.superAdmin || can('catalog.publish');
+  bool get canManageBanners => role == Role.superAdmin || can('catalog.banners');
 }

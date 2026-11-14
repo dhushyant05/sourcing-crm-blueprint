@@ -11,6 +11,7 @@ import 'alerts.dart';
 import 'auth.dart';
 import 'requests.dart';
 import 'shipping.dart';
+import 'marketplace.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.session, this.live = true});
@@ -52,8 +53,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     final r = (_reqs ?? []).where((x) => x['reference'] == ref).firstOrNull;
     final s = (_ships ?? []).where((x) => x['reference'] == ref).firstOrNull;
-    if (r != null) { setState(() => _tab = 0); await _open(RequestDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream)); }
-    else if (s != null) { setState(() => _tab = 1); await _open(ShippingDetailScreen(api: api, id: '${s['id']}', changes: _changes.stream)); }
+    if (r != null) { setState(() => _tab = 1); await _open(RequestDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream)); }
+    else if (s != null) { setState(() => _tab = 2); await _open(ShippingDetailScreen(api: api, id: '${s['id']}', changes: _changes.stream)); }
   }
 
   @override
@@ -100,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _list(List<Json>? items, Widget Function(Json) tile, String empty) => RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 96), children: [
-          if (_tab == 0) GreetingBanner(api: api, store: widget.session.store),
+          if (_tab == 1) GreetingBanner(api: api, store: widget.session.store),
           if (_err != null && items == null) ErrorRetry(_err!, _refresh)
           else if (items == null) const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
           else if (items.isEmpty) Padding(padding: const EdgeInsets.all(32), child: Text(empty, textAlign: TextAlign.center))
@@ -125,13 +126,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ])],
       ),
       body: IndexedStack(index: _tab, children: [
+        MarketplaceTab(api: api, signedIn: true),
         _list(_reqs, (r) => RequestTile(r, onTap: () => _open(RequestDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream))), 'No requests yet. Tap “New request” to tell us what you need.'),
         _list(_ships, (r) => ShippingTile(r, onTap: () => _open(ShippingDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream))), 'No shipping requests yet.'),
         AlertsScreen(api: api, push: widget.session.push),
       ]),
-      floatingActionButton: _tab == 2 ? null : FloatingActionButton.extended(key: const Key('fab-new'), icon: const Icon(Icons.add), label: Text(_tab == 0 ? 'New request' : 'Ship goods'),
-          onPressed: () => _open(_tab == 0 ? NewRequestScreen(api: api) : NewShippingScreen(api: api))),
+      floatingActionButton: (_tab == 0 || _tab == 3) ? null : FloatingActionButton.extended(key: const Key('fab-new'), icon: const Icon(Icons.add), label: Text(_tab == 1 ? 'New request' : 'Ship goods'),
+          onPressed: () => _open(_tab == 1 ? NewRequestScreen(api: api) : NewShippingScreen(api: api))),
       bottomNavigationBar: NavigationBar(selectedIndex: _tab, onDestinationSelected: (i) => setState(() => _tab = i), destinations: [
+        const NavigationDestination(icon: Icon(Icons.storefront_outlined), label: 'Catalog'),
         NavigationDestination(icon: Badge(isLabelVisible: waiting > 0, label: Text('$waiting'), child: const Icon(Icons.inventory_2_outlined)), label: 'Requests'),
         const NavigationDestination(icon: Icon(Icons.local_shipping_outlined), label: 'Shipping'),
         const NavigationDestination(icon: Icon(Icons.notifications_none), label: 'Alerts'),
