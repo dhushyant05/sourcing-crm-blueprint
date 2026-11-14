@@ -501,4 +501,14 @@ class SourceEasyRepository {
   Future<void> addProductImage(String id, String path) async {
     await api.upload('/api/products/${Uri.encodeComponent(id)}/images', [path], field: 'file');
   }
+  Future<void> deleteProductImage(String id, String fid) async {
+    await api.send('DELETE', '/api/products/${Uri.encodeComponent(id)}/images/${Uri.encodeComponent(fid)}');
+  }
+  Future<List<Map<String, dynamic>>> reorderProductImages(String id, {required List<String> order, String? cover}) async {
+    final r = await api.send('PATCH', '/api/products/${Uri.encodeComponent(id)}/images', body: {
+      'order': order,
+      if (cover != null) 'cover': cover,
+    });
+    return ((r as Map)['data'] as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
+  }
 }

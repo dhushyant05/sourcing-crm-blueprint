@@ -119,6 +119,10 @@ function CatalogSettingsCard() {
   const [homepageEnabled, setHomepageEnabled] = useState(false);
   const [direction, setDirection] = useState<'LTR' | 'RTL'>('LTR');
   const [interval, setInterval] = useState(5);
+  const [trust, setTrust] = useState([{ title: 'Sourced in China', text: 'Quoted and managed by Source Easy' }, { title: 'Two offices', text: 'India and China working as one team' }, { title: 'Prices you can compare', text: 'Switch between USD, RMB and INR' }, { title: 'Quality on request', text: 'Factory visits and checks when you need them' }]);
+  const [promoOn, setPromoOn] = useState(true);
+  const [promoText, setPromoText] = useState('Sourcing from China — request a quote from the Source Easy team');
+  const [promoHref, setPromoHref] = useState('/#contact');
   const [msg, setMsg] = useState<string | null>(null);
   const demo = !!session?.demo;
   useEffect(() => {
@@ -127,11 +131,13 @@ function CatalogSettingsCard() {
       setHomepageEnabled(!!r.data.homepageEnabled);
       setDirection(r.data.direction === 'RTL' ? 'RTL' : 'LTR');
       setInterval(Number(r.data.intervalSeconds) || 5);
+      if (Array.isArray(r.data.trust) && r.data.trust.length) setTrust(r.data.trust);
+      if (r.data.promo) { setPromoOn(r.data.promo.enabled !== false); if (r.data.promo.text) setPromoText(r.data.promo.text); if (r.data.promo.href) setPromoHref(r.data.promo.href); }
     }).catch(() => undefined);
   }, [demo]);
   const save = async () => {
     if (demo) { setMsg('Saved in demo (not sent to the server).'); return; }
-    await staffReq('PATCH', '/api/catalog/settings', { homepageEnabled, bannerDirection: direction, bannerIntervalSeconds: interval });
+    await staffReq('PATCH', '/api/catalog/settings', { homepageEnabled, bannerDirection: direction, bannerIntervalSeconds: interval, trustItems: trust, promo: { enabled: promoOn, text: promoText, href: promoHref } });
     setMsg('Marketplace settings saved.');
   };
   const seed = async () => {
@@ -162,6 +168,21 @@ function CatalogSettingsCard() {
         <label className="flex items-center gap-2">Interval (seconds)
           <input className="input w-20" type="number" min={3} max={10} value={interval} onChange={(e) => setInterval(Number(e.target.value))} />
         </label>
+      </div>
+      <div className="mt-4 space-y-2">
+        <p className="text-sm font-medium text-ink-800">Top promo strip</p>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={promoOn} onChange={(e) => setPromoOn(e.target.checked)} /> Show the promo strip</label>
+        <input className="input" value={promoText} onChange={(e) => setPromoText(e.target.value)} placeholder="Promo text (no invented numbers or discounts)" />
+        <input className="input" value={promoHref} onChange={(e) => setPromoHref(e.target.value)} placeholder="Link, for example /#contact" />
+      </div>
+      <div className="mt-4 space-y-2">
+        <p className="text-sm font-medium text-ink-800">Trust strip (no invented numbers)</p>
+        {trust.map((it, i) => (
+          <div key={i} className="grid gap-2 sm:grid-cols-2">
+            <input className="input" value={it.title} onChange={(e) => setTrust((xs) => xs.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} placeholder="Title" />
+            <input className="input" value={it.text} onChange={(e) => setTrust((xs) => xs.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} placeholder="Short text" />
+          </div>
+        ))}
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <button className="btn-primary" onClick={() => void save().catch((e) => setMsg((e as Error).message))}>Save settings</button>

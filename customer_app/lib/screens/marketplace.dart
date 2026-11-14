@@ -52,9 +52,9 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
           onSubmitted: _load),
         if (_banners.isNotEmpty) ...[
           const SizedBox(height: 12),
-          SizedBox(height: 140, child: PageView(children: [
+          SizedBox(height: 160, child: PageView(children: [
             for (final b in _banners)
-              Padding(padding: const EdgeInsets.only(right: 8), child: ClipRRect(borderRadius: BorderRadius.circular(16), child: ColoredBox(color: const Color(0xFF1a6d98), child: Center(child: Padding(padding: const EdgeInsets.all(16), child: Text('${b['altText'] ?? ''}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600), textAlign: TextAlign.center)))))),
+              Padding(padding: const EdgeInsets.only(right: 8), child: ClipRRect(borderRadius: BorderRadius.circular(16), child: _banner(b))),
           ])),
         ],
         const SizedBox(height: 16),
@@ -70,9 +70,27 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
     );
   }
 
+  Widget _banner(Json b) {
+    final url = '${b['imageUrl'] ?? b['mobileUrl'] ?? ''}';
+    if (url.isEmpty) {
+      return ColoredBox(color: const Color(0xFF1a6d98), child: Center(child: Padding(padding: const EdgeInsets.all(16), child: Text('${b['altText'] ?? ''}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600), textAlign: TextAlign.center))));
+    }
+    return Stack(fit: StackFit.expand, children: [
+      Image.network(url.startsWith('http') ? url : widget.api.base.replace(path: url).toString(), fit: BoxFit.cover),
+      const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0x66000000)]))),
+      Align(alignment: Alignment.bottomLeft, child: Padding(padding: const EdgeInsets.all(12), child: Text('${b['altText'] ?? ''}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))),
+    ]);
+  }
+
   Widget _card(Json p) {
     final images = (p['images'] as List?) ?? [];
-    final url = images.isNotEmpty ? '${(images.first as Json)['url'] ?? ''}' : '';
+    Json? cover;
+    for (final im in images) {
+      final m = im as Json;
+      cover ??= m;
+      if (m['cover'] == true) { cover = m; break; }
+    }
+    final url = cover == null ? '' : '${cover['cardUrl'] ?? cover['url'] ?? ''}';
     final sample = p['isSample'] == true;
     final price = _price(p);
     return InkWell(
@@ -114,6 +132,7 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Json? _p;
   String? _err;
+  int _img = 0;
   final _name = TextEditingController(), _phone = TextEditingController(), _qty = TextEditingController(), _msg = TextEditingController();
   String? _result;
 
@@ -121,6 +140,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void initState() { super.initState(); widget.api.catalogProduct(widget.slug).then((p) { if (mounted) setState(() => _p = p); }).catchError((e) { if (mounted) setState(() => _err = e is PortalError ? e.message : 'Not found'); }); }
   @override
   void dispose() { _name.dispose(); _phone.dispose(); _qty.dispose(); _msg.dispose(); super.dispose(); }
+
+  Widget _gallery(Json p) {
+    final images = ((p['images'] as List?) ?? []).cast<Json>();
+    if (images.isEmpty) return const SizedBox(height: 220, child: ColoredBox(color: Color(0xFFF1F5F9)));
+    return Column(children: [
+      SizedBox(height: 280, child: PageView.builder(
+        itemCount: images.length,
+        onPageChanged: (i) => setState(() => _img = i),
+        itemBuilder: (c, i) {
+          final im = images[i];
+          final url = '${im['url'] ?? im['cardUrl'] ?? ''}';
+          final src = url.startsWith('http') ? url : widget.api.base.replace(path: url).toString();
+          return InteractiveViewer(minScale: 1, maxScale: 4, child: url.isEmpty
+            ? const ColoredBox(color: Color(0xFFF1F5F9))
+            : Image.network(src, fit: BoxFit.contain));
+        },
+      )),
+      if (images.length > 1) Padding(padding: const EdgeInsets.only(top: 8), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        for (var i = 0; i < images.length; i++)
+          Container(width: i == _img ? 16 : 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(color: i == _img ? const Color(0xFF1a6d98) : const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(99))),
+      ])),
+      Padding(padding: const EdgeInsets.only(top: 4), child: Text('${_img + 1} / ${images.length}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
+    ]);
+  }
 
   Future<void> _enquire() async {
     try {
@@ -143,6 +187,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       body: p == null
           ? Center(child: _err == null ? const CircularProgressIndicator() : Text(_err!))
           : ListView(padding: const EdgeInsets.all(16), children: [
+              _gallery(p),
+              const SizedBox(height: 16),
               if (p['isSample'] == true) const Text('SAMPLE', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF1a6d98))),
               Text('${p['title']}', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
               if (p['summary'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${p['summary']}')),

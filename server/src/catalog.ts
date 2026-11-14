@@ -12,13 +12,14 @@ import { sides, type Role } from './roles.js';
 import type { PermStore } from './permissions.js';
 import type { UploadStore, Attachment } from './uploads.js';
 import { MAX_FILE_BYTES } from './uploads.js';
+import { productStudioImage, bannerStudioImage, sceneFor, CATEGORY_PALETTES } from './studio.js';
 
 export const PRODUCT_STATUSES = ['DRAFT', 'READY_FOR_PRICE', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'] as const;
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 export const CURRENCIES = ['USD', 'CNY', 'INR'] as const;
 export type Currency = (typeof CURRENCIES)[number];
 const MAX_LIVE_BANNERS = 6;
-const MAX_PRODUCT_IMAGES = 8;
+const MAX_PRODUCT_IMAGES = 15;
 const SAMPLE_RATES: [Currency, Currency, number][] = [
   ['USD', 'INR', 83.5], ['INR', 'USD', 1 / 83.5],
   ['USD', 'CNY', 7.2], ['CNY', 'USD', 1 / 7.2],
@@ -116,7 +117,32 @@ export class CatalogStore {
   async status() {
     const enabled = await this.homepageEnabled();
     const hasPublished = (await this.publishedCount()) > 0;
-    return { homepageEnabled: enabled, hasPublished, showMarketplace: enabled && hasPublished };
+    return { homepageEnabled: enabled, hasPublished, showMarketplace: enabled && hasPublished, trust: await this.trustItems(), promo: await this.promoStrip() };
+  }
+  async trustItems() {
+    const v = await this.setting<unknown>('trust_items', DEFAULT_TRUST);
+    return Array.isArray(v) && v.length ? v : DEFAULT_TRUST;
+  }
+
+  async promoStrip() {
+    const v = await this.setting<any>('promo_strip', DEFAULT_PROMO);
+    const text = String(v?.text ?? DEFAULT_PROMO.text).trim().slice(0, 160) || DEFAULT_PROMO.text;
+    const href = String(v?.href ?? DEFAULT_PROMO.href).trim().slice(0, 200) || DEFAULT_PROMO.href;
+    return { enabled: v?.enabled !== false, text, href };
+  }
+  async setPromoStrip(promo: { enabled?: boolean; text?: string; href?: string }, by: string) {
+    const next = await this.promoStrip();
+    if (typeof promo.enabled === 'boolean') next.enabled = promo.enabled;
+    if (promo.text != null) next.text = String(promo.text).trim().slice(0, 160) || DEFAULT_PROMO.text;
+    if (promo.href != null) next.href = String(promo.href).trim().slice(0, 200) || DEFAULT_PROMO.href;
+    await this.setSetting('promo_strip', next, by);
+    return next;
+  }
+  async setTrustItems(items: { title: string; text: string }[], by: string) {
+    const clean = items.slice(0, 6).map((x) => ({ title: String(x.title ?? '').trim().slice(0, 80), text: String(x.text ?? '').trim().slice(0, 200) })).filter((x) => x.title);
+    if (!clean.length) bad('Add at least one trust item');
+    await this.setSetting('trust_items', clean, by);
+    return clean;
   }
 
   async rates(): Promise<RateMap> {
@@ -179,7 +205,7 @@ export class CatalogStore {
     return this.db.get(`SELECT * FROM products WHERE (id = ? OR slug = ?)${del}`, idOrSlug, idOrSlug);
   }
   async images(productId: string) {
-    return this.db.all('SELECT id, product_id AS "productId", file_id AS "fileId", kind, sort, alt_text AS "altText" FROM product_images WHERE product_id = ? ORDER BY sort, created_at', productId);
+    return this.db.all('SELECT id, product_id AS "productId", file_id AS "fileId", kind, sort, alt_text AS "altText", group_id AS "groupId", is_cover AS "isCover" FROM product_images WHERE product_id = ? ORDER BY sort, created_at', productId);
   }
   async tiers(productId: string) {
     return this.db.all('SELECT id, min_qty AS "minQty", max_qty AS "maxQty", unit_price AS "unitPrice", price_usd AS "priceUsd", price_cny AS "priceCny", price_inr AS "priceInr" FROM product_price_tiers WHERE product_id = ? ORDER BY min_qty', productId);
@@ -343,6 +369,67 @@ function numOrNull(v: unknown): number | null {
 }
 function pickPublic(row: any) { return { id: row.id, slug: row.slug, title: row.title, status: row.status }; }
 
+export const DEFAULT_TRUST = [
+  { title: 'Sourced in China', text: 'Quoted and managed by Source Easy' },
+  { title: 'Two offices', text: 'India and China working as one team' },
+  { title: 'Prices you can compare', text: 'Switch between USD, RMB and INR' },
+  { title: 'Quality on request', text: 'Factory visits and checks when you need them' },
+];
+export const DEFAULT_PROMO = { enabled: true, text: 'Sourcing from China — request a quote from the Source Easy team', href: '/#contact' };
+
+type ImgRow = { fileId: string; kind?: string; altText?: string | null; groupId?: string | null; isCover?: boolean; sort?: number };
+export function photoGroups(images: ImgRow[]) {
+  const groups: { id: string; altText: string | null; cover: boolean; sort: number; original?: ImgRow; card?: ImgRow; gallery?: ImgRow; fileIds: string[] }[] = [];
+  const by = new Map<string, (typeof groups)[0]>();
+  let last: string | null = null;
+  for (const im of images) {
+    let gid = im.groupId || ((im.kind === 'CARD' || im.kind === 'GALLERY') && last) || im.fileId;
+    if (im.kind === 'ORIGINAL' || !im.kind) last = gid;
+    let g = by.get(gid);
+    if (!g) { g = { id: gid, altText: im.altText ?? null, cover: !!im.isCover, sort: im.sort ?? 0, fileIds: [] }; by.set(gid, g); groups.push(g); }
+    if (im.kind === 'CARD') g.card = im; else if (im.kind === 'GALLERY') g.gallery = im; else g.original = im;
+    if (im.isCover) g.cover = true;
+    g.altText = g.altText || im.altText || null;
+    g.sort = Math.min(g.sort, im.sort ?? 0);
+    if (im.fileId && !g.fileIds.includes(im.fileId)) g.fileIds.push(im.fileId);
+  }
+  groups.sort((a, b) => (a.cover === b.cover ? a.sort - b.sort : a.cover ? -1 : 1));
+  return groups;
+}
+export function publicPhotos(images: ImgRow[], productId: string) {
+  const url = (im?: ImgRow) => im ? `/api/public/catalog/images/${productId}/${im.fileId}` : null;
+  return photoGroups(images).map((g) => ({
+    id: g.id, altText: g.altText, cover: g.cover,
+    url: url(g.gallery) || url(g.original) || url(g.card) as string,
+    cardUrl: url(g.card) || url(g.gallery) || url(g.original),
+  }));
+}
+export function staffPhotos(images: ImgRow[], productId: string) {
+  const url = (im?: ImgRow) => im ? `/api/products/${productId}/images/${im.fileId}` : null;
+  return photoGroups(images).map((g) => ({
+    id: g.id, altText: g.altText, cover: g.cover, sort: g.sort, fileIds: g.fileIds,
+    url: url(g.gallery) || url(g.original) || url(g.card) as string,
+    cardUrl: url(g.card) || url(g.gallery) || url(g.original),
+  }));
+}
+async function saveProductPhoto(deps: CatalogDeps, productId: string, processed: { original: Buffer; card: Buffer; gallery: Buffer }, alt: string, sort: number, cover: boolean) {
+  const groupId = randomUUID();
+  const incoming = [
+    { name: 'original.jpg', mime: 'image/jpeg', data: processed.original },
+    { name: 'card.webp', mime: 'image/webp', data: processed.card },
+    { name: 'gallery.webp', mime: 'image/webp', data: processed.gallery },
+  ];
+  const all = deps.uploads.save(ownerKey('p', productId), incoming);
+  const saved = all.slice(-incoming.length);
+  const kinds = ['ORIGINAL', 'CARD', 'GALLERY'] as const;
+  for (let i = 0; i < saved.length; i++) {
+    await deps.db.run('INSERT INTO product_images (id, product_id, file_id, kind, sort, alt_text, group_id, is_cover) VALUES (?,?,?,?,?,?,?,?)',
+      randomUUID(), productId, saved[i].id, kinds[i], sort, alt, groupId, cover);
+  }
+  return { groupId, files: saved, kinds };
+}
+
+
 export function priced(row: any, rates: RateMap) {
   const base = (CURRENCIES.includes(row.base_currency) ? row.base_currency : 'USD') as Currency;
   const mode = row.price_mode ?? 'GET_QUOTE';
@@ -385,9 +472,10 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap) 
     category: cat.slug ? cat : null,
     moq: row.moq, unit: row.unit, leadTime: row.lead_time,
     price, tiers: pubTiers,
-    images: images.map((im: any) => ({ id: im.fileId, kind: im.kind, altText: im.altText, url: `/api/public/catalog/images/${row.id}/${im.fileId}` })),
+    images: publicPhotos(images as any, row.id),
     isSample: !!row.is_sample,
     pinned: !!row.pinned,
+    publishedAt: row.published_at ?? null,
   };
 }
 
@@ -505,21 +593,23 @@ export async function seedSamples(store: CatalogStore, deps: CatalogDeps, by: st
     const cat = cats[p.category];
     const id = randomUUID();
     const slug = await store.uniqueSlug(p.title);
+    const specs = { material: 'See summary', finish: 'As pictured (sample)', packing: 'Export carton', origin: 'China (sample)', note: 'Sample product — not a live offer' };
     await store.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, price_mode, base_currency,
       price_min, price_max, pinned, is_sample, created_by, approved_by, published_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,now())`,
-      id, slug, p.title, p.summary, JSON.stringify({ material: 'See summary', note: 'Sample product — not a live offer' }),
+      id, slug, p.title, p.summary, JSON.stringify(specs),
       cat.id, 'PUBLISHED', p.moq, p.unit, p.leadTime, 'RANGE', 'USD', p.min, p.max, !!p.pin, true, by, by);
-    const img = await placeholderImage(p.title, SAMPLE_COLORS[p.category] ?? '#1f86bb');
-    const saved = deps.uploads.save(ownerKey('p', id), [
-      { name: 'original.png', mime: 'image/png', data: img.original },
-      { name: 'card.webp', mime: 'image/webp', data: img.card! },
-      { name: 'gallery.webp', mime: 'image/webp', data: img.gallery! },
-    ]);
-    const kinds = ['ORIGINAL', 'CARD', 'GALLERY'] as const;
-    for (let i = 0; i < saved.length; i++) {
-      await store.db.run('INSERT INTO product_images (id, product_id, file_id, kind, sort, alt_text) VALUES (?,?,?,?,?,?)',
-        randomUUID(), id, saved[i].id, kinds[i], i, `${p.title} (sample)`);
+    if (p.pin) {
+      await store.db.run('INSERT INTO product_price_tiers (id, product_id, min_qty, max_qty, unit_price) VALUES (?,?,?,?,?)',
+        randomUUID(), id, p.moq, p.moq * 2, p.min);
+      await store.db.run('INSERT INTO product_price_tiers (id, product_id, min_qty, max_qty, unit_price) VALUES (?,?,?,?,?)',
+        randomUUID(), id, p.moq * 2, null, Number((p.min * 0.9).toFixed(4)));
+    }
+    const pal = CATEGORY_PALETTES[p.category] ?? CATEGORY_PALETTES.Hardware;
+    const scene = sceneFor(p.title, p.category);
+    for (let v = 0; v < 4; v++) {
+      const img = await productStudioImage(scene, v, pal);
+      await saveProductPhoto(deps, id, img, `${p.title} (sample)`, v, v === 0);
     }
     await deps.mediaSync?.(ownerKey('p', id), deps.uploads.list(ownerKey('p', id)));
     await store.audit(id, by, 'SEED_SAMPLE', null, { title: p.title });
@@ -533,10 +623,10 @@ export async function seedSamples(store: CatalogStore, deps: CatalogDeps, by: st
   let sort = 0;
   for (const b of banners) {
     const id = randomUUID();
-    const img = await placeholderImage(b.title, b.color, 1920, 640, 'banner');
+    const img = await bannerStudioImage(b.title, { bg: b.color, mid: b.color, item: b.color, shade: b.color, highlight: '#ffffff' });
     const saved = deps.uploads.save(ownerKey('bn', id), [
-      { name: 'desktop.webp', mime: 'image/webp', data: img.desktop! },
-      { name: 'mobile.webp', mime: 'image/webp', data: img.mobile! },
+      { name: 'desktop.webp', mime: 'image/webp', data: img.desktop },
+      { name: 'mobile.webp', mime: 'image/webp', data: img.mobile },
     ]);
     await store.db.run(`INSERT INTO banner_slides (id, sort, file_id, mobile_file_id, alt_text, link_kind, active, is_sample, created_by)
       VALUES (?,?,?,?,?,?,true,true,?)`, id, sort++, saved[0].id, saved[1].id, b.title, 'NONE', by);
@@ -653,12 +743,14 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     if (!isSa(req.user!)) forbid();
     return { data: { ...(await store.status()), ...(await store.bannerSettings()), rates: await store.rateList() } };
   });
-  api.patch<{ Body: { homepageEnabled?: boolean; bannerDirection?: string; bannerIntervalSeconds?: number } }>('/api/catalog/settings', async (req) => {
+  api.patch<{ Body: { homepageEnabled?: boolean; bannerDirection?: string; bannerIntervalSeconds?: number; trustItems?: { title: string; text: string }[]; promo?: { enabled?: boolean; text?: string; href?: string } } }>('/api/catalog/settings', async (req) => {
     if (!isSa(req.user!)) forbid();
     const b = req.body ?? {};
     if (typeof b.homepageEnabled === 'boolean') await store.setSetting('homepage_enabled', b.homepageEnabled, req.user!.id);
     if (b.bannerDirection === 'LTR' || b.bannerDirection === 'RTL') await store.setSetting('banner_direction', b.bannerDirection, req.user!.id);
     if (b.bannerIntervalSeconds != null) await store.setSetting('banner_interval_seconds', Number(b.bannerIntervalSeconds), req.user!.id);
+    if (b.trustItems) await store.setTrustItems(b.trustItems, req.user!.id);
+    if (b.promo) await store.setPromoStrip(b.promo, req.user!.id);
     return { data: { ...(await store.status()), ...(await store.bannerSettings()) } };
   });
 
@@ -689,7 +781,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const data = [];
     for (const r of rows) {
       const images = await store.images(r.id);
-      data.push(staffView(r, u.role, rates, { images: images.map((im: any) => ({ ...im, url: `/api/products/${r.id}/images/${im.fileId}` })) }));
+      data.push(staffView(r, u.role, rates, { images: staffPhotos(images as any, r.id) }));
     }
     return { data, total, limit, offset };
   });
@@ -706,7 +798,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     if (!row) return reply.code(404).send({ error: 'Not found' });
     const images = await store.images(row.id);
     const tiers = await store.tiers(row.id);
-    return { data: staffView(row, u.role, await store.rates(), { images: images.map((im: any) => ({ ...im, url: `/api/products/${row.id}/images/${im.fileId}` })), tiers }) };
+    return { data: staffView(row, u.role, await store.rates(), { images: staffPhotos(images as any, row.id), tiers }) };
   });
 
   api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/products/:id', async (req) => {
@@ -746,23 +838,14 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const buf = await f.toBuffer();
     if (f.file.truncated) bad('Image must be 10 MB or smaller', 413, 'size');
     const existing = await store.images(row.id);
-    if (existing.filter((x: any) => x.kind === 'ORIGINAL').length >= MAX_PRODUCT_IMAGES) bad(`Up to ${MAX_PRODUCT_IMAGES} photos per product`, 413, 'count');
+    const groups = photoGroups(existing as any);
+    if (groups.length >= MAX_PRODUCT_IMAGES) bad(`Up to ${MAX_PRODUCT_IMAGES} photos per product`, 413, 'count');
     const processed = await processProductImage(buf);
-    const saved = deps.uploads.save(ownerKey('p', row.id), [
-      { name: f.filename || 'photo.jpg', mime: 'image/jpeg', data: processed.original },
-      { name: 'card.webp', mime: 'image/webp', data: processed.card },
-      { name: 'gallery.webp', mime: 'image/webp', data: processed.gallery },
-    ]);
     const alt = (req.headers['x-alt-text'] ? String(req.headers['x-alt-text']) : row.title).slice(0, 200);
-    const kinds = ['ORIGINAL', 'CARD', 'GALLERY'] as const;
-    const sort = existing.length;
-    for (let i = 0; i < saved.length; i++) {
-      await deps.db.run('INSERT INTO product_images (id, product_id, file_id, kind, sort, alt_text) VALUES (?,?,?,?,?,?)',
-        randomUUID(), row.id, saved[i].id, kinds[i], sort + i, alt);
-    }
+    const saved = await saveProductPhoto(deps, row.id, processed, alt, groups.length, groups.length === 0);
     await deps.mediaSync?.(ownerKey('p', row.id), deps.uploads.list(ownerKey('p', row.id)));
-    await store.audit(row.id, u.id, 'IMAGE_ADD', null, { files: saved.map((s) => s.id) });
-    return reply.code(201).send({ data: saved.map((s, i) => ({ fileId: s.id, kind: kinds[i], url: `/api/products/${row.id}/images/${s.id}` })) });
+    await store.audit(row.id, u.id, 'IMAGE_ADD', null, { groupId: saved.groupId, files: saved.files.map((s) => s.id) });
+    return reply.code(201).send({ data: staffPhotos((await store.images(row.id)) as any, row.id) });
   });
 
   api.get<{ Params: { id: string; fid: string } }>('/api/products/:id/images/:fid', async (req, reply) => {
@@ -775,11 +858,32 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   api.delete<{ Params: { id: string; fid: string } }>('/api/products/:id/images/:fid', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
     const row = await store.get(req.params.id); if (!row) return reply.code(404).send({ error: 'Not found' });
-    await deps.db.run('DELETE FROM product_images WHERE product_id = ? AND file_id = ?', row.id, req.params.fid);
-    deps.uploads.remove(ownerKey('p', row.id), req.params.fid);
+    const all = await store.images(row.id);
+    const group = photoGroups(all as any).find((g) => g.id === req.params.fid || g.fileIds.includes(req.params.fid));
+    const ids = group ? group.fileIds : [req.params.fid];
+    for (const fid of ids) {
+      await deps.db.run('DELETE FROM product_images WHERE product_id = ? AND file_id = ?', row.id, fid);
+      deps.uploads.remove(ownerKey('p', row.id), fid);
+    }
     await deps.mediaSync?.(ownerKey('p', row.id), deps.uploads.list(ownerKey('p', row.id)));
-    await store.audit(row.id, u.id, 'IMAGE_DELETE', { fileId: req.params.fid }, null);
+    await store.audit(row.id, u.id, 'IMAGE_DELETE', { fileIds: ids }, null);
     return { ok: true };
+  });
+  api.patch<{ Params: { id: string }; Body: { order?: string[]; cover?: string } }>('/api/products/:id/images', async (req, reply) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    const row = await store.get(req.params.id); if (!row) return reply.code(404).send({ error: 'Not found' });
+    const groups = photoGroups((await store.images(row.id)) as any);
+    const order = Array.isArray(req.body?.order) ? req.body!.order : groups.map((g) => g.id);
+    for (let i = 0; i < order.length; i++) {
+      await deps.db.run('UPDATE product_images SET sort = ? WHERE product_id = ? AND (group_id = ? OR file_id = ?)', i, row.id, order[i], order[i]);
+    }
+    const cover = req.body?.cover || order[0];
+    if (cover) {
+      await deps.db.run('UPDATE product_images SET is_cover = false WHERE product_id = ?', row.id);
+      await deps.db.run('UPDATE product_images SET is_cover = true WHERE product_id = ? AND (group_id = ? OR file_id = ?)', row.id, cover, cover);
+    }
+    await store.audit(row.id, u.id, 'IMAGE_REORDER', null, { order, cover });
+    return { data: staffPhotos((await store.images(row.id)) as any, row.id) };
   });
 
   // Banners

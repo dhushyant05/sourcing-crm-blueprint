@@ -88,7 +88,7 @@ export function Products() {
       </div>
       {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} busy={busy}
         onClose={() => setEdit(null)}
-        onSave={async (body, file) => {
+        onSave={async (body, files) => {
           setBusy(true); setErr(null);
           try {
             if (demo) {
@@ -98,7 +98,7 @@ export function Products() {
               const saved = edit === 'new'
                 ? (await staffReq<{ data: StaffProduct }>('POST', '/api/products', body)).data
                 : (await staffReq<{ data: StaffProduct }>('PATCH', `/api/products/${(edit as StaffProduct).id}`, body)).data;
-              if (file) {
+              for (const file of files) {
                 const fd = new FormData(); fd.append('file', file);
                 await staffReq('POST', `/api/products/${saved.id}/images`, fd);
               }
@@ -114,7 +114,7 @@ export function Products() {
 
 function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
   product: StaffProduct | null; canPrice: boolean; busy: boolean; onClose: () => void;
-  onSave: (body: any, file?: File) => Promise<void>;
+  onSave: (body: any, files: File[]) => Promise<void>;
 }) {
   const [f, setF] = useState({
     title: product?.title ?? '', summary: product?.summary ?? '', moq: product?.moq != null ? String(product.moq) : '',
@@ -122,14 +122,14 @@ function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
     priceMin: product?.priceMin != null ? String(product.priceMin) : '', priceMax: product?.priceMax != null ? String(product.priceMax) : '',
     baseCurrency: product?.baseCurrency ?? 'USD',
   });
-  const [file, setFile] = useState<File | undefined>();
+  const [files, setFiles] = useState<File[]>([]);
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void onSave({
       title: f.title, summary: f.summary, moq: f.moq ? Number(f.moq) : null, unit: f.unit, leadTime: f.leadTime,
       ...(canPrice ? { priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null, baseCurrency: f.baseCurrency } : {}),
-    }, file);
+    }, files);
   };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4" onClick={onClose}>
@@ -153,13 +153,76 @@ function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
               <input className="input" placeholder="Max price" value={f.priceMax} onChange={(e) => set('priceMax', e.target.value)} />
             </div>
           )}
-          <input className="input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0])} />
+          {product?.id && !product.id.startsWith('local-') && <ImageManager productId={product.id} images={product.images ?? []} />}
+          <div>
+            <label className="text-sm font-medium text-ink-700">Add photos</label>
+            <input className="input mt-1" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
+            {files.length > 0 && <p className="mt-1 text-xs text-ink-500">{files.length} new photo{files.length === 1 ? '' : 's'} will upload on save.</p>}
+          </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={busy} data-testid="product-save">{busy ? 'Saving…' : 'Save'}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ImageManager({ productId, images }: { productId: string; images: StaffProduct['images'] }) {
+  const [rows, setRows] = useState(images);
+  const [src, setSrc] = useState<Record<string, string>>({});
+  useEffect(() => { setRows(images); }, [images]);
+  useEffect(() => {
+    let on = true;
+    const token = sessionStorage.getItem('se.jwt');
+    const load = async () => {
+      const next: Record<string, string> = {};
+      for (const im of images) {
+        if (im.url.startsWith('data:') || im.url.startsWith('blob:')) { next[im.id] = im.cardUrl || im.url; continue; }
+        try {
+          const r = await fetch(im.cardUrl || im.url, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+          if (r.ok) next[im.id] = URL.createObjectURL(await r.blob());
+        } catch { /* preview optional */ }
+      }
+      if (on) setSrc(next);
+    };
+    void load();
+    return () => { on = false; Object.values(src).forEach((u) => { if (u.startsWith('blob:')) URL.revokeObjectURL(u); }); };
+  }, [images]); // eslint-disable-line
+  const persist = async (order: typeof rows, cover?: string) => {
+    const r = await staffReq<{ data: typeof rows }>('PATCH', `/api/products/${productId}/images`, { order: order.map((x) => x.id), cover: cover ?? order.find((x) => x.cover)?.id ?? order[0]?.id });
+    setRows(r.data);
+  };
+  const move = async (i: number, d: number) => {
+    const j = i + d; if (j < 0 || j >= rows.length) return;
+    const next = rows.slice(); const [it] = next.splice(i, 1); next.splice(j, 0, it);
+    setRows(next);
+    await persist(next);
+  };
+  const cover = async (id: string) => { await persist(rows, id); };
+  const remove = async (id: string) => {
+    if (!confirm('Delete this photo?')) return;
+    await staffReq('DELETE', `/api/products/${productId}/images/${id}`);
+    setRows((xs) => xs.filter((x) => x.id !== id));
+  };
+  if (!rows.length) return <p className="text-sm text-ink-500">No photos yet. Add some below.</p>;
+  return (
+    <div data-testid="product-images">
+      <p className="mb-2 text-sm font-medium text-ink-700">Photos</p>
+      <div className="grid grid-cols-3 gap-2">
+        {rows.map((im, i) => (
+          <div key={im.id} className={`overflow-hidden rounded-xl border ${im.cover ? 'border-brand-500 ring-2 ring-brand-200' : 'border-ink-200'}`}>
+            <img src={src[im.id] || im.cardUrl || im.url} alt={im.altText || ''} className="aspect-square w-full object-cover" />
+            <div className="flex flex-wrap gap-1 p-1 text-[10px]">
+              <button type="button" className="btn-outline !px-1.5 !py-0.5" onClick={() => void move(i, -1)} disabled={i === 0}>↑</button>
+              <button type="button" className="btn-outline !px-1.5 !py-0.5" onClick={() => void move(i, 1)} disabled={i === rows.length - 1}>↓</button>
+              <button type="button" className="btn-outline !px-1.5 !py-0.5" onClick={() => void cover(im.id)}>{im.cover ? 'Cover' : 'Set cover'}</button>
+              <button type="button" className="btn-outline !px-1.5 !py-0.5 text-red-600" onClick={() => void remove(im.id)}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

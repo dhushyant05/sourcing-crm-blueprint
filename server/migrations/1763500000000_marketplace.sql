@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS product_images (
   kind text NOT NULL DEFAULT 'ORIGINAL',
   sort integer NOT NULL DEFAULT 0,
   alt_text text,
+  group_id text,
+  is_cover boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS product_images_product ON product_images (product_id, sort);

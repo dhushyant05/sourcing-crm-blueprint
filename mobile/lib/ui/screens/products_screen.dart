@@ -98,11 +98,23 @@ class _ProductFormState extends State<_ProductForm> {
   late final _moq = TextEditingController(text: widget.existing?['moq'] == null ? '' : '${widget.existing?['moq']}');
   late final _unit = TextEditingController(text: '${widget.existing?['unit'] ?? 'pcs'}');
   late final _lead = TextEditingController(text: '${widget.existing?['leadTime'] ?? ''}');
-  String? _photo;
+  final List<String> _pending = [];
+  final List<Map<String, dynamic>> _images = [];
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    _images.addAll(((widget.existing?['images'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)));
+  }
+
+  @override
   void dispose() { _title.dispose(); _summary.dispose(); _moq.dispose(); _unit.dispose(); _lead.dispose(); super.dispose(); }
+
+  String _abs(String url, Session s) {
+    if (url.startsWith('http')) return url;
+    return Uri.parse(s.serverUrl).resolve(url).toString();
+  }
 
   Future<void> _save() async {
     setState(() => _busy = true);
@@ -121,7 +133,13 @@ class _ProductFormState extends State<_ProductForm> {
       } else {
         saved = await repo.updateProduct('${widget.existing!['id']}', body);
       }
-      if (_photo != null) await repo.addProductImage('${saved['id']}', _photo!);
+      for (final path in _pending) {
+        await repo.addProductImage('${saved['id']}', path);
+      }
+      if (_images.isNotEmpty) {
+        await repo.reorderProductImages('${saved['id']}', order: _images.map((e) => '${e['id']}').toList(),
+            cover: _images.cast<Map?>().firstWhere((e) => e?['cover'] == true, orElse: () => _images.first)?['id']?.toString());
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -132,6 +150,7 @@ class _ProductFormState extends State<_ProductForm> {
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<Session>();
     return Scaffold(
       appBar: AppBar(title: Text(widget.existing == null ? 'Add product' : 'Edit product')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
@@ -140,11 +159,43 @@ class _ProductFormState extends State<_ProductForm> {
         TextField(controller: _moq, decoration: const InputDecoration(labelText: 'Minimum order quantity'), keyboardType: TextInputType.number),
         TextField(controller: _unit, decoration: const InputDecoration(labelText: 'Unit')),
         TextField(controller: _lead, decoration: const InputDecoration(labelText: 'Lead time')),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(icon: const Icon(Icons.photo_outlined), label: Text(_photo == null ? 'Add photo' : 'Photo selected'),
+        const SizedBox(height: 16),
+        const Text('Photos', style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        if (_images.isNotEmpty)
+          SizedBox(height: 148, child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _images.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (c, i) {
+              final im = _images[i];
+              final url = '${im['cardUrl'] ?? im['url'] ?? ''}';
+              return SizedBox(width: 120, child: Column(children: [
+                Expanded(child: Stack(children: [
+                  Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: url.isEmpty
+                    ? const ColoredBox(color: Color(0xFFF1F5F9))
+                    : Image.network(_abs(url, session), fit: BoxFit.cover, headers: {if (session.accessToken != null) 'Authorization': 'Bearer ${session.accessToken}'}))),
+                  if (im['cover'] == true) const Positioned(left: 6, top: 6, child: Chip(label: Text('Cover', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact)),
+                ])),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  IconButton(icon: const Icon(Icons.chevron_left, size: 18), onPressed: i == 0 ? null : () { setState(() { final x = _images.removeAt(i); _images.insert(i - 1, x); }); }),
+                  IconButton(icon: const Icon(Icons.star_outline, size: 18), tooltip: 'Set cover', onPressed: () { setState(() { for (final x in _images) { x['cover'] = false; } _images[i]['cover'] = true; }); }),
+                  IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: () async {
+                    final id = widget.existing?['id'];
+                    if (id != null) { await session.repo.deleteProductImage('$id', '${im['id']}'); }
+                    setState(() => _images.removeAt(i));
+                  }),
+                  IconButton(icon: const Icon(Icons.chevron_right, size: 18), onPressed: i == _images.length - 1 ? null : () { setState(() { final x = _images.removeAt(i); _images.insert(i + 1, x); }); }),
+                ]),
+              ]));
+            },
+          )),
+        if (_pending.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${_pending.length} new photo${_pending.length == 1 ? '' : 's'} will upload on save.')),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(icon: const Icon(Icons.photo_outlined), label: const Text('Add photos'),
           onPressed: () async {
-            final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 2000, imageQuality: 88);
-            if (f != null) setState(() => _photo = f.path);
+            final files = await ImagePicker().pickMultiImage(maxWidth: 2000, imageQuality: 88);
+            if (files.isNotEmpty) setState(() => _pending.addAll(files.map((f) => f.path)));
           }),
         const SizedBox(height: 20),
         FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
