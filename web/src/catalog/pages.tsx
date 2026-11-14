@@ -1,6 +1,6 @@
 import { FavoriteButton } from './FavoriteButton';
 import { useEffect, useState } from 'react';
-import { Factory, FileText, GitCompare, Home, Lamp, Package, Search, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
+import { Factory, FileText, GitCompare, Home, Lamp, Package, Search, Share2, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
 import { publicCatalog } from './api';
 import { CategoryExplorer } from './CategoryExplorer';
 import { MarketplaceGreeting } from './GreetingStrip';
@@ -174,7 +174,14 @@ export function ProductPage({ slug }: { slug: string }) {
           {(p.pinned || p.trending) && <span className="ml-2 inline-flex rounded-full bg-warm-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warm-600">Trending</span>}
           <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
             <h1 className="text-3xl font-semibold tracking-tight text-ink-800">{p.title}</h1>
-            <FavoriteButton productId={p.id} />
+            <div className="flex flex-wrap items-center gap-2">
+              <FavoriteButton productId={p.id} />
+              <a href={`https://wa.me/?text=${encodeURIComponent(`${p.title}\nhttps://sourceeasy.in/p/${p.slug}`)}`}
+                target="_blank" rel="noreferrer" data-testid="share-whatsapp"
+                className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium text-ink-600 hover:border-brand-200 hover:text-brand-700">
+                <Share2 size={16} /> Share on WhatsApp
+              </a>
+            </div>
           </div>
           <p className="mt-3 text-2xl font-semibold text-brand-700">{priceLabel(p.price, currency)}</p>
           <p className="mt-1 text-sm text-ink-400">Sourced in China</p>
@@ -186,12 +193,16 @@ export function ProductPage({ slug }: { slug: string }) {
           {tiers.length > 0 && (
             <div className="mt-6 overflow-hidden rounded-2xl border border-ink-100">
               <table className="w-full text-sm">
-                <thead className="bg-ink-50 text-left text-ink-500"><tr><th className="px-4 py-2">Quantity</th><th className="px-4 py-2">Unit price</th></tr></thead>
+                <thead className="bg-ink-50 text-left text-ink-500"><tr><th className="px-4 py-2">Quantity</th><th className="px-4 py-2">USD</th><th className="px-4 py-2">RMB</th><th className="px-4 py-2">INR</th></tr></thead>
                 <tbody>
                   {tiers.map((t, i) => (
                     <tr key={i} className="border-t border-ink-100">
                       <td className="px-4 py-2">{t.minQty}{t.maxQty ? `–${t.maxQty}` : '+'} {p.unit || 'pcs'}</td>
-                      <td className="px-4 py-2 font-medium text-ink-800">{t.amounts?.[currency] != null ? priceLabel({ mode: 'RANGE', base: currency, amounts: { USD: { min: t.amounts.USD ?? null, max: t.amounts.USD ?? null }, CNY: { min: t.amounts.CNY ?? null, max: t.amounts.CNY ?? null }, INR: { min: t.amounts.INR ?? null, max: t.amounts.INR ?? null } } } as any, currency) : '—'}</td>
+                      {(['USD', 'CNY', 'INR'] as const).map((cur) => (
+                        <td key={cur} className={`px-4 py-2 font-medium ${cur === currency ? 'text-brand-700' : 'text-ink-800'}`}>
+                          {t.amounts?.[cur] != null ? priceLabel({ mode: 'RANGE', base: cur, amounts: { USD: { min: t.amounts.USD ?? null, max: t.amounts.USD ?? null }, CNY: { min: t.amounts.CNY ?? null, max: t.amounts.CNY ?? null }, INR: { min: t.amounts.INR ?? null, max: t.amounts.INR ?? null } } } as any, cur) : '—'}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>

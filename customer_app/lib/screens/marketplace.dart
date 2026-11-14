@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../api.dart';
 
@@ -231,6 +232,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             } catch (_) {}
           },
         ),
+        IconButton(
+          key: const Key('share-whatsapp'),
+          tooltip: 'Share on WhatsApp',
+          icon: const Icon(Icons.share),
+          onPressed: p == null ? null : () async {
+            final link = 'https://sourceeasy.in/p/${widget.slug}';
+            final text = '${p['title']}\n$link';
+            await SharePlus.instance.share(ShareParams(text: text, subject: '${p['title']}', title: '${p['title']}'));
+          },
+        ),
       ]),
       body: p == null
           ? Center(child: _err == null ? const CircularProgressIndicator() : Text(_err!))
@@ -240,6 +251,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               if (p['isSample'] == true) const Text('SAMPLE', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF1a6d98))),
               Text('${p['title']}', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
               if (p['summary'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${p['summary']}')),
+              if (((p['tiers'] as List?) ?? []).isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('Volume prices', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                ...(((p['tiers'] as List?) ?? []).cast<Json>()).map((t) {
+                  final amounts = (t['amounts'] as Json?) ?? {};
+                  final qty = '${t['minQty'] ?? ''}${t['maxQty'] != null ? '–${t['maxQty']}' : '+'} ${p['unit'] ?? 'pcs'}';
+                  final usd = amounts['USD']; final cny = amounts['CNY']; final inr = amounts['INR'];
+                  return Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('$qty  ·  USD ${usd ?? '—'}  ·  RMB ${cny ?? '—'}  ·  INR ${inr ?? '—'}'));
+                }),
+              ],
               const SizedBox(height: 16),
               const Text('Request a quote', style: TextStyle(fontWeight: FontWeight.w700)),
               TextField(controller: _name, decoration: const InputDecoration(labelText: 'Your name')),

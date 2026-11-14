@@ -300,3 +300,44 @@ describe('trending, related products and favourites', () => {
     expect((await app.inject({ method: 'PUT', url: '/api/portal/catalog/favorites/not-a-product', headers: auth })).statusCode).toBe(404);
   }, 180_000);
 });
+
+describe('seo pages, sitemap and robots', () => {
+  it('serves robots.txt, a sitemap of published products, and prerendered product meta', async () => {
+    const { app, call } = await setupCatalog();
+    const robots = await app.inject({ method: 'GET', url: '/robots.txt' });
+    expect(robots.statusCode).toBe(200);
+    expect(robots.headers['content-type']).toMatch(/text\/plain/);
+    expect(robots.body).toMatch(/Sitemap: https:\/\/sourceeasy.in\/sitemap.xml/);
+    expect(robots.body).toMatch(/Allow: \/api\/public\//);
+    expect(robots.body).toMatch(/Disallow: \/api\//);
+
+    const emptyMap = await app.inject({ method: 'GET', url: '/sitemap.xml', headers: { host: 'sourceeasy.in', 'x-forwarded-proto': 'https' } });
+    expect(emptyMap.statusCode).toBe(200);
+    expect(emptyMap.body).toContain('https://sourceeasy.in/');
+    expect(emptyMap.body).not.toContain('/p/');
+
+    await call('sa', 'POST', '/api/catalog/samples/seed');
+    await call('sa', 'PATCH', '/api/catalog/settings', { homepageEnabled: true });
+    const map = await app.inject({ method: 'GET', url: '/sitemap.xml', headers: { host: 'sourceeasy.in', 'x-forwarded-proto': 'https' } });
+    expect(map.statusCode).toBe(200);
+    expect(map.headers['content-type']).toMatch(/xml/);
+    expect(map.body).toContain('https://sourceeasy.in/p/stainless-hex-bolts-m8');
+    expect(map.body).toContain('https://sourceeasy.in/c/hardware');
+
+    const missing = await app.inject({ method: 'GET', url: '/p/does-not-exist' });
+    expect(missing.statusCode).toBe(404);
+
+    const page = await app.inject({ method: 'GET', url: '/p/stainless-hex-bolts-m8', headers: { host: 'sourceeasy.in', 'x-forwarded-proto': 'https' } });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers['content-type']).toMatch(/html/);
+    expect(page.body).toContain('<title>Stainless Hex Bolts M8 — Source Easy</title>');
+    expect(page.body).toContain('property="og:url" content="https://sourceeasy.in/p/stainless-hex-bolts-m8"');
+    expect(page.body).toContain('property="og:image"');
+    expect(page.body).toContain('application/ld+json');
+    expect(page.body).toContain('"@type":"Product"');
+    expect(page.body).toContain('Stainless Hex Bolts M8');
+    const cat = await app.inject({ method: 'GET', url: '/c/hardware', headers: { host: 'sourceeasy.in' } });
+    expect(cat.statusCode).toBe(200);
+    expect(cat.body).toContain('Hardware — Source Easy');
+  }, 180_000);
+});
