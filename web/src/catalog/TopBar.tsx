@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, FileText, Menu, Search, UserRound, X } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 import { CurrencySwitch } from './currency';
@@ -65,7 +65,7 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
       </div>
       <div className="border-b border-ink-100 bg-warm-50">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
-          <nav className="mb-3 flex gap-1 overflow-x-auto text-sm font-medium text-ink-600">
+          <nav className="mb-3 flex gap-1 overflow-x-auto text-sm font-medium text-ink-600 md:overflow-visible">
             <button type="button" onClick={() => go('/products')} className="shrink-0 rounded-full px-3 py-1.5 hover:bg-white hover:text-brand-700">Products</button>
             <MenuBtn label="Categories" open={menu === 'cat'} onToggle={() => setMenu(menu === 'cat' ? null : 'cat')}>
               <CategoryMegaMenu categories={categories} products={products} onGo={go} />
@@ -120,12 +120,35 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
 }
 
 function MenuBtn({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  const btn = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return;
+    const place = () => {
+      const r = btn.current!.getBoundingClientRect();
+      const mw = menu.current?.offsetWidth ?? Math.min(window.innerWidth * 0.9, 832);
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8));
+      setPos({ top: r.bottom + 4, left });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
   return (
-    <div className="relative">
+    <div className="relative" ref={btn}>
       <button type="button" onClick={onToggle} className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium text-ink-600 hover:bg-white hover:text-brand-700">
         {label}<ChevronDown size={14} className={`transition ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && <div className="absolute left-0 top-full z-20 mt-1 rounded-2xl border border-ink-100 bg-white shadow-lift">{children}</div>}
+      {open && (
+        <div ref={menu} className="fixed z-50 rounded-2xl border border-ink-100 bg-white shadow-lift" style={{ top: pos.top, left: pos.left }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
