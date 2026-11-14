@@ -123,6 +123,7 @@ function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; 
           <button disabled={busy || note === (r.internalNote ?? '')} className="btn-ghost !py-1 text-xs" onClick={() => void run(() => api.srPatch!(id, { internalNote: note }))}>{t('sr.saveNote')}</button></div>}
         {!chinaView && !!r.files?.length && <div><div className="mb-1 text-xs font-medium">{t('sr.files')}</div><ul className="space-y-1 text-xs">{r.files.map((f) => <li key={f.id}>
           <button className="text-brand-600 underline" onClick={() => void api.srFileUrl!(r.id, f.id).then((u) => window.open(u, '_blank', 'noopener'))}>{f.name}</button>
+          {f.kind && <span className="ml-2 text-ink-500">{t(`sr.fileKind.${f.kind}`, { defaultValue: f.kind })}</span>}
           <span className="ml-2 text-ink-400">{f.customerVisible ? t('sr.fromCustomer') : t('sr.internal')}</span></li>)}</ul></div>}
         {!!r.events?.length && <div><div className="mb-1 text-xs font-medium">{t('sr.timeline')}</div><ol className="space-y-1 border-l-2 border-ink-100 pl-3 text-xs dark:border-ink-800">{[...r.events].reverse().map((e, i) => <li key={i}>
           <span className="font-medium">{e.kind.replace(/^SR_|^FQ_/, '').replace(/_/g, ' ').toLowerCase()}</span>{e.by && <span className="text-ink-500"> · {e.by}</span>} <span className="text-ink-400">{when(e.at)}</span>

@@ -351,3 +351,93 @@ describe('seo pages, sitemap and robots', () => {
     expect(cat.body).toContain('Hardware — Source Easy');
   }, 180_000);
 });
+
+describe('public quote types and attachments', () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+  const PDF = Buffer.from('%PDF-1.4\n%test\n');
+  function quoteForm(fields: Record<string, string>, files: { field: string; name: string; data: Buffer }[] = []) {
+    const B = '----se' + Math.random().toString(16).slice(2);
+    const parts: Buffer[] = [];
+    for (const [k, v] of Object.entries(fields)) parts.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+    for (const f of files) parts.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="${f.field}"; filename="${f.name}"\r\nContent-Type: application/octet-stream\r\n\r\n`), f.data, Buffer.from('\r\n'));
+    parts.push(Buffer.from(`--${B}--\r\n`));
+    return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${B}` } };
+  }
+
+  it('creates a catalog lead for product sourcing, attaches files, and hides invoices from China', async () => {
+    const { app, call } = await setupCatalog();
+    await call('sa', 'POST', '/api/catalog/samples/seed');
+    await call('sa', 'PATCH', '/api/catalog/settings', { homepageEnabled: true });
+    const p = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?q=hex+bolts' })).json().data[0];
+    const miss = await app.inject({ method: 'POST', url: '/api/public/catalog/enquire', payload: { type: 'SOURCING', name: 'Ravi' } });
+    expect(miss.statusCode).toBe(400);
+    const bot = await app.inject({ method: 'POST', url: '/api/public/catalog/enquire', payload: { type: 'SOURCING', name: 'Bot', phone: '9000000000', website: 'spam' } });
+    expect(bot.statusCode).toBe(202);
+    const up = quoteForm({
+      type: 'SOURCING', name: 'Ravi', phone: '9000000000', phoneCode: '+91', email: 'ravi@traders.example',
+      company: 'Ravi Traders', quantity: '500', message: 'Need a sourced quote', productId: p.id,
+    }, [
+      { field: 'photos', name: 'part.png', data: PNG },
+      { field: 'invoices', name: 'invoice.pdf', data: PDF },
+      { field: 'packingLists', name: 'packing.pdf', data: PDF },
+    ]);
+    const enq = await app.inject({ method: 'POST', url: '/api/public/catalog/enquire', ...up, remoteAddress: '10.40.0.1' });
+    expect(enq.statusCode).toBe(201);
+    expect(enq.json()).toMatchObject({ ok: true, kind: 'SOURCING', attachments: 3 });
+    expect(enq.json().reference).toMatch(/^SE-\d{4}-\d{4}$/);
+    const leads = (await call('ia', 'GET', '/api/records/leads')).json().data as any[];
+    const lead = leads.find((l) => l.leadRef === enq.json().reference);
+    expect(lead).toMatchObject({ sourceChannel: 'CATALOG', productInterest: p.title });
+    const iaFiles = (await call('ia', 'GET', `/api/leads/${lead.id}/attachments`)).json().data as any[];
+    expect(iaFiles.map((a: any) => [a.name, a.kind])).toEqual([
+      ['part.png', 'PHOTO'],
+      ['invoice.pdf', 'INVOICE'],
+      ['packing.pdf', 'PACKING_LIST'],
+    ]);
+    expect((await call('cs', 'GET', `/api/leads/${lead.id}/attachments`)).statusCode).toBe(404);
+    expect((await call('ia', 'POST', `/api/leads/${lead.id}/assign`, { office: 'CHINA' })).statusCode).toBe(200);
+    const cnFiles = (await call('cs', 'GET', `/api/leads/${lead.id}/attachments`)).json().data as any[];
+    expect(cnFiles.map((a: any) => a.name)).toEqual(['part.png', 'packing.pdf']);
+    const inv = iaFiles.find((a: any) => a.kind === 'INVOICE');
+    expect((await call('cs', 'GET', `/api/leads/${lead.id}/attachments/${inv.id}`)).statusCode).toBe(404);
+    expect((await call('ia', 'GET', `/api/leads/${lead.id}/attachments/${inv.id}`)).statusCode).toBe(200);
+  }, 180_000);
+
+  it('creates a freight-only shipping request, not a lead, and keeps files India-only', async () => {
+    const { app, call } = await setupCatalog();
+    const before = ((await call('ia', 'GET', '/api/records/leads')).json().data as any[]).length;
+    expect((await app.inject({ method: 'POST', url: '/api/public/catalog/enquire', payload: {
+      type: 'SHIPPING', name: 'Meera', phone: '9000000001', phoneCode: '+91', email: 'meera@co.example', goods: 'Cartons of lamps',
+    } })).statusCode).toBe(400); // dest + pickup required
+    const up = quoteForm({
+      type: 'SHIPPING', name: 'Meera', phone: '9000000001', phoneCode: '+91', email: 'meera@co.example', company: 'Meera Co',
+      goods: 'Cartons of lamps', pickupCity: 'Yiwu', destCity: 'Chennai', packages: '12', weightKg: '240', cbm: '3.5',
+      message: 'Need sea freight',
+    }, [
+      { field: 'photos', name: 'cargo.png', data: PNG },
+      { field: 'invoices', name: 'invoice.pdf', data: PDF },
+      { field: 'packingLists', name: 'packing.pdf', data: PDF },
+    ]);
+    const r = await app.inject({ method: 'POST', url: '/api/public/catalog/enquire', ...up, remoteAddress: '10.40.0.2' });
+    expect(r.statusCode).toBe(201);
+    expect(r.json()).toMatchObject({ ok: true, kind: 'SHIPPING', attachments: 3 });
+    expect(r.json().reference).toMatch(/^SH-\d{4}-\d{4}$/);
+    const after = (await call('ia', 'GET', '/api/records/leads')).json().data as any[];
+    expect(after.length).toBe(before);
+    expect(after.some((l) => l.leadRef === r.json().reference)).toBe(false);
+    const list = (await call('ia', 'GET', '/api/shipping-requests')).json().data as any[];
+    const sr = list.find((x) => x.ref === r.json().reference);
+    expect(sr).toMatchObject({ kind: 'FREIGHT_ONLY', goods: 'Cartons of lamps', destCity: 'Chennai', pickupCity: 'Yiwu', leadRef: null });
+    const detail = (await call('ia', 'GET', `/api/shipping-requests/${sr.id}`)).json().data;
+    expect(detail.files.map((f: any) => [f.name, f.kind])).toEqual([
+      ['cargo.png', 'PHOTO'],
+      ['invoice.pdf', 'INVOICE'],
+      ['packing.pdf', 'PACKING_LIST'],
+    ]);
+    expect(detail.customer?.name).toBe('Meera');
+    const china = (await call('cs', 'GET', `/api/shipping-requests/${sr.id}`)).json().data;
+    expect(china.files).toEqual([]);
+    expect(china.customer).toBeNull();
+    expect(china.canPrice).toBe(false);
+  }, 180_000);
+});

@@ -8,7 +8,7 @@ import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
 import { diskOf, FILE_RE, inventory, KEY_RE, type StoredFile } from './storage.js';
-import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, type Staged, type Attachment } from './uploads.js';
+import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, kindFromField, isVideo, type Staged, type Attachment, type FileKind } from './uploads.js';
 import { capabilities, isRole, manageableRoles, sides, type Role } from './roles.js';
 import { PermStore, PERMISSIONS } from './permissions.js';
 import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
@@ -428,7 +428,7 @@ export async function buildApp(o: AppOptions) {
   const mediaSync = async (key: string, list: Attachment[]) => {
     await o.db.tx(async (t) => {
       await t.run('DELETE FROM lead_media WHERE owner_key = ?', key);
-      for (const a of list) await t.run('INSERT INTO lead_media (id, owner_key, name, mime, size, created_at) VALUES (?,?,?,?,?,?)', a.id, key, a.name, a.mime, a.size, Number.isFinite(Date.parse(a.createdAt)) ? a.createdAt : new Date().toISOString()); // mirror only; bad legacy timestamps must not break syncing
+      for (const a of list) await t.run('INSERT INTO lead_media (id, owner_key, name, mime, size, created_at, kind) VALUES (?,?,?,?,?,?,?)', a.id, key, a.name, a.mime, a.size, Number.isFinite(Date.parse(a.createdAt)) ? a.createdAt : new Date().toISOString(), a.kind ?? null); // mirror only; bad legacy timestamps must not break syncing
       if (!key.startsWith('q_')) await t.run('UPDATE leads SET attachment_count = ?, updated_at = now() WHERE id = ?', list.length, key);
     });
   };
@@ -444,6 +444,8 @@ export async function buildApp(o: AppOptions) {
           if (f.error === 'empty') continue;
           if (f.error === 'size') return bad(413, `Too large: ${part.filename} (photos/documents 10 MB, videos 100 MB)`, 'size');
           if (f.error === 'type') return bad(415, `File type not allowed: ${part.filename}`, 'type');
+          const kind = kindFromField(part.fieldname);
+          if (kind) f.kind = kind;
           files.push(f);
           if (files.length > maxFiles) return bad(413, `Up to ${maxFiles} files`, 'count');
         } else fields[part.fieldname] = String(part.value ?? '');
@@ -564,8 +566,46 @@ export async function buildApp(o: AppOptions) {
     return { leadId: String(lead.id), leadRef, loginRequested };
   };
 
+  let afterPublicShipping: (r: ShippingRequest) => Promise<void> = async () => undefined;
+  const createPublicShipping = async (input: {
+    name: string; phone: string; phoneCode: string; email?: string; company?: string;
+    goods: string; quantity?: number; unit?: string; packages?: number; weightKg?: number; cbm?: number;
+    shipperName?: string; shipperPhone?: string; pickupAddress?: string; pickupCity?: string;
+    destCity: string; destAddress?: string; destPincode?: string; mode?: string; incoterm?: string;
+    readyDate?: string; customerNote?: string; files: Staged[];
+  }) => {
+    const code = input.phoneCode || '+91';
+    let digits = input.phone.replace(/[\s\-().]/g, '');
+    if (digits.startsWith(code)) digits = digits.slice(code.length);
+    const phone = `${code} ${digits}`.trim();
+    let cid = await customers.match(phone, input.email, input.company);
+    if (!cid) cid = (await customers.add({ name: input.name || input.company || phone, company: input.company || null, phone, email: input.email || null, city: input.destCity || null, country: code === '+91' ? 'India' : null }, null)).id;
+    const fields = cleanFields({
+      goods: input.goods, quantity: input.quantity, unit: input.unit, packages: input.packages, weightKg: input.weightKg, cbm: input.cbm,
+      shipperName: input.shipperName || input.name, shipperPhone: input.shipperPhone || phone, pickupAddress: input.pickupAddress, pickupCity: input.pickupCity,
+      destCity: input.destCity, destAddress: input.destAddress, destPincode: input.destPincode, mode: input.mode, incoterm: input.incoterm,
+      readyDate: input.readyDate, customerNote: input.customerNote,
+    }, CUSTOMER_FIELDS);
+    const r = await srs.create({ kind: 'FREIGHT_ONLY', customerId: cid, createdByKind: 'CUSTOMER', createdBy: null, fields });
+    if (input.files.length) {
+      const list = uploads.commit(srKey(r.id), input.files);
+      const added = list.slice(-input.files.length);
+      await srs.addFiles(r.id, added.map((f, i) => ({ id: f.id, kind: input.files[i]?.kind ?? f.kind ?? null })), 'CUSTOMER');
+    }
+    await afterPublicShipping(r);
+    return { id: r.id, ref: r.ref };
+  };
+  const reservePublicEnquiry = async (req: FastifyRequest, honeypot: string) => {
+    if (honeypot) return { skip: true as const };
+    const key = `se:enq:${req.ip}:${Math.floor(Date.now() / 3600e3)}`;
+    if (Number((await o.bus.get(key)) ?? 0) >= 5) return { limited: true as const };
+    await o.bus.incr(key, 3600);
+    return { ok: true as const };
+  };
+
   const catalogDeps = {
     db: o.db, uploads, perms, mediaSync, createEnquiry: createCatalogEnquiry,
+    readMultipart, reservePublicEnquiry, createPublicShipping,
     livePublicGreetings: async () => {
       const live = await greetings.live('PUBLIC');
       return live.filter((g) => g.imageDesktop).map((g, i) => ({
@@ -679,7 +719,11 @@ export async function buildApp(o: AppOptions) {
       const sc = await scope(req.user!); if (sc && !sc.has(String(r.id))) throw Object.assign(new Error('Not found'), { status: 404 });
       return String(r.id);
     };
-    api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => ({ data: uploads.list(await attLead(req)) }));
+    const hideInvoice = (u: User) => sides(u.role).china && u.role !== 'SUPER_ADMIN';
+    api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => {
+      const list = uploads.list(await attLead(req));
+      return { data: hideInvoice(req.user!) ? list.filter((a) => a.kind !== 'INVOICE') : list };
+    });
     const sendFile = (req: FastifyRequest, reply: any, f: { meta: { mime: string; name: string }; path: string; size: number }, name = f.meta.name) => {
       const inline = /^image\/(jpeg|png|webp)$|^application\/pdf$|^video\//.test(f.meta.mime);
       reply.header('content-type', f.meta.mime).header('cache-control', 'private, no-store').header('accept-ranges', 'bytes')
@@ -698,6 +742,7 @@ export async function buildApp(o: AppOptions) {
     api.get<{ Params: { id: string; fid: string } }>('/api/leads/:id/attachments/:fid', async (req, reply) => {
       const f = uploads.file(await attLead(req), req.params.fid);
       if (!f) return reply.code(404).send({ error: 'Not found' });
+      if (hideInvoice(req.user!) && f.meta.kind === 'INVOICE') return reply.code(404).send({ error: 'Not found' });
       return sendFile(req, reply, f);
     });
     // India side (and super admin) attach product photos/videos to a lead from the web or Android app.
@@ -2190,6 +2235,11 @@ export async function buildApp(o: AppOptions) {
     const srSla = async (id: string) => { const x = await o.db.get('SELECT sla_started_at, sla_due_at, sla_warned, sla_breached FROM shipping_requests WHERE id = ?', id);
       return x?.sla_due_at ? { startedAt: new Date(x.sla_started_at).toISOString(), dueAt: new Date(x.sla_due_at).toISOString(), warned: !!x.sla_warned, breached: !!x.sla_breached || Date.now() > new Date(x.sla_due_at).getTime() } : null; };
     const srLive = async (r: ShippingRequest) => { await srSlaSync(r.id); return liveData({ type: 'shipping', id: r.id, shippingRequestId: r.id, at: Date.now() }); };
+    afterPublicShipping = async (r) => {
+      await srs.log(r.id, 'SR_CREATED', { kind: 'CUSTOMER', id: null, name: 'Marketplace quote' }, { by: 'CATALOG' });
+      await srNotify(r, 'SHIP_REQUEST', null);
+      await srLive(r);
+    };
     const srIndiaPeople = () => o.users.list().filter((x) => x.active && sides(x.role).india).map((x) => x.id);
     const srChinaPeople = () => o.users.list().filter((x) => x.active && sides(x.role).china && !sides(x.role).superAdmin && can(x, 'orders.production')).map((x) => x.id);
     const srNotify = async (r: ShippingRequest, kind: 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE', byName: string | null, detail?: string) => {
@@ -2208,7 +2258,10 @@ export async function buildApp(o: AppOptions) {
         return sh ? { stage: sh.status, carrier: sh.carrier, tracking: sh.tracking, container: sh.container, etd: sh.etd, eta: sh.eta, deliveredAt: sh.deliveredAt, shipmentRef: sh.ref } : null; }
       return SR_STAGES.includes(r.status as never) ? { stage: r.status, carrier: r.carrier, tracking: r.tracking, container: r.container, etd: r.etd, eta: r.eta, deliveredAt: r.deliveredAt, shipmentRef: null } : null;
     };
-    const srFiles = (r: ShippingRequest, only?: Set<string>) => uploads.list(srKey(r.id)).filter((f) => !only || only.has(f.id)).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, createdAt: f.createdAt }));
+    const srFiles = async (r: ShippingRequest, only?: Set<string>) => {
+      const kinds = await srs.fileKinds(r.id);
+      return uploads.list(srKey(r.id)).filter((f) => !only || only.has(f.id)).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, createdAt: f.createdAt, kind: kinds.get(f.id) ?? f.kind ?? null }));
+    };
     const srLeadRef = async (id: string | null) => (id ? (((await leadDb.get(id)) as Rec | null)?.leadRef as string) ?? null : null);
     /** Staff DTO: India / super admin see the full record; China gets a strict allowlist (no customer identity, dest contact/address, prices or files). */
     const srStaff = async (u: User, r: ShippingRequest, full: boolean) => {
@@ -2231,7 +2284,7 @@ export async function buildApp(o: AppOptions) {
       }
       const fqs = (await srs.quotes(r.id)).map((q) => ({ ...q, label: `${r.ref}-F${q.n}`, internalCost: can(u, 'prices.inr') ? q.internalCost : null, createdByName: (q.createdBy && names.get(q.createdBy)) || null }));
       const shared = await srs.customerFileIds(r.id);
-      return { ...base, freightQuotes: fqs, files: srFiles(r).map((f) => ({ ...f, customerVisible: shared.has(f.id) })),
+      return { ...base, freightQuotes: fqs, files: (await srFiles(r)).map((f) => ({ ...f, customerVisible: shared.has(f.id) })),
         events: (await srs.events(r.id)).map((e: any) => ({ at: e.at, kind: e.kind, by: e.actor_kind === 'CUSTOMER' ? 'Customer' : e.actor_name, data: e.data, customerVisible: e.customer_visible, customerText: e.customer_text })) };
     };
     /** Customer DTO: an allowlist. Never internal note, internal cost, assignee, reject reason, staff names or other customers. */
@@ -2249,7 +2302,7 @@ export async function buildApp(o: AppOptions) {
         question: r.status === 'NEEDS_INFO' ? r.question : null,
         freightQuotes: fqs.map((q) => ({ id: q.id, label: `${r.ref}-F${q.n}`, version: q.customerRev, amount: q.amount, currency: q.currency, mode: q.mode, incoterm: q.incoterm,
           transit: q.transit, validUntil: q.validUntil, note: q.customerNote, status: q.status, createdAt: q.createdAt, decidedAt: q.decidedAt, canDecide: q.status === 'SENT' && r.status === 'QUOTED' })),
-        files: srFiles(r, await srs.customerFileIds(r.id)), timeline: evs };
+        files: await srFiles(r, await srs.customerFileIds(r.id)), timeline: evs };
     };
     const readSrBody = async (req: FastifyRequest, reply: any): Promise<{ b: Record<string, string>; files: Staged[] } | null> => {
       const b: Record<string, string> = {}; let files: Staged[] = [];

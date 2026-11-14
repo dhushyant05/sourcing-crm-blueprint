@@ -13,7 +13,19 @@ export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 /** Staff may attach more files to a lead than the public form. */
 export const MAX_STAFF_FILES = 10;
 export const isVideo = (mime: string) => mime.startsWith('video/');
-export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null }
+export const FILE_KINDS = ['PHOTO', 'INVOICE', 'PACKING_LIST'] as const;
+export type FileKind = (typeof FILE_KINDS)[number];
+export function parseFileKind(v: unknown): FileKind | undefined {
+  const k = String(v ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (k === 'PHOTO' || k === 'PHOTOS' || k === 'IMAGE' || k === 'IMAGES') return 'PHOTO';
+  if (k === 'INVOICE' || k === 'INVOICES') return 'INVOICE';
+  if (k === 'PACKING_LIST' || k === 'PACKINGLIST' || k === 'PACKINGLISTS' || k === 'PACKING') return 'PACKING_LIST';
+  return undefined;
+}
+export function kindFromField(field: string): FileKind | undefined {
+  return parseFileKind(field.replace(/\[\]$/, ''));
+}
+export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null; kind?: FileKind | null }
 
 const EXT_MIME: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
@@ -72,7 +84,7 @@ export class UploadStore {
     for (const f of files) {
       const id = randomBytes(9).toString('base64url');
       writeFileSync(join(d, id), f.data, { mode: 0o600 });
-      list.push({ id, name: safeName(f.name), mime: f.mime, size: f.data.length, createdAt: new Date().toISOString() });
+      list.push({ id, name: safeName(f.name), mime: f.mime, size: f.data.length, createdAt: new Date().toISOString(), ...(f as any).kind ? { kind: (f as any).kind } : {} });
     }
     writeFileSync(join(d, 'manifest.json'), JSON.stringify(list, null, 1));
     return list;
@@ -121,7 +133,7 @@ export class UploadStore {
     for (const f of files) {
       const id = randomBytes(9).toString('base64url');
       renameSync(f.path, join(d, id));
-      list.push({ id, name: safeName(f.name), mime: f.mime, size: f.size, createdAt: new Date().toISOString(), uploadedBy: by });
+      list.push({ id, name: safeName(f.name), mime: f.mime, size: f.size, createdAt: new Date().toISOString(), uploadedBy: by, ...(f.kind ? { kind: f.kind } : {}) });
     }
     writeFileSync(join(d, 'manifest.json'), JSON.stringify(list, null, 1));
     return list;
@@ -130,5 +142,5 @@ export class UploadStore {
   removeAll(key: string) { rmSync(this.leadDir(key), { recursive: true, force: true }); }
   discard(files: Staged[]) { for (const f of files) rmSync(f.path, { force: true }); }
 }
-export interface Staged { name: string; path: string; size: number; mime: string; error?: 'size' | 'type' | 'empty' }
+export interface Staged { name: string; path: string; size: number; mime: string; error?: 'size' | 'type' | 'empty'; kind?: FileKind }
 

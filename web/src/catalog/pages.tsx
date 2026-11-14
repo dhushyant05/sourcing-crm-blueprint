@@ -223,7 +223,7 @@ export function ProductPage({ slug }: { slug: string }) {
               </table>
             </div>
           )}
-          <div id="quote" className="mt-8 scroll-mt-28 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
+          <div id="quote" className="mt-8 scroll-mt-56 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
             <h2 className="font-semibold text-ink-800">Request a quote</h2>
             <p className="mt-1 text-sm text-ink-500">We’ll come back with a Source Easy quote. This is not a checkout.</p>
             <div className="mt-4"><EnquireForm product={p} /></div>

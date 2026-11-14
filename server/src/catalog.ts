@@ -10,8 +10,8 @@ import type { Db } from './db.js';
 import type { User } from './users.js';
 import { sides, type Role } from './roles.js';
 import type { PermStore } from './permissions.js';
-import type { UploadStore, Attachment } from './uploads.js';
-import { MAX_FILE_BYTES } from './uploads.js';
+import type { UploadStore, Attachment, Staged } from './uploads.js';
+import { MAX_FILE_BYTES, MAX_FILES, isVideo } from './uploads.js';
 import { productStudioImage, bannerStudioImage, sceneFor, CATEGORY_PALETTES } from './studio.js';
 import {
   addFavorite, favoriteIds, listFavorites, parseTags, pinOrder, recordEnquiryEvent, recordView,
@@ -79,6 +79,15 @@ export interface CatalogDeps {
     quantity?: number; unit?: string; message?: string; city?: string; requestLogin?: boolean;
     customerId?: string;
   }) => Promise<{ leadId: string; leadRef: string; loginRequested?: boolean }>;
+  readMultipart?: (req: FastifyRequest, maxFiles: number) => Promise<{ fields: Record<string, string>; files: Staged[]; err: { status: number; error: string; code: string } | null }>;
+  reservePublicEnquiry?: (req: FastifyRequest, honeypot: string) => Promise<{ skip?: true; limited?: true; ok?: true }>;
+  createPublicShipping?: (input: {
+    name: string; phone: string; phoneCode: string; email?: string; company?: string;
+    goods: string; quantity?: number; unit?: string; packages?: number; weightKg?: number; cbm?: number;
+    shipperName?: string; shipperPhone?: string; pickupAddress?: string; pickupCity?: string;
+    destCity: string; destAddress?: string; destPincode?: string; mode?: string; incoterm?: string;
+    readyDate?: string; customerNote?: string; files: Staged[];
+  }) => Promise<{ id: string; ref: string }>;
   livePublicGreetings?: () => Promise<PublicBanner[]>;
 }
 
@@ -734,44 +743,96 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     return sendUpload(reply, deps.uploads, ownerKey('p', row.id), req.params.fileId, 'public, max-age=86400');
   });
 
-  async function handleEnquire(req: any, reply: any, row?: { id: string; title: string; slug: string; status: string } | null) {
-    if (!deps.createEnquiry) return reply.code(501).send({ error: 'Enquiry is not available' });
-    const b = (req.body ?? {}) as Record<string, unknown>;
-    const name = String(b.name ?? '').trim(), phone = String(b.phone ?? '').trim();
-    const email = String(b.email ?? '').trim();
-    if (!name || !phone) return reply.code(400).send({ error: 'Name and mobile number are required', code: 'required' });
+  async function parseEnquireBody(req: FastifyRequest, reply: FastifyReply): Promise<{ b: Record<string, string>; files: Staged[] } | null> {
+    if (req.isMultipart()) {
+      if (!deps.readMultipart) { reply.code(501).send({ error: 'Uploads are not available' }); return null; }
+      const m = await deps.readMultipart(req, MAX_FILES);
+      if (m.err) { reply.code(m.err.status).send({ error: m.err.error, code: m.err.code }); return null; }
+      if (m.files.some((f) => isVideo(f.mime))) { deps.uploads.discard(m.files); reply.code(415).send({ error: 'The quote form accepts photos, PDF, Word and Excel only', code: 'type' }); return null; }
+      return { b: m.fields, files: m.files };
+    }
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    return { b: Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, v == null ? '' : String(v)])), files: [] };
+  }
+
+  async function finishEnquire(req: FastifyRequest, reply: FastifyReply, parsed: { b: Record<string, string>; files: Staged[] }, row: { id: string; title: string; slug: string; status: string } | null) {
+    const { b, files } = parsed;
+    const reject = (code: number, body: unknown) => { deps.uploads.discard(files); return reply.code(code).send(body); };
+    const str = (k: string, max = 200) => (b[k] ?? '').trim().slice(0, max);
+    if (str('website') && deps.reservePublicEnquiry) {
+      const q = await deps.reservePublicEnquiry(req, str('website', 200));
+      if (q.skip) return reject(202, { ok: true });
+    }
+    const name = str('name', 120), phone = str('phone', 40), email = str('email', 160);
+    if (!name || !phone) return reject(400, { error: 'Name and mobile number are required', code: 'required' });
+    const kind = (str('type', 20) || str('requestType', 20) || 'SOURCING').toUpperCase();
+    const isShipping = kind === 'SHIPPING' || kind === 'FREIGHT' || kind === 'FREIGHT_ONLY';
+    if (isShipping) {
+      const destCity = str('destCity', 120);
+      const pickupCity = str('pickupCity', 120), pickupAddress = str('pickupAddress', 1000);
+      if (!destCity) return reject(400, { error: 'Destination city is required', code: 'required' });
+      if (!pickupCity && !pickupAddress) return reject(400, { error: 'Pickup city or address is required', code: 'required' });
+      if (!(str('goods', 1000) || str('requirement', 1000) || row?.title)) return reject(400, { error: 'Describe the goods to ship', code: 'required' });
+    }
+    if (deps.reservePublicEnquiry) {
+      const q = await deps.reservePublicEnquiry(req, '');
+      if (q.limited) return reject(429, { error: 'Too many enquiries, please try again later' });
+    }
     try {
+      if (isShipping) {
+        if (!deps.createPublicShipping) return reject(501, { error: 'Shipping quotes are not available' });
+        const num = (k: string) => { const n = Number(str(k, 20)); return Number.isFinite(n) && n > 0 ? n : undefined; };
+        const r = await deps.createPublicShipping({
+          name, phone, phoneCode: str('phoneCode', 6) || '+91', email: email || undefined, company: str('company', 160) || undefined,
+          goods: str('goods', 1000) || str('requirement', 1000) || row!.title,
+          quantity: num('quantity'), unit: str('unit', 20) || undefined, packages: num('packages'), weightKg: num('weightKg'), cbm: num('cbm'),
+          shipperName: str('shipperName', 120) || undefined, shipperPhone: str('shipperPhone', 40) || undefined,
+          pickupAddress: str('pickupAddress', 1000) || undefined, pickupCity: str('pickupCity', 120) || undefined,
+          destCity: str('destCity', 120), destAddress: str('destAddress', 1000) || undefined, destPincode: str('destPincode', 12) || undefined,
+          mode: str('mode', 20) || undefined, incoterm: str('incoterm', 20) || undefined,
+          readyDate: str('readyDate', 10) || undefined, customerNote: str('message', 2000) || str('customerNote', 2000) || undefined,
+          files,
+        });
+        return reply.code(201).send({ ok: true, kind: 'SHIPPING', reference: r.ref, id: r.id, attachments: files.length });
+      }
+      if (!deps.createEnquiry) return reject(501, { error: 'Enquiry is not available' });
       const r = await deps.createEnquiry({
         ...(row ? { product: { id: row.id, title: row.title, slug: row.slug } } : {}),
-        name, phone, phoneCode: String(b.phoneCode ?? '+91'), email: email || undefined,
-        company: b.company ? String(b.company) : undefined, quantity: b.quantity != null ? Number(b.quantity) : undefined,
-        unit: b.unit ? String(b.unit) : undefined, message: b.message ? String(b.message) : undefined,
-        city: b.city ? String(b.city) : undefined, requirement: b.requirement ? String(b.requirement) : undefined,
-        requestLogin: /^(1|true|on|yes)$/i.test(String(b.requestLogin ?? '')),
+        name, phone, phoneCode: str('phoneCode', 6) || '+91', email: email || undefined,
+        company: str('company', 160) || undefined, quantity: (() => { const n = Number(str('quantity', 20)); return Number.isFinite(n) && n > 0 ? n : undefined; })(),
+        unit: str('unit', 20) || undefined, message: str('message', 2000) || undefined,
+        city: str('city', 120) || str('destCity', 120) || undefined, requirement: str('requirement', 1000) || undefined,
+        requestLogin: /^(1|true|on|yes)$/i.test(str('requestLogin', 5)),
       });
+      if (files.length) {
+        const list = deps.uploads.commit(r.leadId, files);
+        if (deps.mediaSync) await deps.mediaSync(r.leadId, list);
+      } else deps.uploads.discard(files);
       if (row) await recordEnquiryEvent(deps.db, row.id, r.leadId, req);
-      return reply.code(201).send({ ok: true, reference: r.leadRef, ...(r.loginRequested ? { loginRequested: true } : {}) });
+      return reply.code(201).send({ ok: true, kind: 'SOURCING', reference: r.leadRef, attachments: files.length, ...(r.loginRequested ? { loginRequested: true } : {}) });
     } catch (e: any) {
+      deps.uploads.discard(files);
       return reply.code(e.status ?? 400).send({ error: e.message, ...(e.appCode ? { code: e.appCode } : {}) });
     }
   }
 
-  app.post<{ Body: Record<string, unknown> }>('/api/public/catalog/enquire', async (req, reply) => {
-    const b = (req.body ?? {}) as Record<string, unknown>;
-    const id = String(b.productId ?? b.product ?? '').trim();
-    let row = null;
+  app.post('/api/public/catalog/enquire', async (req, reply) => {
+    const parsed = await parseEnquireBody(req, reply); if (!parsed) return;
+    const id = (parsed.b.productId || parsed.b.product || '').trim();
+    let row = null as { id: string; title: string; slug: string; status: string } | null;
     if (id) {
       const found = await store.get(id);
-      if (!found || found.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+      if (!found || found.status !== 'PUBLISHED') { deps.uploads.discard(parsed.files); return reply.code(404).send({ error: 'Not found' }); }
       row = found;
     }
-    return handleEnquire(req, reply, row);
+    return finishEnquire(req, reply, parsed, row);
   });
 
-  app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/public/catalog/products/:id/enquire', async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/public/catalog/products/:id/enquire', async (req, reply) => {
     const row = await store.get(req.params.id);
     if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
-    return handleEnquire(req, reply, row);
+    const parsed = await parseEnquireBody(req, reply); if (!parsed) return;
+    return finishEnquire(req, reply, parsed, row);
   });
 }
 
