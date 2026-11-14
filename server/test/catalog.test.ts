@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { setup, PW } from './portal-helpers.js';
+import { setup, PW, form, pngOf } from './portal-helpers.js';
 import { photoGroups, DEFAULT_TRUST, DEFAULT_PROMO } from '../src/catalog.js';
 
 const photo = () => sharp({ create: { width: 80, height: 80, channels: 3, background: { r: 32, g: 120, b: 180 } } }).jpeg().toBuffer();
@@ -191,5 +191,21 @@ describe('photo groups, cover and reorder', () => {
     const pub = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${created.json().data.slug}` })).json().data;
     expect(pub.images).toHaveLength(2);
     expect(pub.images[0].cover).toBe(true);
+  });
+});
+
+describe('festival greetings stay off the product banner', () => {
+  it('delivers live greetings only on /api/public/greetings, never as catalog banner slides', async () => {
+    const { app, call, tok } = await setupCatalog();
+    const f = form({}, [{ name: 'diwali.png', data: pngOf(1200, 600), type: 'image/png' }]);
+    const up = await app.inject({ method: 'POST', url: '/api/greetings/upload', payload: f.payload, headers: { ...f.headers, authorization: `Bearer ${tok.sa}` } });
+    expect(up.statusCode).toBe(201);
+    const id = up.json().data.id;
+    expect((await call('sa', 'POST', `/api/greetings/${id}/publish`)).statusCode).toBe(200);
+    const live = (await app.inject({ method: 'GET', url: '/api/public/greetings' })).json().data as any[];
+    expect(live.some((g) => g.id === id)).toBe(true);
+    const banners = (await app.inject({ method: 'GET', url: '/api/public/catalog/banners' })).json().data as any[];
+    expect(banners.every((b) => b.source === 'banner' && !String(b.id).startsWith('gr-'))).toBe(true);
+    expect(banners.some((b) => b.id === id || b.id === `gr-${id}`)).toBe(false);
   });
 });

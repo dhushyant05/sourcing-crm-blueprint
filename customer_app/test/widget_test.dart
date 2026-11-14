@@ -18,6 +18,9 @@ void main() {
     await session.restore();
     await t.pumpWidget(CustomerApp(session: session, live: false));
     await t.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget);
+    await t.tap(find.text('Sign in'));
+    await t.pumpAndSettle();
     expect(find.byKey(const Key('login')), findsOneWidget);
 
     await t.enterText(find.byKey(const Key('login-phone')), '9876543210');
@@ -36,6 +39,8 @@ void main() {
     await t.tap(find.byKey(const Key('pw-save')));
     await t.pumpAndSettle();
 
+    await t.tap(find.text('Requests'));
+    await t.pumpAndSettle();
     expect(find.text('Brass lamps'), findsOneWidget);
     expect(find.text('Happy Diwali'), findsOneWidget);
     await t.tap(find.byKey(const Key('greeting-close')));
@@ -61,9 +66,9 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.byKey(const Key('sign-out')));
     await t.pumpAndSettle();
-    expect(find.byKey(const Key('login')), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
     expect(kv.data, isEmpty);
-    expect(s.calls.where((c) => !c.split(' ')[1].startsWith('/api/portal/')), isEmpty);
+    expect(s.calls.where((c) => !c.split(' ')[1].startsWith('/api/portal/') && !c.split(' ')[1].startsWith('/api/public/')), isEmpty);
   });
 
   testWidgets('freight quote: PDF button, booking gate and accept confirmation are visible', (t) async {

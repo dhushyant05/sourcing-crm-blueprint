@@ -686,9 +686,8 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
       mobileUrl: r.mobile_file_id ? `/api/public/catalog/banners/${r.id}/image?k=mobile` : null,
       href: r.link_kind === 'URL' ? r.url : r.link_kind === 'PRODUCT' && r.product_id ? `/p/${r.product_id}` : r.link_kind === 'CATEGORY' && r.category_id ? `/c/${r.category_id}` : null,
     }));
-    const greetings = await deps.livePublicGreetings?.() ?? [];
-    const merged = [...greetings.map((g, i) => ({ ...g, sort: -1000 + i })), ...slides].slice(0, MAX_LIVE_BANNERS);
-    return { data: merged, ...settings };
+    // Festival greetings are a separate homepage strip (/api/public/greetings), not mixed into this carousel.
+    return { data: slides.slice(0, MAX_LIVE_BANNERS), ...settings };
   });
 
   app.get<{ Params: { id: string }; Querystring: { k?: string } }>('/api/public/catalog/banners/:id/image', async (req, reply) => {

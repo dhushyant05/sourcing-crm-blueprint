@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, Factory, FileText, GitCompare, Home, Lamp, Package, Search, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
 import { publicCatalog } from './api';
 import { BannerCarousel } from './Banner';
+import { MarketplaceGreeting } from './GreetingStrip';
 import { CompanySections } from './CompanySections';
 import { EnquireForm } from './EnquireForm';
 import { Gallery } from './Gallery';
@@ -24,6 +25,7 @@ export function HomePage({ products, banners, settings, categories, trust }: {
   const frequent = uniqueCategories(products).slice(0, 2);
   return (
     <>
+      <MarketplaceGreeting />
       <section className="border-b border-ink-100 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <h1 className="text-base font-semibold text-ink-800 sm:text-lg">Welcome to Source Easy</h1>
