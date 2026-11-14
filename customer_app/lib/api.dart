@@ -53,6 +53,31 @@ class PortalApi {
     return base.replace(path: path, queryParameters: q);
   }
 
+  Uri _pub(String path, [Map<String, String>? q]) {
+    if (!path.startsWith('/api/public/catalog/')) throw ArgumentError('Only public catalog paths are allowed');
+    return base.replace(path: path, queryParameters: q);
+  }
+
+  Future<Json> _public(String method, String path, {Object? body, Map<String, String>? query}) async {
+    final req = http.Request(method, _pub(path, query))..headers.addAll({'accept': 'application/json', if (token != null) ..._auth});
+    if (body != null) { req.headers['content-type'] = 'application/json'; req.body = jsonEncode(body); }
+    final r = await http.Response.fromStream(await _client.send(req).timeout(const Duration(seconds: 30)));
+    return _handle(r);
+  }
+
+  Future<Json> catalogStatus() async => await _public('GET', '/api/public/catalog/status');
+  Future<List<Json>> catalogCategories() async => ((await _public('GET', '/api/public/catalog/categories'))['data'] as List).cast<Json>();
+  Future<Json> catalogProducts({String? q, String? category}) async =>
+      await _public('GET', '/api/public/catalog/products', query: {if (q != null && q.isNotEmpty) 'q': q, if (category != null) 'category': category, 'limit': '48'});
+  Future<Json> catalogProduct(String slug) async => (await _public('GET', '/api/public/catalog/products/${_e(slug)}'))['data'] as Json;
+  Future<List<Json>> catalogBanners() async => ((await _public('GET', '/api/public/catalog/banners'))['data'] as List).cast<Json>();
+  Future<Json> catalogEnquire(String id, Json body) async {
+    if (token != null) {
+      try { return await call('POST', '/api/portal/catalog/enquire', body: {'productId': id, ...body}); } catch (_) {}
+    }
+    return _public('POST', '/api/public/catalog/products/${_e(id)}/enquire', body: body);
+  }
+
   Map<String, String> get _auth => {if (token != null) 'authorization': 'Bearer $token'};
 
   /// A 401 / revoke only ends the session if it is about the token in use now (not one replaced by a password change).

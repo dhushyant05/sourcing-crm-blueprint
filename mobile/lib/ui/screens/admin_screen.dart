@@ -12,7 +12,7 @@ import '../../services/session.dart';
 String _err(Object e) => '$e'.replaceFirst(RegExp(r'^(Exception|ApiException)[^:]*:\s*'), '');
 void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
 
-const _roles = ['INDIA_STAFF', 'INDIA_ADMIN', 'CHINA_STAFF', 'CHINA_ADMIN', 'SUPER_ADMIN'];
+const _roles = ['INDIA_STAFF', 'INDIA_ADMIN', 'CHINA_STAFF', 'CHINA_ADMIN', 'SUPER_ADMIN', 'MARKETPLACE_TEAM'];
 List<String> _allowedRoles(String me) => me == 'SUPER_ADMIN' ? _roles : me == 'INDIA_ADMIN' ? ['INDIA_STAFF', 'INDIA_ADMIN'] : ['CHINA_STAFF', 'CHINA_ADMIN'];
 
 class AdminSection extends StatelessWidget {

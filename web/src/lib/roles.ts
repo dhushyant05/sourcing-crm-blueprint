@@ -1,15 +1,16 @@
 // Mirrors server/src/roles.ts + permissions.ts. Navigation only: the server enforces every permission (403) and strips fields.
-export type Role = 'INDIA_STAFF' | 'CHINA_STAFF' | 'INDIA_ADMIN' | 'CHINA_ADMIN' | 'SUPER_ADMIN';
-export const ROLES: Role[] = ['INDIA_STAFF', 'CHINA_STAFF', 'INDIA_ADMIN', 'CHINA_ADMIN', 'SUPER_ADMIN'];
+export type Role = 'INDIA_STAFF' | 'CHINA_STAFF' | 'INDIA_ADMIN' | 'CHINA_ADMIN' | 'SUPER_ADMIN' | 'MARKETPLACE_TEAM';
+export const ROLES: Role[] = ['INDIA_STAFF', 'CHINA_STAFF', 'INDIA_ADMIN', 'CHINA_ADMIN', 'SUPER_ADMIN', 'MARKETPLACE_TEAM'];
 export const PERM_KEYS = ['customers.view', 'customers.edit', 'suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production',
   'orders.payment', 'reports.view', 'data.export', 'leads.all', 'leads.delete', 'staff.manage', 'settings.sla', 'portal.logins.manage',
-  'greetings.manage', 'greetings.publish'] as const;
+  'greetings.manage', 'greetings.publish', 'catalog.edit', 'catalog.price', 'catalog.publish', 'catalog.delete', 'catalog.banners'] as const;
 export type PermKey = (typeof PERM_KEYS)[number];
-const INDIA_STAFF: PermKey[] = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all'];
-const CHINA_STAFF: PermKey[] = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all'];
+const INDIA_STAFF: PermKey[] = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all', 'catalog.edit', 'catalog.price', 'catalog.delete'];
+const CHINA_STAFF: PermKey[] = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all', 'catalog.edit'];
 const ADMIN: PermKey[] = ['reports.view', 'staff.manage', 'data.export'];
+const MARKETPLACE_TEAM: PermKey[] = ['catalog.edit', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, readonly PermKey[]> = {
-  INDIA_STAFF, CHINA_STAFF, INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN, 'customers.view', 'customers.edit', 'portal.logins.manage', 'greetings.manage'], CHINA_ADMIN: [...CHINA_STAFF, ...ADMIN], SUPER_ADMIN: PERM_KEYS,
+  INDIA_STAFF, CHINA_STAFF, INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN, 'catalog.publish', 'customers.view', 'customers.edit', 'portal.logins.manage', 'greetings.manage'], CHINA_ADMIN: [...CHINA_STAFF, ...ADMIN], SUPER_ADMIN: PERM_KEYS, MARKETPLACE_TEAM,
 };
 /** `granted` = effective permissions from /api/me (falls back to the role defaults, e.g. in the demo). */
 export function perms(role: Role, granted?: readonly string[] | null) {

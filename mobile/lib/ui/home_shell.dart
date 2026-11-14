@@ -19,6 +19,7 @@ import 'screens/shipping_screen.dart';
 import 'screens/quotes_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/admin_screen.dart';
+import 'screens/products_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -37,9 +38,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final ses = context.read<Session>();
     _nc = NotificationCenter(ses.repo)..onChange = ses.onServerChange;
     WidgetsBinding.instance.addObserver(this);
-    _nc.start();
-    _nc.requestPermission();
-    unawaited(Push.init(ses.registerDevice));
+    if (!ses.perms.catalogOnly) {
+      _nc.start();
+      _nc.requestPermission();
+      unawaited(Push.init(ses.registerDevice));
+    }
   }
 
   @override
@@ -54,10 +57,26 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
+    final catalogOnly = s.perms.catalogOnly;
     // Privacy: China users' system notifications show only the SE reference + product.
     final china = s.role.office == Office.china;
     _nc.describe = china ? (n) => [n.leadRef ?? '', n.product ?? ''].where((x) => x.isNotEmpty).join(' · ') : (n) => notifText(context, n);
     _nc.title = context.l10n.newLeadNotif;
+    if (catalogOnly) {
+      final pages = <Widget>[const ProductsScreen(), const SettingsScreen()];
+      final idx = _i.clamp(0, pages.length - 1);
+      return Scaffold(
+        body: IndexedStack(index: idx, children: pages),
+        bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [NavigationBar(
+          selectedIndex: idx,
+          onDestinationSelected: (i) => setState(() => _i = i),
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Products'),
+            NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+          ],
+        ), Container(width: double.infinity, color: Theme.of(context).colorScheme.surfaceContainer, child: const SafeArea(top: false, child: VersionLabel()))]),
+      );
+    }
     // Per-user permissions: hide the Quotes tab when /api/me does not grant quotes.view (updates live).
     final showQ = s.perms.canViewQuotes;
     final pages = showQ ? _pages : [..._pages.take(2), ..._pages.skip(3)];
@@ -103,6 +122,7 @@ class MoreScreen extends StatelessWidget {
     Widget tile(IconData i, String t, Widget page) => ListTile(leading: Icon(i), title: Text(t), trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)));
     return Scaffold(appBar: AppBar(title: Text(l.more)), body: ListView(children: [
+      if (context.read<Session>().perms.canEditCatalog) tile(Icons.storefront_outlined, 'Products', const ProductsScreen()),
       if (context.read<Session>().perms.canSeeCustomers) tile(Icons.contacts_outlined, l.customers, const CustomersScreen()),
       tile(Icons.local_shipping_outlined, l.shipping, const ShippingScreen()),
       tile(Icons.chat_bubble_outline, l.chat, const ChatListScreen()),

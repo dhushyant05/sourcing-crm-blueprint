@@ -108,7 +108,12 @@ describe('SUPER_ADMIN', () => {
 
 describe('no exchange rates', () => {
   it('the exchange rate object no longer exists for any role', async () => {
-    for (const r of ROLES) expect((await get(r, '/api/records/exchangeRates')).statusCode).toBe(404);
+    for (const r of ROLES) {
+      const code = (await get(r, '/api/records/exchangeRates')).statusCode;
+      // Marketplace Team is limited to catalog routes, so this is 403 rather than a records 404.
+      expect(r === 'MARKETPLACE_TEAM' ? code : 404).toBe(r === 'MARKETPLACE_TEAM' ? 403 : 404);
+      expect(code).toBe(r === 'MARKETPLACE_TEAM' ? 403 : 404);
+    }
   });
 });
 

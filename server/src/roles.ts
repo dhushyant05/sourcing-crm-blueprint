@@ -1,4 +1,4 @@
-export const ROLES = ['INDIA_STAFF', 'CHINA_STAFF', 'INDIA_ADMIN', 'CHINA_ADMIN', 'SUPER_ADMIN'] as const;
+export const ROLES = ['INDIA_STAFF', 'CHINA_STAFF', 'INDIA_ADMIN', 'CHINA_ADMIN', 'SUPER_ADMIN', 'MARKETPLACE_TEAM'] as const;
 export type Role = (typeof ROLES)[number];
 export const isRole = (r: unknown): r is Role => ROLES.includes(r as Role);
 

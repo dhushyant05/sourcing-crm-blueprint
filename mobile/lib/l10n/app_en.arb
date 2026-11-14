@@ -254,6 +254,7 @@
   "codeIndiaAdmin": "India Admin",
   "codeChinaAdmin": "China Admin",
   "codeSuperAdmin": "Super Admin",
+  "codeMarketplaceTeam": "Marketplace team",
   "client": "Client",
   "dateField": "{label}: {date}",
   "@dateField": {

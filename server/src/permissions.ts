@@ -33,6 +33,11 @@ export const PERMISSIONS: PermDef[] = [
   // Festival / event greetings: edit drafts + upload artwork; publishing is a separate, explicit grant.
   { key: 'greetings.manage', group: 'admin', side: 'ANY' },
   { key: 'greetings.publish', group: 'admin', side: 'ANY' },
+  { key: 'catalog.edit', group: 'catalog', side: 'ANY' },
+  { key: 'catalog.price', group: 'catalog', side: 'INDIA' },
+  { key: 'catalog.publish', group: 'catalog', side: 'ANY' },
+  { key: 'catalog.delete', group: 'catalog', side: 'ANY' },
+  { key: 'catalog.banners', group: 'catalog', side: 'ANY' },
 ];
 export type Perm = (typeof PERMISSIONS)[number]['key'];
 export const PERM_KEYS = PERMISSIONS.map((p) => p.key);
@@ -41,11 +46,15 @@ const DEF = new Map(PERMISSIONS.map((p) => [p.key, p]));
 const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all'];
 const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all'];
 const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
+const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete'];
+const INDIA_CATALOG = ['catalog.edit', 'catalog.price', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
-  INDIA_STAFF, CHINA_STAFF,
-  INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN_EXTRA, 'customers.view', 'customers.edit', 'portal.logins.manage', 'greetings.manage'],
-  CHINA_ADMIN: [...CHINA_STAFF, ...ADMIN_EXTRA],
+  INDIA_STAFF: [...INDIA_STAFF, ...INDIA_CATALOG],
+  CHINA_STAFF: [...CHINA_STAFF, 'catalog.edit'],
+  INDIA_ADMIN: [...INDIA_STAFF, ...INDIA_CATALOG, 'catalog.publish', ...ADMIN_EXTRA, 'customers.view', 'customers.edit', 'portal.logins.manage', 'greetings.manage'],
+  CHINA_ADMIN: [...CHINA_STAFF, 'catalog.edit', ...ADMIN_EXTRA],
   SUPER_ADMIN: [...PERM_KEYS],
+  MARKETPLACE_TEAM,
 };
 
 /** Hard rule: may this role hold this permission at all? (China never gets customer-side, India never supplier-side.) */

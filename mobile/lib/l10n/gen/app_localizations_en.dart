@@ -559,6 +559,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get codeSuperAdmin => 'Super Admin';
 
   @override
+  String get codeMarketplaceTeam => 'Marketplace team';
+
+  @override
   String get client => 'Client';
 
   @override

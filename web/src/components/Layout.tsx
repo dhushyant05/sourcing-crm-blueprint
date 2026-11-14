@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { NotificationBell } from './NotificationBell';
-import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Contact, Factory, UserCog, Package, PartyPopper } from 'lucide-react';
+import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Contact, Factory, UserCog, Package, PartyPopper, ShoppingBag, Images } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../lib/store';
 import { ROLES, type Role } from '../lib/roles';
@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { LanguageSwitch } from './LanguageSwitch';
 import { Avatar } from './ui';
 
-export type Route = 'dashboard' | 'leads' | 'quotations' | 'orders' | 'shipping' | 'customers' | 'suppliers' | 'greetings' | 'users' | 'settings';
+export type Route = 'dashboard' | 'leads' | 'quotations' | 'orders' | 'shipping' | 'customers' | 'suppliers' | 'greetings' | 'products' | 'banners' | 'users' | 'settings';
 
 export function Layout({ route, go, search, setSearch, children, openLeadId }: {
   route: Route; go: (r: Route) => void; search: string; setSearch: (s: string) => void; children: ReactNode; openLeadId: (id: string) => void;
@@ -25,22 +25,25 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
     addEventListener('keydown', k); return () => removeEventListener('keydown', k);
   }, []);
 
+  const catalogOnly = session?.role === 'MARKETPLACE_TEAM';
   const nav: { id: Route; icon: typeof Users; show: boolean }[] = [
-    { id: 'dashboard', icon: LayoutDashboard, show: true },
-    { id: 'leads', icon: Users, show: true },
-    { id: 'quotations', icon: FileText, show: perms.can('quotes.view') },
-    { id: 'orders', icon: Package, show: true },
-    { id: 'shipping', icon: Ship, show: true },
-    { id: 'customers', icon: Contact, show: perms.customers && perms.can('customers.view') },
-    { id: 'suppliers', icon: Factory, show: perms.suppliers && perms.can('suppliers.view') },
-    { id: 'greetings', icon: PartyPopper, show: perms.can('greetings.manage') },
-    { id: 'users', icon: UserCog, show: perms.manageUsers },
+    { id: 'dashboard', icon: LayoutDashboard, show: !catalogOnly },
+    { id: 'leads', icon: Users, show: !catalogOnly },
+    { id: 'quotations', icon: FileText, show: !catalogOnly && perms.can('quotes.view') },
+    { id: 'orders', icon: Package, show: !catalogOnly },
+    { id: 'shipping', icon: Ship, show: !catalogOnly },
+    { id: 'customers', icon: Contact, show: !catalogOnly && perms.customers && perms.can('customers.view') },
+    { id: 'suppliers', icon: Factory, show: !catalogOnly && perms.suppliers && perms.can('suppliers.view') },
+    { id: 'products', icon: ShoppingBag, show: perms.can('catalog.edit') },
+    { id: 'banners', icon: Images, show: perms.can('catalog.banners') },
+    { id: 'greetings', icon: PartyPopper, show: !catalogOnly && perms.can('greetings.manage') },
+    { id: 'users', icon: UserCog, show: !catalogOnly && perms.manageUsers },
     { id: 'settings', icon: Settings, show: true },
   ];
 
   const shown = nav.filter((n) => n.show);
   const goto = (r: Route) => { setDrawer(false); go(r); };
-  const bottom = shown.filter((n) => ['dashboard', 'leads', 'quotations', 'orders'].includes(n.id));
+  const bottom = shown.filter((n) => (catalogOnly ? ['products', 'banners', 'settings'] : ['dashboard', 'leads', 'quotations', 'orders']).includes(n.id));
 
   return (
     <div className="flex h-[100dvh] overflow-hidden">
@@ -108,7 +111,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
             )}
             <LanguageSwitch className="md:mr-1" />
             <button className="btn-ghost hidden p-2 md:inline-flex" onClick={() => setDark(!dark)} aria-label={t('header.theme')}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
-            <NotificationBell openLead={openLeadId} />
+            {!catalogOnly && <NotificationBell openLead={openLeadId} />}
             <div className="ml-2 hidden items-center gap-2.5 border-l md:flex border-ink-200 pl-4 dark:border-ink-800">
               <Avatar name={session?.name ?? '?'} src={session?.avatarUrl} />
               <div className="hidden leading-tight lg:block"><div className="text-sm font-medium text-ink-900 dark:text-white">{session?.name}</div><div className="text-xs text-ink-500">{session && t(`role.${session.role}`)}</div></div>

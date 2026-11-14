@@ -482,4 +482,33 @@ class SourceEasyRepository {
   /// Claim this shipping request (assign to the signed-in India/SA user). Same as the web Claim button.
   Future<Map<String, dynamic>> claimShippingRequest(String id) async =>
       ((await api.send('POST', '/api/shipping-requests/${Uri.encodeComponent(id)}/assign', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
+
+  Future<List<Map<String, dynamic>>> listProducts({String q = '', String status = ''}) async {
+    final query = <String, String>{if (q.isNotEmpty) 'q': q, if (status.isNotEmpty) 'status': status};
+    return _list(await api.send('GET', '/api/products', query: query.isEmpty ? null : query));
+  }
+  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> body) async =>
+      ((await api.send('POST', '/api/products', body: body) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> updateProduct(String id, Map<String, dynamic> body) async =>
+      ((await api.send('PATCH', '/api/products/${Uri.encodeComponent(id)}', body: body) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<void> deleteProduct(String id) async {
+    await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/delete', body: {'confirm': true});
+  }
+  Future<Map<String, dynamic>> restoreProduct(String id) async =>
+      ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/restore', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> publishProduct(String id, {bool on = true}) async =>
+      ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/${on ? 'publish' : 'unpublish'}', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<void> addProductImage(String id, String path) async {
+    await api.upload('/api/products/${Uri.encodeComponent(id)}/images', [path], field: 'file');
+  }
+  Future<void> deleteProductImage(String id, String fid) async {
+    await api.send('DELETE', '/api/products/${Uri.encodeComponent(id)}/images/${Uri.encodeComponent(fid)}');
+  }
+  Future<List<Map<String, dynamic>>> reorderProductImages(String id, {required List<String> order, String? cover}) async {
+    final r = await api.send('PATCH', '/api/products/${Uri.encodeComponent(id)}/images', body: {
+      'order': order,
+      if (cover != null) 'cover': cover,
+    });
+    return ((r as Map)['data'] as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
+  }
 }
