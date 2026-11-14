@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, Factory, FileText, GitCompare, Home, Lamp, Package, Search, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
+import { Factory, FileText, GitCompare, Home, Lamp, Package, Search, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
 import { publicCatalog } from './api';
-import { BannerCarousel } from './Banner';
+import { CategoryExplorer } from './CategoryExplorer';
 import { MarketplaceGreeting } from './GreetingStrip';
 import { CompanySections } from './CompanySections';
 import { EnquireForm } from './EnquireForm';
@@ -9,7 +9,7 @@ import { Gallery } from './Gallery';
 import { ProductCard } from './ProductCard';
 import { DEFAULT_TRUST } from './fixtures';
 import { priceLabel, useCurrency } from './currency';
-import { photoSrc, type Banner, type BannerSettings, type Category, type Product, type TrustItem } from './types';
+import { type Banner, type BannerSettings, type Category, type Product, type TrustItem } from './types';
 
 const CAT_ICON: Record<string, typeof Factory> = {
   Hardware: Wrench, Housewares: Home, Kitchenware: UtensilsCrossed, Lighting: Lamp, Packaging: Package, Textiles: Shirt,
@@ -22,7 +22,6 @@ export function HomePage({ products, banners, settings, categories, trust }: {
 }) {
   const items = (trust && trust.length ? trust : DEFAULT_TRUST);
   const recommended = products.filter((p) => p.pinned).concat(products).filter((p, i, a) => a.findIndex((x) => x.id === p.id) === i).slice(0, 10);
-  const frequent = uniqueCategories(products).slice(0, 2);
   return (
     <>
       <MarketplaceGreeting />
@@ -37,56 +36,7 @@ export function HomePage({ products, banners, settings, categories, trust }: {
         </div>
       </section>
 
-      <section id="categories" className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
-        <div className="grid gap-3 lg:grid-cols-[230px_1fr_280px]">
-          <aside className="overflow-hidden rounded-2xl border border-ink-100 bg-white">
-            <div className="border-b border-ink-100 px-4 py-3 text-sm font-semibold text-ink-800">Categories for you</div>
-            <ul className="divide-y divide-ink-50">
-              {categories.map((c) => {
-                const Icon = CAT_ICON[c.name] ?? Warehouse;
-                return (
-                  <li key={c.id}>
-                    <button type="button" onClick={() => go(`/c/${c.slug}`)}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-700 hover:bg-warm-50">
-                      <Icon size={16} className="text-brand-600" />
-                      <span className="flex-1">{c.name}</span>
-                      <ChevronRight size={14} className="text-ink-300" />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </aside>
-          <div className="grid min-h-[220px] grid-cols-2 gap-3">
-            {frequent.map((p) => (
-              <button key={p.id} type="button" onClick={() => go(`/p/${p.slug}`)}
-                className="group relative min-h-[180px] overflow-hidden rounded-2xl border border-ink-100 bg-warm-50 text-left lg:min-h-0">
-                {p.images[0] && <img src={photoSrc(p.images[0], true)} alt="" className="absolute inset-0 h-full w-full object-cover" />}
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-800/55 to-transparent p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-white/80">Frequently searched</p>
-                  <p className="font-semibold text-white">{p.category?.name || p.title}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-          <div className="relative min-h-[220px] overflow-hidden rounded-2xl">
-            {banners.length ? (
-              <>
-                <BannerCarousel banners={banners} settings={settings} variant="card" />
-                <button type="button" onClick={() => go('/products')}
-                  className="absolute bottom-4 left-4 z-10 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-brand-700 shadow-soft hover:bg-warm-50">View more</button>
-              </>
-            ) : (
-              <div className="flex h-full min-h-[220px] items-end rounded-2xl bg-gradient-to-br from-brand-500 to-warm-400 p-5">
-                <div>
-                  <p className="font-semibold text-white">Featured sourcing</p>
-                  <button type="button" onClick={() => go('/products')} className="mt-3 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-brand-700">View more</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
+      <CategoryExplorer categories={categories} products={products} banners={banners} settings={settings} icons={CAT_ICON} />
 
       <section id="recommended" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <div className="flex items-end justify-between">
@@ -148,19 +98,8 @@ function QuickLink({ icon: Icon, label, onClick }: { icon: typeof Search; label:
   );
 }
 
-function uniqueCategories(products: Product[]) {
-  const seen = new Set<string>();
-  const out: Product[] = [];
-  for (const p of products) {
-    const key = p.category?.slug || p.id;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(p);
-  }
-  return out;
-}
 
-export function ListingPage({ title, category, query }: { title: string; category?: string; query?: string }) {
+export function ListingPage({ title, category, query, categories = [] }: { title: string; category?: string; query?: string; categories?: Category[] }) {
   const [q, setQ] = useState(query ?? '');
   const [data, setData] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -182,10 +121,25 @@ export function ListingPage({ title, category, query }: { title: string; categor
         <input className="input rounded-full px-4" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search in this catalog" />
       </form>
       <p className="mt-3 text-sm text-ink-500">{busy ? 'Loading…' : `${total} product${total === 1 ? '' : 's'}`}</p>
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {data.map((p) => <ProductCard key={p.id} product={p} />)}
+      <div className="mt-6 grid items-start gap-6 md:grid-cols-[220px_minmax(0,1fr)]">
+        {categories.length > 0 && (
+          <aside className="rounded-2xl border border-ink-100 bg-white" aria-label="Categories">
+            <div className="border-b border-ink-100 px-4 py-3 text-sm font-semibold text-ink-800">Categories</div>
+            <button type="button" onClick={() => go('/products')}
+              className={`block w-full px-4 py-2.5 text-left text-sm ${!category ? 'bg-warm-50 font-medium text-brand-700' : 'text-ink-700 hover:bg-warm-50'}`}>All products</button>
+            {categories.map((c) => (
+              <button key={c.id} type="button" onClick={() => go(`/c/${c.slug}`)}
+                className={`block w-full px-4 py-2.5 text-left text-sm ${category === c.slug ? 'bg-warm-50 font-medium text-brand-700' : 'text-ink-700 hover:bg-warm-50'}`}>{c.name}</button>
+            ))}
+          </aside>
+        )}
+        <div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {data.map((p) => <ProductCard key={p.id} product={p} />)}
+          </div>
+          {!busy && !data.length && <p className="mt-10 text-ink-500">No products match that search yet.</p>}
+        </div>
       </div>
-      {!busy && !data.length && <p className="mt-10 text-ink-500">No products match that search yet.</p>}
     </div>
   );
 }
