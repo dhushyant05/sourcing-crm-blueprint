@@ -31,7 +31,8 @@ import { AssignStore, type Assignment, type Office, type NotifKind } from './ass
 import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 import { PortalStore, PortalError, loginView, tempPassword, customerStage, sourcingFlow, freightFlow, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
-import { registerPublicCatalog, registerStaffCatalog, marketplaceTeamAllowed, CatalogStore } from './catalog.js';
+import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, marketplaceTeamAllowed, CatalogStore } from './catalog.js';
+import { recordEnquiryEvent } from './catalog-engagement.js';
 
 export interface AppOptions {
   db: Db;
@@ -2071,6 +2072,7 @@ export async function buildApp(o: AppOptions) {
           city: String(b.city ?? cust?.city ?? '') || undefined, customerId: c.customerId,
         });
         await o.db.run('UPDATE leads SET customer_id = ?, portal_customer_id = ?, portal_user_id = ?, portal_shared_at = now() WHERE id = ?', c.customerId, c.customerId, c.id, out.leadId);
+        await recordEnquiryEvent(o.db, product.id, out.leadId, req, c.customerId);
         await portal.audit({ id: c.id, kind: 'CUSTOMER' }, 'CATALOG_ENQUIRY', c.customerId, { leadRef: out.leadRef, productId: product.id });
         return reply.code(201).send({ data: { leadRef: out.leadRef, leadId: out.leadId } });
       } catch (e) {
@@ -2083,6 +2085,8 @@ export async function buildApp(o: AppOptions) {
       await ownLead(c, q.leadId); if (!PUBLISHED.has(q.status) || !q.cq) throw notFound();
       return q;
     };
+    registerPortalCatalog(api, catalogDeps);
+
     api.post<{ Params: { qid: string } }>('/api/portal/quotes/:qid/accept', async (req) => {
       const c = req.customer!, q = await ownQuote(c, req.params.qid);
       if (q.status !== 'SENT' || !(await quotes.claimSent(q.id, 'ACCEPTED'))) throw bad('This quote was already decided', 409);

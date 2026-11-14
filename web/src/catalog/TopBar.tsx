@@ -50,6 +50,7 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
                   <a href={PORTAL} className="block rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">Customer Portal</a>
                   <a href={`${PORTAL}#/requests`} className="block rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">Shipping requests</a>
                   <a href={`${PORTAL}#/orders`} className="block rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">Order tracking</a>
+                  <button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50" onClick={() => go('/favorites')}>Saved favourites</button>
                   <a href={WA} target="_blank" rel="noreferrer" className="block rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">WhatsApp</a>
                 </div>
               </MenuBtn>
@@ -103,6 +104,7 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
               <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-ink-400">For customers</p>
               <a href={PORTAL} className="block rounded-lg px-2 py-2 hover:bg-ink-50">Customer Portal</a>
               <a href={`${PORTAL}#/requests`} className="block rounded-lg px-2 py-2 hover:bg-ink-50">Shipping requests</a>
+              <button type="button" className="block w-full rounded-lg px-2 py-2 text-left hover:bg-ink-50" onClick={() => go('/favorites')}>Saved favourites</button>
               <a href={`${PORTAL}#/orders`} className="block rounded-lg px-2 py-2 hover:bg-ink-50">Order tracking</a>
               <a href={WA} target="_blank" rel="noreferrer" className="block rounded-lg px-2 py-2 hover:bg-ink-50">WhatsApp</a>
               <div className="mt-4"><CurrencySwitch /></div>

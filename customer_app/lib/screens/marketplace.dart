@@ -46,8 +46,21 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
     return RefreshIndicator(
       onRefresh: () => _load(_q.text.trim()),
       child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 32), children: [
-        if (widget.onSignIn != null)
-          Align(alignment: Alignment.centerRight, child: TextButton(onPressed: widget.onSignIn, child: const Text('Sign in'))),
+        Row(children: [
+          const Spacer(),
+          TextButton.icon(
+            onPressed: () {
+              if (widget.signedIn) {
+                Navigator.push(context, MaterialPageRoute<void>(builder: (_) => FavoritesScreen(api: widget.api)));
+              } else if (widget.onSignIn != null) {
+                widget.onSignIn!();
+              }
+            },
+            icon: const Icon(Icons.favorite_border),
+            label: const Text('Favourites'),
+          ),
+          if (widget.onSignIn != null) TextButton(onPressed: widget.onSignIn, child: const Text('Sign in')),
+        ]),
         TextField(controller: _q, decoration: InputDecoration(hintText: 'Search products', prefixIcon: const Icon(Icons.search), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward), onPressed: () => _load(_q.text.trim()))),
           onSubmitted: _load),
         CatalogGreetingBanner(api: widget.api),
@@ -95,7 +108,7 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
     final sample = p['isSample'] == true;
     final price = _price(p);
     return InkWell(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailScreen(api: widget.api, slug: '${p['slug']}', signedIn: widget.signedIn))),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailScreen(api: widget.api, slug: '${p['slug']}', signedIn: widget.signedIn, onSignIn: widget.onSignIn))),
       child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x140F172A), blurRadius: 12, offset: Offset(0, 4))]),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Stack(children: [
@@ -122,10 +135,11 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
 }
 
 class ProductDetailScreen extends StatefulWidget {
-  const ProductDetailScreen({super.key, required this.api, required this.slug, required this.signedIn});
+  const ProductDetailScreen({super.key, required this.api, required this.slug, required this.signedIn, this.onSignIn});
   final PortalApi api;
   final String slug;
   final bool signedIn;
+  final VoidCallback? onSignIn;
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
 }
@@ -134,11 +148,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Json? _p;
   String? _err;
   int _img = 0;
+  bool _fav = false;
+  List<Json> _related = [];
   final _name = TextEditingController(), _phone = TextEditingController(), _qty = TextEditingController(), _msg = TextEditingController();
   String? _result;
 
   @override
-  void initState() { super.initState(); widget.api.catalogProduct(widget.slug).then((p) { if (mounted) setState(() => _p = p); }).catchError((e) { if (mounted) setState(() => _err = e is PortalError ? e.message : 'Not found'); }); }
+  void initState() {
+    super.initState();
+    widget.api.catalogProduct(widget.slug).then((p) async {
+      if (!mounted) return;
+      setState(() => _p = p);
+      try {
+        final rel = await widget.api.catalogRelated(widget.slug);
+        if (mounted) setState(() => _related = rel);
+      } catch (_) {}
+      if (widget.signedIn) {
+        try {
+          final ids = await widget.api.favoriteIds();
+          if (mounted) setState(() => _fav = ids.contains('${p['id']}'));
+        } catch (_) {}
+      }
+    }).catchError((e) { if (mounted) setState(() => _err = e is PortalError ? e.message : 'Not found'); });
+  }
   @override
   void dispose() { _name.dispose(); _phone.dispose(); _qty.dispose(); _msg.dispose(); super.dispose(); }
 
@@ -184,7 +216,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     final p = _p;
     return Scaffold(
-      appBar: AppBar(title: Text(p?['title'] as String? ?? 'Product')),
+      appBar: AppBar(title: Text(p?['title'] as String? ?? 'Product'), actions: [
+        IconButton(
+          key: const Key('favorite-toggle'),
+          tooltip: _fav ? 'Remove from favourites' : 'Save to favourites',
+          icon: Icon(_fav ? Icons.favorite : Icons.favorite_border, color: _fav ? const Color(0xFFEA580C) : null),
+          onPressed: () async {
+            if (!widget.signedIn) { widget.onSignIn?.call(); return; }
+            final id = '${_p?['id'] ?? ''}';
+            if (id.isEmpty) return;
+            try {
+              if (_fav) { await widget.api.favoriteRemove(id); } else { await widget.api.favoriteAdd(id); }
+              if (mounted) setState(() => _fav = !_fav);
+            } catch (_) {}
+          },
+        ),
+      ]),
       body: p == null
           ? Center(child: _err == null ? const CircularProgressIndicator() : Text(_err!))
           : ListView(padding: const EdgeInsets.all(16), children: [
@@ -202,6 +249,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(height: 12),
               FilledButton(onPressed: _enquire, child: const Text('Request quote')),
               if (_result != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_result!)),
+              if (_related.isNotEmpty) ...[
+                const SizedBox(height: 28),
+                const Text('Related products', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+                const SizedBox(height: 12),
+                ..._related.map((r) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('${r['title'] ?? ''}'),
+                  subtitle: Text((r['isSample'] == true) ? 'Sample' : ''),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(api: widget.api, slug: '${r['slug']}', signedIn: widget.signedIn, onSignIn: widget.onSignIn))),
+                )),
+              ],
             ]),
     );
   }
@@ -266,5 +324,56 @@ class _CatalogGreetingBannerState extends State<CatalogGreetingBanner> {
         )),
       ]),
     )));
+  }
+}
+
+
+class FavoritesScreen extends StatefulWidget {
+  const FavoritesScreen({super.key, required this.api});
+  final PortalApi api;
+  @override
+  State<FavoritesScreen> createState() => _FavoritesScreenState();
+}
+
+class _FavoritesScreenState extends State<FavoritesScreen> {
+  List<Json>? _items;
+  String? _err;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final items = await widget.api.favoriteList();
+      if (mounted) setState(() { _items = items; _err = null; });
+    } catch (e) {
+      if (mounted) setState(() => _err = e is PortalError ? e.message : 'Could not load favourites');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Saved favourites')),
+      body: _err != null
+          ? Center(child: Text(_err!))
+          : _items == null
+              ? const Center(child: CircularProgressIndicator())
+              : _items!.isEmpty
+                  ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('You have not saved any products yet. Open a product and tap the heart.', textAlign: TextAlign.center)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _items!.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (c, i) {
+                        final p = _items![i];
+                        return ListTile(
+                          title: Text('${p['title'] ?? ''}'),
+                          subtitle: Text(p['isSample'] == true ? 'Sample' : (p['category'] is Map ? '${(p['category'] as Json)['name'] ?? ''}' : '')),
+                          onTap: () => Navigator.push(c, MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(api: widget.api, slug: '${p['slug']}', signedIn: true))),
+                        );
+                      },
+                    ),
+    );
   }
 }

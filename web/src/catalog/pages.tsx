@@ -1,3 +1,4 @@
+import { FavoriteButton } from './FavoriteButton';
 import { useEffect, useState } from 'react';
 import { Factory, FileText, GitCompare, Home, Lamp, Package, Search, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
 import { publicCatalog } from './api';
@@ -154,11 +155,7 @@ export function ProductPage({ slug }: { slug: string }) {
     publicCatalog.product(slug).then((d) => {
       if (!on) return;
       setP(d);
-      if (d.category?.slug) {
-        publicCatalog.products({ category: d.category.slug, limit: 8 }).then((r) => {
-          if (on) setRelated(r.data.filter((x) => x.id !== d.id).slice(0, 4));
-        }).catch(() => undefined);
-      }
+      publicCatalog.related(d.slug).then((rows) => { if (on) setRelated(rows.slice(0, 8)); }).catch(() => undefined);
     }).catch((e) => { if (on) setErr((e as Error).message); });
     return () => { on = false; };
   }, [slug]);
@@ -174,8 +171,11 @@ export function ProductPage({ slug }: { slug: string }) {
         <Gallery product={p} />
         <div className="lg:sticky lg:top-24">
           {p.isSample && <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Sample</span>}
-          {p.pinned && <span className="ml-2 inline-flex rounded-full bg-warm-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warm-600">Trending</span>}
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink-800">{p.title}</h1>
+          {(p.pinned || p.trending) && <span className="ml-2 inline-flex rounded-full bg-warm-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warm-600">Trending</span>}
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight text-ink-800">{p.title}</h1>
+            <FavoriteButton productId={p.id} />
+          </div>
           <p className="mt-3 text-2xl font-semibold text-brand-700">{priceLabel(p.price, currency)}</p>
           <p className="mt-1 text-sm text-ink-400">Sourced in China</p>
           <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
