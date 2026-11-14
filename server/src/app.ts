@@ -32,6 +32,7 @@ import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from 
 import { PortalStore, PortalError, loginView, tempPassword, customerStage, sourcingFlow, freightFlow, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
 import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, marketplaceTeamAllowed, CatalogStore } from './catalog.js';
+import { registerCatalogSeo } from './catalog-seo.js';
 import { recordEnquiryEvent } from './catalog-engagement.js';
 
 export interface AppOptions {
@@ -2954,6 +2955,8 @@ export async function buildApp(o: AppOptions) {
         .header('content-length', statSync(f).size).header('cache-control', 'no-cache').header('x-content-type-options', 'nosniff').send(createReadStream(f));
     });
   }
+
+  registerCatalogSeo(app, catalogDeps, o.webDir);
 
   app.all('/api/*', async (_r, reply) => reply.code(404).send({ error: 'Not found' }));
 
