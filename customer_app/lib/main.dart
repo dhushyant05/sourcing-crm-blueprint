@@ -48,16 +48,21 @@ class CustomerApp extends StatelessWidget {
   final Updater? updater;
   final bool live;
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Source Easy Customer',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: brand), useMaterial3: true),
-        home: ListenableBuilder(listenable: session, builder: (context, _) {
-          if (session.restoring) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-          if (!session.signedIn) return _GuestShell(session: session);
-          if (session.mustChangePassword) return ChangePasswordScreen(key: const Key('forced-pw'), session: session, forced: true);
-          return UpdateGate(updater: updater, child: HomeScreen(key: ValueKey('home-${session.api.token.hashCode}'), session: session, live: live));
-        }),
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: session,
+        builder: (context, _) => MaterialApp(
+          key: ValueKey('nav-${session.signedIn}-${session.mustChangePassword}'),
+          title: 'Source Easy Customer',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: brand), useMaterial3: true),
+          home: session.restoring
+              ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+              : !session.signedIn
+                  ? _GuestShell(session: session)
+                  : session.mustChangePassword
+                      ? ChangePasswordScreen(key: const Key('forced-pw'), session: session, forced: true)
+                      : UpdateGate(updater: updater, child: HomeScreen(key: ValueKey('home-${session.api.token.hashCode}'), session: session, live: live)),
+        ),
       );
 }
 

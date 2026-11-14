@@ -33,7 +33,7 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
       if (!mounted) return;
       setState(() {
         _products = ((((r[0] as Json)['data'] as List?) ?? []).cast<Json>());
-        _banners = r[1] as List<Json>;
+        _banners = (r[1] as List<Json>).where((b) => b['source'] != 'greeting').toList();
         _loading = false;
       });
     } catch (e) {
@@ -50,6 +50,7 @@ class _MarketplaceTabState extends State<MarketplaceTab> {
           Align(alignment: Alignment.centerRight, child: TextButton(onPressed: widget.onSignIn, child: const Text('Sign in'))),
         TextField(controller: _q, decoration: InputDecoration(hintText: 'Search products', prefixIcon: const Icon(Icons.search), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward), onPressed: () => _load(_q.text.trim()))),
           onSubmitted: _load),
+        CatalogGreetingBanner(api: widget.api),
         if (_banners.isNotEmpty) ...[
           const SizedBox(height: 12),
           SizedBox(height: 160, child: PageView(children: [
@@ -203,5 +204,67 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               if (_result != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_result!)),
             ]),
     );
+  }
+}
+
+/// Festival greeting on the catalog home, separate from the product banner carousel.
+/// Close hides it for this app session. Uses the public greetings feed so guests can see it too.
+final _closedGreetings = <String>{};
+
+class CatalogGreetingBanner extends StatefulWidget {
+  const CatalogGreetingBanner({super.key, required this.api});
+  final PortalApi api;
+  @override
+  State<CatalogGreetingBanner> createState() => _CatalogGreetingBannerState();
+}
+
+class _CatalogGreetingBannerState extends State<CatalogGreetingBanner> {
+  Json? _g;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final feed = await widget.api.catalogGreetings();
+      final now = DateTime.now();
+      final live = feed.where((g) {
+        if (_closedGreetings.contains('${g['id']}:${g['version']}')) return false;
+        final img = '${g['imageDesktop'] ?? g['imageMobile'] ?? ''}';
+        if (img.isEmpty) return false;
+        final s = DateTime.tryParse('${g['startsAt']}'), e = DateTime.tryParse('${g['endsAt']}');
+        return s != null && e != null && !s.isAfter(now) && e.isAfter(now);
+      }).toList()
+        ..sort((a, b) => ((b['priority'] as num?) ?? 0).compareTo((a['priority'] as num?) ?? 0));
+      if (mounted) setState(() => _g = live.isEmpty ? null : live.first);
+    } catch (_) {
+      if (mounted) setState(() => _g = null);
+    }
+  }
+
+  String _src(Json g) {
+    final path = '${g['imageMobile'] ?? g['imageDesktop'] ?? ''}';
+    if (path.isEmpty) return '';
+    return path.startsWith('http') ? path : widget.api.base.resolve(path).toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = _g;
+    if (g == null) return const SizedBox.shrink();
+    final url = _src(g);
+    if (url.isEmpty) return const SizedBox.shrink();
+    return Padding(padding: const EdgeInsets.only(top: 12), child: Semantics(container: true, label: 'Festival greeting', child: ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(children: [
+        Image.network(url, width: double.infinity, fit: BoxFit.contain, semanticLabel: '${g['alt'] ?? ''}'),
+        if (g['dismissible'] == true) Positioned(right: 4, top: 4, child: IconButton(
+          key: const Key('catalog-greeting-close'), tooltip: 'Close greeting', color: Colors.white,
+          style: IconButton.styleFrom(backgroundColor: const Color(0x990F172A)),
+          icon: const Icon(Icons.close),
+          onPressed: () { _closedGreetings.add('${g['id']}:${g['version']}'); setState(() => _g = null); },
+        )),
+      ]),
+    )));
   }
 }

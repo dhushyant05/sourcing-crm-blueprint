@@ -24,6 +24,10 @@ class FakeServer {
   late final client = MockClient((req) async {
     final p = req.url.path;
     calls.add('${req.method} $p');
+    if (p == '/api/public/greetings') return _j({'data': greetings});
+    if (p == '/api/public/catalog/products') return _j({'data': [], 'total': 0, 'limit': 48, 'offset': 0});
+    if (p == '/api/public/catalog/banners') return _j({'data': [], 'direction': 'LTR', 'intervalSeconds': 5});
+    if (p == '/api/public/catalog/status') return _j({'homepageEnabled': true, 'hasPublished': true, 'showMarketplace': true});
     if (!p.startsWith('/api/portal/')) return _j({'error': 'staff endpoint called'}, 500);
     if (p == '/api/portal/auth/login') {
       final b = jsonDecode(req.body) as Map;

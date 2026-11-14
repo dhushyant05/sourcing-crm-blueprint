@@ -71,6 +71,7 @@ class PortalApi {
       await _public('GET', '/api/public/catalog/products', query: {if (q != null && q.isNotEmpty) 'q': q, if (category != null) 'category': category, 'limit': '48'});
   Future<Json> catalogProduct(String slug) async => (await _public('GET', '/api/public/catalog/products/${_e(slug)}'))['data'] as Json;
   Future<List<Json>> catalogBanners() async => ((await _public('GET', '/api/public/catalog/banners'))['data'] as List).cast<Json>();
+  Future<List<Json>> catalogGreetings() async => ((await _public('GET', '/api/public/greetings'))['data'] as List? ?? []).cast<Json>();
   Future<Json> catalogEnquire(String id, Json body) async {
     if (token != null) {
       try { return await call('POST', '/api/portal/catalog/enquire', body: {'productId': id, ...body}); } catch (_) {}
