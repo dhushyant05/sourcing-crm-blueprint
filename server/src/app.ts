@@ -520,9 +520,9 @@ export async function buildApp(o: AppOptions) {
   });
 
   const createCatalogEnquiry = async (input: {
-    product: { id: string; title: string; slug: string };
+    product?: { id: string; title: string; slug: string };
     name: string; phone: string; phoneCode: string; email?: string; company?: string;
-    quantity?: number; unit?: string; message?: string; city?: string; requestLogin?: boolean; customerId?: string;
+    quantity?: number; unit?: string; message?: string; city?: string; requirement?: string; requestLogin?: boolean; customerId?: string;
   }) => {
     const code = input.phoneCode || '+91';
     let digits = input.phone.replace(/[\s\-().]/g, '');
@@ -533,7 +533,7 @@ export async function buildApp(o: AppOptions) {
       throw Object.assign(new Error('Invalid email'), { status: 400, appCode: 'email' });
     const leadRef = await nextRef();
     const company = (input.company || input.name).slice(0, 160);
-    const product = input.product.title;
+    const product = (input.product?.title || String(input.requirement ?? '').trim() || 'General sourcing request').slice(0, 200);
     const lead = await leadDb.create({
       name: `${company} — ${product}`.slice(0, 200), clientName: company, productInterest: product,
       ...(input.quantity && input.quantity > 0 ? { quantity: input.quantity, unit: input.unit || 'pcs' } : {}),
@@ -543,8 +543,8 @@ export async function buildApp(o: AppOptions) {
       ...(input.message ? { enquiryMessage: input.message } : {}),
       contactName: input.name, leadRef, sourceChannel: 'CATALOG', status: 'NEW', assignedOffice: 'INDIA', office: 'INDIA',
     } as Rec);
-    await o.db.run('UPDATE leads SET catalog_product_id = ? WHERE id = ?', input.product.id, String(lead.id));
-    await ev(String(lead.id), 'CREATED', null, { channel: 'CATALOG', productId: input.product.id });
+    if (input.product?.id) await o.db.run('UPDATE leads SET catalog_product_id = ? WHERE id = ?', input.product.id, String(lead.id));
+    await ev(String(lead.id), 'CREATED', null, { channel: 'CATALOG', ...(input.product?.id ? { productId: input.product.id } : {}) });
     await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null);
     {
       const admins = new Set(queueWatchers('INDIA'));

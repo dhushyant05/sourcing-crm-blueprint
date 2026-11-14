@@ -74,8 +74,8 @@ export interface CatalogDeps {
   perms: PermStore;
   mediaSync?: (key: string, list: Attachment[]) => Promise<void>;
   createEnquiry?: (input: {
-    product: { id: string; title: string; slug: string };
-    name: string; phone: string; phoneCode: string; email?: string; company?: string;
+    product?: { id: string; title: string; slug: string };
+    name: string; phone: string; phoneCode: string; email?: string; company?: string; requirement?: string;
     quantity?: number; unit?: string; message?: string; city?: string; requestLogin?: boolean;
     customerId?: string;
   }) => Promise<{ leadId: string; leadRef: string; loginRequested?: boolean }>;
@@ -132,7 +132,7 @@ export class CatalogStore {
     const v = await this.setting<any>('promo_strip', DEFAULT_PROMO);
     const text = String(v?.text ?? DEFAULT_PROMO.text).trim().slice(0, 160) || DEFAULT_PROMO.text;
     const href = String(v?.href ?? DEFAULT_PROMO.href).trim().slice(0, 200) || DEFAULT_PROMO.href;
-    return { enabled: v?.enabled !== false, text, href };
+    return { enabled: v?.enabled === true, text, href };
   }
   async setPromoStrip(promo: { enabled?: boolean; text?: string; href?: string }, by: string) {
     const next = await this.promoStrip();
@@ -384,7 +384,7 @@ export const DEFAULT_TRUST = [
   { title: 'Prices you can compare', text: 'Switch between USD, RMB and INR' },
   { title: 'Quality on request', text: 'Factory visits and checks when you need them' },
 ];
-export const DEFAULT_PROMO = { enabled: true, text: 'Sourcing from China — request a quote from the Source Easy team', href: '/#contact' };
+export const DEFAULT_PROMO = { enabled: false, text: 'Sourcing from China — request a quote from the Source Easy team', href: '/#quote' };
 
 type ImgRow = { fileId: string; kind?: string; altText?: string | null; groupId?: string | null; isCover?: boolean; sort?: number };
 export function photoGroups(images: ImgRow[]) {
@@ -734,26 +734,44 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     return sendUpload(reply, deps.uploads, ownerKey('p', row.id), req.params.fileId, 'public, max-age=86400');
   });
 
-  app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/public/catalog/products/:id/enquire', async (req, reply) => {
-    const row = await store.get(req.params.id);
-    if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+  async function handleEnquire(req: any, reply: any, row?: { id: string; title: string; slug: string; status: string } | null) {
     if (!deps.createEnquiry) return reply.code(501).send({ error: 'Enquiry is not available' });
     const b = (req.body ?? {}) as Record<string, unknown>;
     const name = String(b.name ?? '').trim(), phone = String(b.phone ?? '').trim();
+    const email = String(b.email ?? '').trim();
     if (!name || !phone) return reply.code(400).send({ error: 'Name and mobile number are required', code: 'required' });
     try {
       const r = await deps.createEnquiry({
-        product: { id: row.id, title: row.title, slug: row.slug },
-        name, phone, phoneCode: String(b.phoneCode ?? '+91'), email: b.email ? String(b.email) : undefined,
+        ...(row ? { product: { id: row.id, title: row.title, slug: row.slug } } : {}),
+        name, phone, phoneCode: String(b.phoneCode ?? '+91'), email: email || undefined,
         company: b.company ? String(b.company) : undefined, quantity: b.quantity != null ? Number(b.quantity) : undefined,
         unit: b.unit ? String(b.unit) : undefined, message: b.message ? String(b.message) : undefined,
-        city: b.city ? String(b.city) : undefined, requestLogin: /^(1|true|on|yes)$/i.test(String(b.requestLogin ?? '')),
+        city: b.city ? String(b.city) : undefined, requirement: b.requirement ? String(b.requirement) : undefined,
+        requestLogin: /^(1|true|on|yes)$/i.test(String(b.requestLogin ?? '')),
       });
-      await recordEnquiryEvent(deps.db, row.id, r.leadId, req);
+      if (row) await recordEnquiryEvent(deps.db, row.id, r.leadId, req);
       return reply.code(201).send({ ok: true, reference: r.leadRef, ...(r.loginRequested ? { loginRequested: true } : {}) });
     } catch (e: any) {
       return reply.code(e.status ?? 400).send({ error: e.message, ...(e.appCode ? { code: e.appCode } : {}) });
     }
+  }
+
+  app.post<{ Body: Record<string, unknown> }>('/api/public/catalog/enquire', async (req, reply) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const id = String(b.productId ?? b.product ?? '').trim();
+    let row = null;
+    if (id) {
+      const found = await store.get(id);
+      if (!found || found.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+      row = found;
+    }
+    return handleEnquire(req, reply, row);
+  });
+
+  app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/public/catalog/products/:id/enquire', async (req, reply) => {
+    const row = await store.get(req.params.id);
+    if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+    return handleEnquire(req, reply, row);
   });
 }
 

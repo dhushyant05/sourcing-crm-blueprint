@@ -71,7 +71,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   String? err;
   bool busy = false;
   Future<void> _submit() async {
-    if (nw.text.length < 10) return setState(() => err = tw(context, 'pw.min'));
+    if (nw.text.isEmpty) return setState(() => err = tw(context, 'pw.min'));
     if (nw.text != cf.text) return setState(() => err = tw(context, 'pw.mismatch'));
     setState(() { busy = true; err = null; });
     final m = ScaffoldMessenger.of(context), nav = Navigator.of(context), done = tw(context, 'pw.done'), wrong = tw(context, 'pw.wrong');

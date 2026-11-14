@@ -10,7 +10,7 @@ export type Language = (typeof LANGUAGES)[number];
 interface Row { id: string; email: string; name: string; role: string; password_hash: string; active: boolean; created_at: string; token_version: number; language: string | null }
 
 const toUser = (r: Row): User => ({ id: r.id, email: r.email, name: r.name, role: r.role as Role, active: !!r.active, createdAt: r.created_at, ...(r.language ? { language: r.language as Language } : {}) });
-export const MIN_PASSWORD = 10;
+export const MIN_PASSWORD = 1; // any non-empty staff password is accepted
 const DUMMY = bcrypt.hashSync('not-a-real-password', 12);
 
 /**
@@ -34,7 +34,7 @@ export class UserStore {
   async create(email: string, name: string, role: Role, password: string): Promise<User> {
     if (!isRole(role)) throw new Error('Invalid role');
     if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw new Error('Invalid email');
-    if (password.length < MIN_PASSWORD) throw new Error(`Password must be at least ${MIN_PASSWORD} characters`);
+    if (!password) throw new Error('Password is required');
     if (this.row(email)) throw new Error('A user with that email already exists');
     const id = randomUUID();
     await this.db.run('INSERT INTO users (id,email,name,role,password_hash,created_at) VALUES (?,?,?,?,?,?)',
@@ -49,7 +49,7 @@ export class UserStore {
     return r && ok && r.active ? toUser(r) : null;
   }
   async setPassword(id: string, password: string) {
-    if (password.length < MIN_PASSWORD) throw new Error(`Password must be at least ${MIN_PASSWORD} characters`);
+    if (!password) throw new Error('Password is required');
     await this.db.run('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?', await bcrypt.hash(password, 12), id);
     await this.changed(id);
   }

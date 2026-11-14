@@ -4,7 +4,7 @@ import { CurrencyProvider } from './currency';
 import { HomePage, ListingPage, ProductPage } from './pages';
 import { FavoritesPage } from './FavoriteButton';
 import { TopBar } from './TopBar';
-import type { Banner, BannerSettings, Category, Product, PromoStrip, TrustItem } from './types';
+import type { Banner, BannerSettings, Category, Product, TrustItem } from './types';
 
 function pathOf() {
   const p = location.pathname.replace(/\/$/, '') || '/';
@@ -23,7 +23,6 @@ export function Marketplace() {
   const [settings, setSettings] = useState<BannerSettings>({ direction: 'LTR', intervalSeconds: 5 });
   const [homeProducts, setHomeProducts] = useState<Product[]>([]);
   const [trust, setTrust] = useState<TrustItem[] | undefined>();
-  const [promo, setPromo] = useState<PromoStrip | undefined>();
   useEffect(() => {
     const h = () => setLoc(pathOf());
     addEventListener('popstate', h);
@@ -34,14 +33,19 @@ export function Marketplace() {
     void publicCatalog.categories().then(setCategories).catch(() => setCategories([]));
     void publicCatalog.banners().then((r) => { setBanners(r.data); setSettings({ direction: r.direction, intervalSeconds: r.intervalSeconds }); }).catch(() => undefined);
     void publicCatalog.products({ limit: 48, sort: 'trending', window: 7 }).then((r) => setHomeProducts(r.data)).catch(() => setHomeProducts([]));
-    void publicCatalog.status().then((s) => { setTrust(s.trust); setPromo(s.promo); }).catch(() => undefined);
+    void publicCatalog.status().then((s) => { setTrust(s.trust); }).catch(() => undefined);
   }, []);
   useEffect(() => { document.title = 'Source Easy — Marketplace'; document.documentElement.classList.remove('dark'); }, []);
   useEffect(() => {
-    if (loc.hash && (loc.p === '/' || loc.p === '')) {
-      const id = loc.hash.slice(1);
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-    } else window.scrollTo(0, 0);
+    const id = loc.hash.replace(/^#/, '');
+    if (!id) { window.scrollTo(0, 0); return; }
+    let n = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else if (n++ < 25) setTimeout(tryScroll, 80);
+    };
+    tryScroll();
   }, [loc]);
 
   let page: React.ReactNode;
@@ -59,7 +63,7 @@ export function Marketplace() {
   return (
     <CurrencyProvider>
       <div className="min-h-screen bg-white text-ink-700 antialiased">
-        <TopBar categories={categories} products={homeProducts} query={loc.q} promo={promo} onSearch={(q) => { history.pushState({}, '', `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`); setLoc(pathOf()); }} />
+        <TopBar categories={categories} products={homeProducts} query={loc.q} onSearch={(q) => { history.pushState({}, '', `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`); setLoc(pathOf()); }} />
         {page}
         <footer className="border-t border-ink-100 bg-ink-50/50">
           <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">

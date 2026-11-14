@@ -30,9 +30,9 @@ export function HomePage({ products, banners, settings, categories, trust }: {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <h1 className="text-base font-semibold text-ink-800 sm:text-lg">Welcome to Source Easy</h1>
           <div className="flex flex-wrap gap-2 text-sm">
-            <QuickLink icon={FileText} label="Request for quotation" onClick={() => go('/#contact')} />
+            <QuickLink icon={FileText} label="Request for quotation" onClick={() => go('/#quote')} />
             <QuickLink icon={TrendingUp} label="Trending" onClick={() => go('/#recommended')} />
-            <QuickLink icon={Sparkles} label="Custom sourcing" onClick={() => go('/#contact')} />
+            <QuickLink icon={Sparkles} label="Custom sourcing" onClick={() => go('/#quote')} />
           </div>
         </div>
       </section>
@@ -81,7 +81,7 @@ export function HomePage({ products, banners, settings, categories, trust }: {
             <h2 className="text-2xl font-semibold tracking-tight text-ink-800 sm:text-3xl">Need something that isn’t listed?</h2>
             <p className="mt-2 max-w-xl text-ink-600">Request a custom sourcing quote and the Source Easy team will come back to you with options, lead time and a price.</p>
           </div>
-          <button type="button" onClick={() => go('/#contact')} className="rounded-full bg-warm-500 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-warm-600">
+          <button type="button" onClick={() => go('/#quote')} className="rounded-full bg-warm-500 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-warm-600">
             Request a custom sourcing quote
           </button>
         </div>
@@ -223,7 +223,7 @@ export function ProductPage({ slug }: { slug: string }) {
               </table>
             </div>
           )}
-          <div className="mt-8 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
+          <div id="quote" className="mt-8 scroll-mt-28 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
             <h2 className="font-semibold text-ink-800">Request a quote</h2>
             <p className="mt-1 text-sm text-ink-500">We’ll come back with a Source Easy quote. This is not a checkout.</p>
             <div className="mt-4"><EnquireForm product={p} /></div>

@@ -25,7 +25,7 @@ export function Team() {
   const reset = async (id: string) => {
     const pw = prompt(t('team.newPassword'));
     if (!pw) return;
-    if (pw.length < 10) { setMsg(t('team.pwShort')); return; }
+    if (!pw) { setMsg(t('team.pwShort')); return; }
     try { await api.resetPassword(id, pw); setMsg(t('team.resetDone')); } catch (e) { setMsg((e as Error).message); }
   };
   const remove = async (u: User) => {
@@ -42,7 +42,7 @@ export function Team() {
           <input className="input" placeholder={t('common.name')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           <input className="input" type="email" placeholder={t('common.email')} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
           <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>{allowed.map((r) => <option key={r} value={r}>{t(`role.${r}`)}</option>)}</select>
-          <input className="input" type="password" placeholder={t('team.initialPassword')} minLength={10} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+          <input className="input" type="password" placeholder={t('team.initialPassword')} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
           <button className="btn-primary justify-center">{t('team.create')}</button>
         </form>
       )}
@@ -95,7 +95,6 @@ function EditStaff({ user, me, isSuper, roles, onClose, onSaved }: { user: User;
   const [f, setF] = useState({ name: user.name, email: user.email, role: user.role, active: user.active, password: '' });
   const [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false);
   const save = async () => {
-    if (f.password && f.password.length < 10) { setErr(t('team.pwShort')); return; }
     setBusy(true); setErr(null);
     try {
       const patch: { name?: string; email?: string; role?: Role; active?: boolean } = {};
@@ -123,7 +122,7 @@ function EditStaff({ user, me, isSuper, roles, onClose, onSaved }: { user: User;
           </select>
         </Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} disabled={me} onChange={(e) => setF({ ...f, active: e.target.checked })} />{t('team.active')}</label>
-        <Field label={t('team.passwordOptional')}><input className="input" type="password" autoComplete="new-password" minLength={10} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
+        <Field label={t('team.passwordOptional')}><input className="input" type="password" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
         <p className="text-xs text-ink-500">{t('team.sessionsNote')}</p>
         {err && <p className="text-sm text-red-600">{err}</p>}
       </div>
