@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, FileText, Menu, Search, UserRound, X } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 import { CurrencySwitch } from './currency';
-import type { Category, PromoStrip } from './types';
+import type { Category, Product, PromoStrip } from './types';
+import { CategoryMegaMenu } from './CategoryExplorer';
 
 const PORTAL = '/portal';
 const WA = 'https://wa.me/917299541489';
 
-export function TopBar({ categories, onSearch, query = '', promo }: { categories: Category[]; onSearch: (q: string) => void; query?: string; promo?: PromoStrip }) {
+export function TopBar({ categories, products = [], onSearch, query = '', promo }: { categories: Category[]; products?: Product[]; onSearch: (q: string) => void; query?: string; promo?: PromoStrip }) {
   const [q, setQ] = useState(query);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<string | null>(null);
@@ -67,10 +68,7 @@ export function TopBar({ categories, onSearch, query = '', promo }: { categories
           <nav className="mb-3 flex gap-1 overflow-x-auto text-sm font-medium text-ink-600">
             <button type="button" onClick={() => go('/products')} className="shrink-0 rounded-full px-3 py-1.5 hover:bg-white hover:text-brand-700">Products</button>
             <MenuBtn label="Categories" open={menu === 'cat'} onToggle={() => setMenu(menu === 'cat' ? null : 'cat')}>
-              <div className="grid min-w-[16rem] grid-cols-2 gap-1 p-2">
-                <button className="rounded-lg px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50" onClick={() => go('/products')}>All products</button>
-                {categories.map((c) => <button key={c.id} className="rounded-lg px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50" onClick={() => go(`/c/${c.slug}`)}>{c.name}</button>)}
-              </div>
+              <CategoryMegaMenu categories={categories} products={products} onGo={go} />
             </MenuBtn>
             <button type="button" onClick={() => go('/#how')} className="shrink-0 rounded-full px-3 py-1.5 hover:bg-white hover:text-brand-700">How Source Easy works</button>
           </nav>

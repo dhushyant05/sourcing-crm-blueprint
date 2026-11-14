@@ -50,14 +50,14 @@ export function Marketplace() {
   else if (c) {
     const slug = decodeURIComponent(c[1]);
     const cat = categories.find((x) => x.slug === slug);
-    page = <ListingPage title={cat?.name || 'Category'} category={slug} />;
-  } else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} />;
+    page = <ListingPage title={cat?.name || 'Category'} category={slug} categories={categories} />;
+  } else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} categories={categories} />;
   else page = <HomePage products={homeProducts} banners={banners} settings={settings} categories={categories} trust={trust} />;
 
   return (
     <CurrencyProvider>
       <div className="min-h-screen bg-white text-ink-700 antialiased">
-        <TopBar categories={categories} query={loc.q} promo={promo} onSearch={(q) => { history.pushState({}, '', `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`); setLoc(pathOf()); }} />
+        <TopBar categories={categories} products={homeProducts} query={loc.q} promo={promo} onSearch={(q) => { history.pushState({}, '', `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`); setLoc(pathOf()); }} />
         {page}
         <footer className="border-t border-ink-100 bg-ink-50/50">
           <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
