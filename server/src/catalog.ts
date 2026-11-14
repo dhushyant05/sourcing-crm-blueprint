@@ -383,7 +383,10 @@ export function photoGroups(images: ImgRow[]) {
   const by = new Map<string, (typeof groups)[0]>();
   let last: string | null = null;
   for (const im of images) {
-    let gid = im.groupId || ((im.kind === 'CARD' || im.kind === 'GALLERY') && last) || im.fileId;
+    let gid: string;
+    if (im.groupId) gid = im.groupId;
+    else if ((im.kind === 'CARD' || im.kind === 'GALLERY') && last) gid = last;
+    else gid = im.fileId;
     if (im.kind === 'ORIGINAL' || !im.kind) last = gid;
     let g = by.get(gid);
     if (!g) { g = { id: gid, altText: im.altText ?? null, cover: !!im.isCover, sort: im.sort ?? 0, fileIds: [] }; by.set(gid, g); groups.push(g); }
