@@ -76,7 +76,7 @@ class _TeamScreenState extends State<TeamScreen> {
         const SizedBox(height: 12),
         FilledButton(key: const Key('staff-save'), onPressed: () async {
           final p = pw.text;
-          if ((u == null || p.isNotEmpty) && p.length < 10) return set(() => err = tw(context, 'team.pwShort'));
+          if (u == null && p.isEmpty) return set(() => err = tw(context, 'team.pwShort'));
           if (name.text.trim().isEmpty || email.text.trim().isEmpty) return set(() => err = tw(context, 'suppliers.nameRequired'));
           try {
             if (u == null) {

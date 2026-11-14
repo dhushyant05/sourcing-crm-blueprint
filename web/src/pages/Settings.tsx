@@ -72,7 +72,7 @@ function PasswordCard() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setMsg(null);
-    if (f.next.length < 10) return setMsg({ ok: false, text: t('pw.min') });
+    if (!f.next) return setMsg({ ok: false, text: t('pw.min') });
     if (f.next !== f.conf) return setMsg({ ok: false, text: t('pw.mismatch') });
     setBusy(true);
     try { replaceToken(await api.changePassword(f.cur, f.next)); setF({ cur: '', next: '', conf: '' }); setMsg({ ok: true, text: t('pw.done') }); }
@@ -120,9 +120,9 @@ function CatalogSettingsCard() {
   const [direction, setDirection] = useState<'LTR' | 'RTL'>('LTR');
   const [interval, setInterval] = useState(5);
   const [trust, setTrust] = useState([{ title: 'Sourced in China', text: 'Quoted and managed by Source Easy' }, { title: 'Two offices', text: 'India and China working as one team' }, { title: 'Prices you can compare', text: 'Switch between USD, RMB and INR' }, { title: 'Quality on request', text: 'Factory visits and checks when you need them' }]);
-  const [promoOn, setPromoOn] = useState(true);
+  const [promoOn, setPromoOn] = useState(false);
   const [promoText, setPromoText] = useState('Sourcing from China — request a quote from the Source Easy team');
-  const [promoHref, setPromoHref] = useState('/#contact');
+  const [promoHref, setPromoHref] = useState('/#quote');
   const [msg, setMsg] = useState<string | null>(null);
   const demo = !!session?.demo;
   useEffect(() => {
@@ -132,7 +132,7 @@ function CatalogSettingsCard() {
       setDirection(r.data.direction === 'RTL' ? 'RTL' : 'LTR');
       setInterval(Number(r.data.intervalSeconds) || 5);
       if (Array.isArray(r.data.trust) && r.data.trust.length) setTrust(r.data.trust);
-      if (r.data.promo) { setPromoOn(r.data.promo.enabled !== false); if (r.data.promo.text) setPromoText(r.data.promo.text); if (r.data.promo.href) setPromoHref(r.data.promo.href); }
+      if (r.data.promo) { setPromoOn(r.data.promo.enabled === true); if (r.data.promo.text) setPromoText(r.data.promo.text); if (r.data.promo.href) setPromoHref(r.data.promo.href); }
     }).catch(() => undefined);
   }, [demo]);
   const save = async () => {
@@ -171,9 +171,10 @@ function CatalogSettingsCard() {
       </div>
       <div className="mt-4 space-y-2">
         <p className="text-sm font-medium text-ink-800">Top promo strip</p>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={promoOn} onChange={(e) => setPromoOn(e.target.checked)} /> Show the promo strip</label>
+        <p className="text-xs text-ink-500">The orange promo bar has been removed from the public marketplace header. These fields are kept only if you need the text later.</p>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={promoOn} onChange={(e) => setPromoOn(e.target.checked)} /> Saved as enabled (not shown on the site)</label>
         <input className="input" value={promoText} onChange={(e) => setPromoText(e.target.value)} placeholder="Promo text (no invented numbers or discounts)" />
-        <input className="input" value={promoHref} onChange={(e) => setPromoHref(e.target.value)} placeholder="Link, for example /#contact" />
+        <input className="input" value={promoHref} onChange={(e) => setPromoHref(e.target.value)} placeholder="Link, for example /#quote" />
       </div>
       <div className="mt-4 space-y-2">
         <p className="text-sm font-medium text-ink-800">Trust strip (no invented numbers)</p>

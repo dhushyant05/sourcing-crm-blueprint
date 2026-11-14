@@ -51,15 +51,15 @@ describe('profile', () => {
     expect((await app.inject({ method: 'POST', url: `/api/users/${staffId}/avatar`, payload: f.payload, headers: { ...f.headers, ...H(ta) } })).json().data.avatarUrl).toBeTruthy();
     expect((await app.inject({ method: 'DELETE', url: `/api/users/${staffId}/avatar`, headers: H(ta) })).json().data.avatarUrl).toBeNull();
   });
-  it('changes password: checks current, min 10, keeps this session, revokes others', async () => {
+  it('changes password: checks current, rejects empty, keeps this session, revokes others', async () => {
     const a = (await login('staff@x.in')).json().token, b = (await login('staff@x.in')).json().token;
     const post = (pl: object) => app.inject({ method: 'POST', url: '/api/me/password', payload: pl, headers: H(a) });
     expect((await post({ currentPassword: 'wrong-password', newPassword: 'brand-new-pass-1' })).statusCode).toBe(400);
-    expect((await post({ currentPassword: PW, newPassword: 'short' })).statusCode).toBe(400);
-    const ok = await post({ currentPassword: PW, newPassword: 'brand-new-pass-1' });
+    expect((await post({ currentPassword: PW, newPassword: '' })).statusCode).toBe(400);
+    const ok = await post({ currentPassword: PW, newPassword: 'short' });
     expect(ok.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/me', headers: H(ok.json().token) })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/me', headers: H(b) })).statusCode).toBe(401);
-    expect((await login('staff@x.in', 'brand-new-pass-1')).statusCode).toBe(200);
+    expect((await login('staff@x.in', 'short')).statusCode).toBe(200);
   });
 });

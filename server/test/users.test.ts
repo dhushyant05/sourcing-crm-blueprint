@@ -31,9 +31,12 @@ describe('staff management', () => {
     expect((await call(S, 'PATCH', `/api/users/${is.id}`, { email: 'cs@x.in' })).statusCode).toBe(400); // duplicate
     expect((await call(S, 'PATCH', `/api/users/${is.id}`, { email: 'nope' })).statusCode).toBe(400);
     expect((await call(S, 'PATCH', `/api/users/${is.id}`, { name: '  ' })).statusCode).toBe(400);
-    expect((await call(S, 'POST', `/api/users/${is.id}/password`, { password: 'short' })).statusCode).toBe(400);
-    expect((await call(S, 'POST', `/api/users/${is.id}/password`, { password: 'a-new-password' })).statusCode).toBe(200);
+    expect((await call(S, 'POST', `/api/users/${is.id}/password`, { password: '' })).statusCode).toBe(400);
+    expect((await call(S, 'POST', `/api/users/${is.id}/password`, { password: 'short' })).statusCode).toBe(200);
     expect(await login('priya@x.in')).toBeNull();
+    expect(await login('priya@x.in', 'short')).toBeTruthy();
+    expect((await call(S, 'POST', `/api/users/${is.id}/password`, { password: 'a-new-password' })).statusCode).toBe(200);
+    expect(await login('priya@x.in', 'short')).toBeNull();
     expect(await login('priya@x.in', 'a-new-password')).toBeTruthy();
     expect((await call(S, 'PATCH', `/api/users/${is.id}`, { active: false })).statusCode).toBe(200);
     expect(await login('priya@x.in', 'a-new-password')).toBeNull();

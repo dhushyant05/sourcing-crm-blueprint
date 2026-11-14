@@ -2,31 +2,23 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, FileText, Menu, Search, UserRound, X } from 'lucide-react';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 import { CurrencySwitch } from './currency';
-import type { Category, Product, PromoStrip } from './types';
+import type { Category, Product } from './types';
 import { CategoryMegaMenu } from './CategoryExplorer';
 
 const PORTAL = '/portal';
 const WA = 'https://wa.me/917299541489';
 
-export function TopBar({ categories, products = [], onSearch, query = '', promo }: { categories: Category[]; products?: Product[]; onSearch: (q: string) => void; query?: string; promo?: PromoStrip }) {
+export function TopBar({ categories, products = [], onSearch, query = '' }: { categories: Category[]; products?: Product[]; onSearch: (q: string) => void; query?: string }) {
   const [q, setQ] = useState(query);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<string | null>(null);
   useEffect(() => { setQ(query); }, [query]);
   const go = (path: string) => { setOpen(false); setMenu(null); if (path.startsWith('http')) location.href = path; else history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); };
+  const openQuote = () => { const path = location.pathname.replace(/\/$/, '') || '/'; go(/^\/p\//.test(path) ? `${path}${location.search}#quote` : '/#quote'); };
   const submit = (e: React.FormEvent) => { e.preventDefault(); go(`/products${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`); onSearch(q.trim()); };
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md">
-      {promo?.enabled && promo.text && (
-        <div className="bg-warm-500 text-white">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-1.5 sm:px-6">
-            <p className="truncate text-xs sm:text-sm">{promo.text}</p>
-            <button type="button" onClick={() => go(promo.href || '/#contact')}
-              className="shrink-0 rounded-full bg-white px-3 py-0.5 text-xs font-semibold text-warm-600 hover:bg-warm-50">Request quote</button>
-          </div>
-        </div>
-      )}
       <div className="border-b border-ink-100">
         <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2.5 sm:px-6">
           <a href="/" onClick={(e) => { e.preventDefault(); go('/'); }} className="flex shrink-0 items-center gap-2.5">
@@ -59,7 +51,7 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
             <LanguageSwitch className="hidden shrink-0 lg:flex" />
             <a href={PORTAL} data-testid="nav-customer-portal" className="hidden min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 sm:inline-flex"><UserRound size={16} />Customer Portal</a>
             <a href="/app" data-testid="staff-login" className="hidden min-h-[36px] shrink-0 items-center rounded-lg border border-brand-200 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 sm:inline-flex">Staff login</a>
-            <button type="button" onClick={() => go('/#contact')} className="hidden min-h-[36px] shrink-0 items-center rounded-lg bg-warm-500 px-3 text-sm font-semibold text-white shadow-sm hover:bg-warm-600 sm:inline-flex">Request quote</button>
+            <button type="button" onClick={openQuote} className="hidden min-h-[36px] shrink-0 items-center rounded-lg bg-warm-500 px-3 text-sm font-semibold text-white shadow-sm hover:bg-warm-600 sm:inline-flex">Request quote</button>
             <button type="button" className="rounded-lg p-2 text-ink-700 lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}><Menu size={22} /></button>
           </div>
         </div>
@@ -77,7 +69,7 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
             <Search size={18} className="ml-3 shrink-0 text-ink-400" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products, categories or materials" aria-label="Search products"
               className="h-11 min-w-0 flex-1 bg-transparent text-sm text-ink-800 outline-none" />
-            <button type="button" onClick={() => go('/#contact')} className="hidden shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-ink-600 hover:bg-ink-50 sm:inline-flex">
+            <button type="button" onClick={openQuote} className="hidden shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-ink-600 hover:bg-ink-50 sm:inline-flex">
               <FileText size={16} />Search with file
             </button>
             <button className="h-11 shrink-0 rounded-full bg-warm-500 px-5 text-sm font-semibold text-white hover:bg-warm-600">Search</button>
@@ -110,7 +102,7 @@ export function TopBar({ categories, products = [], onSearch, query = '', promo 
               <div className="mt-4"><CurrencySwitch /></div>
             </div>
             <div className="space-y-2 border-t border-ink-100 p-4">
-              <button type="button" onClick={() => go('/#contact')} className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-warm-500 font-semibold text-white">Request quote</button>
+              <button type="button" onClick={openQuote} className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-warm-500 font-semibold text-white">Request quote</button>
               <a href={PORTAL} className="flex min-h-[44px] items-center justify-center rounded-lg border border-brand-200 font-semibold text-brand-700">Customer Portal</a>
               <a href="/app" className="flex min-h-[44px] items-center justify-center rounded-lg border border-brand-200 font-semibold text-brand-700">Staff login</a>
             </div>
