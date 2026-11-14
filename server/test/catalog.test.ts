@@ -209,3 +209,94 @@ describe('festival greetings stay off the product banner', () => {
     expect(banners.some((b) => b.id === id || b.id === `gr-${id}`)).toBe(false);
   });
 });
+
+describe('trending, related products and favourites', () => {
+  it('ranks by deduped views and enquiries, filters bots, and keeps pins first', async () => {
+    const { app, call, db } = await setupCatalog();
+    await call('sa', 'POST', '/api/catalog/samples/seed');
+    await call('sa', 'PATCH', '/api/catalog/settings', { homepageEnabled: true });
+    const list = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?sort=newest&limit=48' })).json().data as any[];
+    const a = list.find((p) => /Tea Towels/i.test(p.title));
+    const b = list.find((p) => /Mailer Boxes/i.test(p.title));
+    const pinned = list.find((p) => p.pinned);
+    expect(a && b && pinned && !a.pinned && !b.pinned).toBeTruthy();
+
+    const view = (id: string, headers: Record<string, string> = {}, ip = '10.9.0.1') =>
+      app.inject({ method: 'GET', url: `/api/public/catalog/products/${id}`, remoteAddress: ip, headers: { 'user-agent': 'Mozilla/5.0 TestBrowser', ...headers } });
+
+    // Same visitor, same day: one view.
+    expect((await view(a.slug, {}, '10.9.0.2')).statusCode).toBe(200);
+    expect((await view(a.slug, {}, '10.9.0.2')).statusCode).toBe(200);
+    // Second human visitor.
+    expect((await view(a.slug, {}, '10.9.0.3')).statusCode).toBe(200);
+    // Bot views are ignored.
+    expect((await view(b.slug, { 'user-agent': 'Googlebot/2.1' }, '10.9.0.4')).statusCode).toBe(200);
+    expect((await view(b.slug, { 'user-agent': 'facebookexternalhit/1.1' }, '10.9.0.5')).statusCode).toBe(200);
+
+    const enq = async (id: string, phone: string, ip: string) =>
+      app.inject({ method: 'POST', url: `/api/public/catalog/products/${id}/enquire`, remoteAddress: ip,
+        headers: { 'user-agent': 'Mozilla/5.0 TestBrowser' },
+        payload: { name: 'Ravi', phone, phoneCode: '+91', company: 'Ravi Traders', quantity: 1000 } });
+    expect((await enq(b.id, '9000000101', '10.8.0.1')).statusCode).toBe(201);
+    expect((await enq(b.id, '9000000101', '10.8.0.1')).statusCode).toBe(201); // same visitor, same day — one score unit
+
+    const trend = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?sort=trending&window=7&limit=48' })).json().data as any[];
+    const ids = trend.map((p: any) => p.id);
+    expect(trend[0].pinned).toBe(true); // manual pins still win
+    expect(trend.filter((p: any) => p.pinned).every((p: any, i: number, arr: any[]) => ids.indexOf(p.id) < ids.indexOf(b.id))).toBe(true);
+    expect(ids.indexOf(b.id)).toBeLessThan(ids.indexOf(a.id)); // enquiry (weight 10) beats two views
+    const rowB = trend.find((p: any) => p.id === b.id);
+    expect(rowB.enquiryCount).toBe(1);
+    expect(rowB.trending).toBe(true);
+    const rowA = trend.find((p: any) => p.id === a.id);
+    expect(rowA.viewCount).toBe(2);
+    const rowBot = trend.find((p: any) => p.id === b.id);
+    expect(rowBot.viewCount).toBe(0);
+
+    // 30-day window includes an older view of A that the 7-day window does not.
+    await db.run("INSERT INTO product_views (product_id, visitor_key, day, at) VALUES (?,?, (now() - interval '20 days')::date, now() - interval '20 days') ON CONFLICT DO NOTHING", a.id, 'old-visitor');
+    const t30 = (await app.inject({ method: 'GET', url: `/api/public/catalog/products?sort=trending&window=30&limit=48` })).json().data as any[];
+    expect(t30.find((p: any) => p.id === a.id).viewCount).toBe(3);
+    const t7 = (await app.inject({ method: 'GET', url: `/api/public/catalog/products?sort=trending&window=7&limit=48` })).json().data as any[];
+    expect(t7.find((p: any) => p.id === a.id).viewCount).toBe(2);
+  }, 180_000);
+
+  it('returns related products in the same category, preferring shared tags', async () => {
+    const { app, call } = await setupCatalog();
+    await call('sa', 'POST', '/api/catalog/samples/seed');
+    const list = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?limit=48' })).json().data as any[];
+    const bolts = list.find((p) => /Hex Bolts/i.test(p.title));
+    const valve = list.find((p) => /Ball Valve/i.test(p.title));
+    const lamp = list.find((p) => /LED Panel/i.test(p.title));
+    await call('ia', 'PATCH', `/api/products/${bolts.id}`, { tags: ['hardware', 'stainless', 'fastener'] });
+    await call('ia', 'PATCH', `/api/products/${valve.id}`, { tags: ['hardware', 'stainless', 'valve'] });
+    await call('ia', 'PATCH', `/api/products/${lamp.id}`, { tags: ['lighting', 'led'] });
+    const rel = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${bolts.slug}/related` })).json().data as any[];
+    expect(rel.find((p) => p.id === bolts.id)).toBeUndefined();
+    expect(rel.some((p) => p.id === valve.id)).toBe(true);
+    expect(rel.findIndex((p) => p.id === valve.id)).toBeLessThan(rel.findIndex((p) => p.id === lamp.id) === -1 ? 99 : rel.findIndex((p) => p.id === lamp.id));
+    expect(rel.every((p) => p.category?.slug === 'hardware' || (p.tags || []).includes('stainless'))).toBe(true);
+  }, 180_000);
+
+  it('lets a signed-in customer save and remove favourites, and rejects guests', async () => {
+    const { app, call, customer } = await setupCatalog();
+    await call('sa', 'POST', '/api/catalog/samples/seed');
+    const p = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?limit=1' })).json().data[0];
+    expect((await app.inject({ method: 'GET', url: '/api/portal/catalog/favorites' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'PUT', url: `/api/portal/catalog/favorites/${p.id}` })).statusCode).toBe(401);
+    const { token } = await customer('Meera', '9222222211', 'Meera Co');
+    const auth = { authorization: `Bearer ${token}` };
+    const saved = await app.inject({ method: 'PUT', url: `/api/portal/catalog/favorites/${p.id}`, headers: auth });
+    expect(saved.statusCode).toBe(201);
+    const again = await app.inject({ method: 'PUT', url: `/api/portal/catalog/favorites/${p.id}`, headers: auth });
+    expect(again.statusCode).toBe(201); // idempotent
+    const ids = (await app.inject({ method: 'GET', url: '/api/portal/catalog/favorites/ids', headers: auth })).json().data as string[];
+    expect(ids).toContain(p.id);
+    const list = (await app.inject({ method: 'GET', url: '/api/portal/catalog/favorites', headers: auth })).json().data as any[];
+    expect(list[0].id).toBe(p.id);
+    expect((await app.inject({ method: 'DELETE', url: `/api/portal/catalog/favorites/${p.id}`, headers: auth })).statusCode).toBe(204);
+    const empty = (await app.inject({ method: 'GET', url: '/api/portal/catalog/favorites/ids', headers: auth })).json().data as string[];
+    expect(empty).not.toContain(p.id);
+    expect((await app.inject({ method: 'PUT', url: '/api/portal/catalog/favorites/not-a-product', headers: auth })).statusCode).toBe(404);
+  }, 180_000);
+});

@@ -13,6 +13,10 @@ import type { PermStore } from './permissions.js';
 import type { UploadStore, Attachment } from './uploads.js';
 import { MAX_FILE_BYTES } from './uploads.js';
 import { productStudioImage, bannerStudioImage, sceneFor, CATEGORY_PALETTES } from './studio.js';
+import {
+  addFavorite, favoriteIds, listFavorites, parseTags, pinOrder, recordEnquiryEvent, recordView,
+  relatedProducts, removeFavorite, scoreJoin, scoresFor, tagsOf, windowDays,
+} from './catalog-engagement.js';
 
 export const PRODUCT_STATUSES = ['DRAFT', 'READY_FOR_PRICE', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'] as const;
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
@@ -212,10 +216,11 @@ export class CatalogStore {
   }
 
   async searchPublic(q: {
-    q?: string; category?: string; sort?: string; moqMax?: number; hasPrice?: boolean; limit?: number; offset?: number;
+    q?: string; category?: string; sort?: string; window?: number; moqMax?: number; hasPrice?: boolean; limit?: number; offset?: number;
   }) {
     const limit = Math.min(48, Math.max(1, q.limit ?? 24));
     const offset = Math.max(0, q.offset ?? 0);
+    const days = windowDays(q.window);
     const where = ["p.status = 'PUBLISHED'", 'p.deleted_at IS NULL'];
     const params: unknown[] = [];
     if (q.category) { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
@@ -230,10 +235,10 @@ export class CatalogStore {
     const now = new Date().toISOString();
     const order = q.sort === 'newest' ? 'p.published_at DESC NULLS LAST, p.created_at DESC'
       : q.sort === 'moq' ? 'p.moq ASC NULLS LAST, p.title'
-      : `CASE WHEN p.pinned AND (p.pin_starts_at IS NULL OR p.pin_starts_at <= '${now}') AND (p.pin_ends_at IS NULL OR p.pin_ends_at >= '${now}') THEN 0 ELSE 1 END, p.published_at DESC NULLS LAST, p.title`;
-    const from = `FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE ${where.join(' AND ')}`;
+      : pinOrder(now);
+    const from = `FROM products p LEFT JOIN categories c ON c.id = p.category_id ${scoreJoin(days)} WHERE ${where.join(' AND ')}`;
     const total = (await this.db.get<{ n: number }>(`SELECT count(*)::int AS n ${from}`, ...params))?.n ?? 0;
-    const rows = await this.db.all(`SELECT p.*, c.slug AS category_slug, c.name AS category_name ${from} ORDER BY ${order} LIMIT ? OFFSET ?`, ...params, limit, offset);
+    const rows = await this.db.all(`SELECT p.*, c.slug AS category_slug, c.name AS category_name, coalesce(ts.score, 0) AS trending_score, coalesce(ts.views, 0) AS view_count, coalesce(ts.enquiries, 0) AS enquiry_count ${from} ORDER BY ${order} LIMIT ? OFFSET ?`, ...params, limit, offset);
     return { rows, total, limit, offset };
   }
 
@@ -273,6 +278,8 @@ export class CatalogStore {
       id, slug, title, emptyToNull(input.summary, 4000), input.specs ? JSON.stringify(input.specs) : null,
       emptyToNull(input.categoryId), 'DRAFT', numOrNull(input.moq), emptyToNull(input.unit, 24), emptyToNull(input.leadTime, 80),
       'GET_QUOTE', base, by);
+    const tags = parseTags(input.tags);
+    if (tags.length) await this.db.run('UPDATE products SET tags = ?::jsonb WHERE id = ?', JSON.stringify(tags), id);
     await this.audit(id, by, 'CREATE', null, { title, slug });
     return this.get(id);
   }
@@ -289,6 +296,7 @@ export class CatalogStore {
     if (patch.unit !== undefined) next.unit = emptyToNull(patch.unit, 24);
     if (patch.leadTime !== undefined) next.lead_time = emptyToNull(patch.leadTime, 80);
     if (patch.slug) next.slug = await this.uniqueSlug(String(patch.slug), id);
+    if (patch.tags !== undefined) next.tags = JSON.stringify(parseTags(patch.tags));
     if (patch.status === 'READY_FOR_PRICE' && cur.status === 'DRAFT') next.status = 'READY_FOR_PRICE';
     if (opts.prices) {
       if (patch.baseCurrency && CURRENCIES.includes(patch.baseCurrency as Currency)) next.base_currency = patch.baseCurrency;
@@ -304,7 +312,8 @@ export class CatalogStore {
     }
     const cols = Object.keys(next);
     if (!cols.length) return cur;
-    await this.db.run(`UPDATE products SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = now() WHERE id = ?`, ...cols.map((c) => next[c]), id);
+    const assign = cols.map((c) => c === 'tags' ? `${c} = ?::jsonb` : `${c} = ?`);
+    await this.db.run(`UPDATE products SET ${assign.join(', ')}, updated_at = now() WHERE id = ?`, ...cols.map((c) => next[c]), id);
     if (opts.prices && Array.isArray(patch.tiers)) {
       await this.db.run('DELETE FROM product_price_tiers WHERE product_id = ?', id);
       for (const t of patch.tiers as any[]) {
@@ -479,6 +488,11 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap) 
     isSample: !!row.is_sample,
     pinned: !!row.pinned,
     publishedAt: row.published_at ?? null,
+    tags: tagsOf(row),
+    trendingScore: Number(row.trending_score ?? 0),
+    viewCount: Number(row.view_count ?? 0),
+    enquiryCount: Number(row.enquiry_count ?? 0),
+    trending: !!row.pinned || Number(row.trending_score ?? 0) > 0,
   };
 }
 
@@ -488,6 +502,7 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
   const out: Record<string, unknown> = {
     id: row.id, slug: row.slug, title: row.title, summary: row.summary, specs: row.specs,
     categoryId: row.category_id, categorySlug: row.category_slug ?? null, categoryName: row.category_name ?? null,
+    tags: tagsOf(row),
     status: row.status, moq: row.moq, unit: row.unit, leadTime: row.lead_time,
     priceMode: row.price_mode, baseCurrency: row.base_currency,
     pinned: !!row.pinned, pinStartsAt: row.pin_starts_at, pinEndsAt: row.pin_ends_at,
@@ -598,10 +613,11 @@ export async function seedSamples(store: CatalogStore, deps: CatalogDeps, by: st
     const slug = await store.uniqueSlug(p.title);
     const specs = { material: 'See summary', finish: 'As pictured (sample)', packing: 'Export carton', origin: 'China (sample)', note: 'Sample product — not a live offer' };
     await store.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, price_mode, base_currency,
-      price_min, price_max, pinned, is_sample, created_by, approved_by, published_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,now())`,
+      price_min, price_max, pinned, is_sample, created_by, approved_by, published_at, tags)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,now(),?::jsonb)`,
       id, slug, p.title, p.summary, JSON.stringify(specs),
-      cat.id, 'PUBLISHED', p.moq, p.unit, p.leadTime, 'RANGE', 'USD', p.min, p.max, !!p.pin, true, by, by);
+      cat.id, 'PUBLISHED', p.moq, p.unit, p.leadTime, 'RANGE', 'USD', p.min, p.max, !!p.pin, true, by, by,
+      JSON.stringify([...new Set([p.category.toLowerCase(), ...p.title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3).slice(0, 3)])]));
     if (p.pin) {
       await store.db.run('INSERT INTO product_price_tiers (id, product_id, min_qty, max_qty, unit_price) VALUES (?,?,?,?,?)',
         randomUUID(), id, p.moq, p.moq * 2, p.min);
@@ -658,7 +674,7 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     const q = req.query ?? {};
     const rates = await store.rates();
     const { rows, total, limit, offset } = await store.searchPublic({
-      q: q.q, category: q.category, sort: q.sort, moqMax: q.moq ? Number(q.moq) : undefined,
+      q: q.q, category: q.category, sort: q.sort, window: windowDays(q.window), moqMax: q.moq ? Number(q.moq) : undefined,
       hasPrice: q.hasPrice === '1' || q.hasPrice === 'true', limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined,
     });
     const data = [];
@@ -666,11 +682,23 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     return { data, total, limit, offset };
   });
 
-  app.get<{ Params: { slug: string } }>('/api/public/catalog/products/:slug', async (req, reply) => {
+  app.get<{ Params: { slug: string } }>('/api/public/catalog/products/:slug/related', async (req, reply) => {
     const row = await store.get(req.params.slug);
     if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
     const rates = await store.rates();
-    const data = await publicView(store, row, rates);
+    const rows = await relatedProducts(store.db, row, 8);
+    const data = [];
+    for (const r of rows) data.push(await publicView(store, r, rates));
+    return { data };
+  });
+
+  app.get<{ Params: { slug: string } }>('/api/public/catalog/products/:slug', async (req, reply) => {
+    const row = await store.get(req.params.slug);
+    if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+    await recordView(store.db, row.id, req);
+    const rates = await store.rates();
+    const sc = (await scoresFor(store.db, [row.id], 7)).get(row.id);
+    const data = await publicView(store, { ...row, trending_score: sc?.score ?? 0, view_count: sc?.views ?? 0, enquiry_count: sc?.enquiries ?? 0 }, rates);
     return { data };
   });
 
@@ -721,7 +749,7 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
         unit: b.unit ? String(b.unit) : undefined, message: b.message ? String(b.message) : undefined,
         city: b.city ? String(b.city) : undefined, requestLogin: /^(1|true|on|yes)$/i.test(String(b.requestLogin ?? '')),
       });
-      await deps.db.run('INSERT INTO product_enquiries (id, product_id, lead_id, at) VALUES (?,?,?,now())', randomUUID(), row.id, r.leadId);
+      await recordEnquiryEvent(deps.db, row.id, r.leadId, req);
       return reply.code(201).send({ ok: true, reference: r.leadRef, ...(r.loginRequested ? { loginRequested: true } : {}) });
     } catch (e: any) {
       return reply.code(e.status ?? 400).send({ error: e.message, ...(e.appCode ? { code: e.appCode } : {}) });
@@ -984,3 +1012,25 @@ export function marketplaceTeamAllowed(url: string) {
 }
 
 export { stripSupplier };
+
+export function registerPortalCatalog(api: FastifyInstance, deps: CatalogDeps) {
+  const store = new CatalogStore(deps.db);
+  api.get('/api/portal/catalog/favorites/ids', async (req) => ({ data: await favoriteIds(deps.db, req.customer!.customerId) }));
+  api.get('/api/portal/catalog/favorites', async (req) => {
+    const rates = await store.rates();
+    const rows = await listFavorites(deps.db, req.customer!.customerId);
+    const data = [];
+    for (const r of rows) data.push(await publicView(store, r, rates));
+    return { data };
+  });
+  api.put<{ Params: { productId: string } }>('/api/portal/catalog/favorites/:productId', async (req, reply) => {
+    const row = await store.get(req.params.productId);
+    if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Product not found' });
+    await addFavorite(deps.db, req.customer!.customerId, row.id);
+    return reply.code(201).send({ ok: true, id: row.id });
+  });
+  api.delete<{ Params: { productId: string } }>('/api/portal/catalog/favorites/:productId', async (req, reply) => {
+    await removeFavorite(deps.db, req.customer!.customerId, req.params.productId);
+    return reply.code(204).send();
+  });
+}

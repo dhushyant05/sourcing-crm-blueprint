@@ -8,7 +8,7 @@ export type Product = {
   category?: { id?: string; slug: string | null; name: string | null } | null;
   moq?: number | null; unit?: string | null; leadTime?: string | null;
   price: Price; tiers?: { minQty: number; maxQty: number | null; amounts: Record<string, number | null> }[];
-  images: ProductImage[]; isSample?: boolean; pinned?: boolean;
+  images: ProductImage[]; isSample?: boolean; pinned?: boolean; trending?: boolean; trendingScore?: number; viewCount?: number; enquiryCount?: number; tags?: string[];
   status?: string; categoryId?: string | null; categoryName?: string | null; categorySlug?: string | null;
   priceMode?: string; baseCurrency?: string; priceMin?: number | null; priceMax?: number | null;
   deletedAt?: string | null; publishedAt?: string | null;

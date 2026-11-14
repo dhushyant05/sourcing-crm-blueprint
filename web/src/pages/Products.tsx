@@ -121,6 +121,7 @@ function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
     unit: product?.unit ?? 'pcs', leadTime: product?.leadTime ?? '', priceMode: product?.priceMode ?? product?.price?.mode ?? 'GET_QUOTE',
     priceMin: product?.priceMin != null ? String(product.priceMin) : '', priceMax: product?.priceMax != null ? String(product.priceMax) : '',
     baseCurrency: product?.baseCurrency ?? 'USD',
+    tags: Array.isArray(product?.tags) ? product!.tags.join(', ') : '',
   });
   const [files, setFiles] = useState<File[]>([]);
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -128,6 +129,7 @@ function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
     e.preventDefault();
     void onSave({
       title: f.title, summary: f.summary, moq: f.moq ? Number(f.moq) : null, unit: f.unit, leadTime: f.leadTime,
+      tags: f.tags,
       ...(canPrice ? { priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null, baseCurrency: f.baseCurrency } : {}),
     }, files);
   };
@@ -143,6 +145,7 @@ function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
             <input className="input" placeholder="Unit" value={f.unit} onChange={(e) => set('unit', e.target.value)} />
           </div>
           <input className="input" placeholder="Lead time" value={f.leadTime} onChange={(e) => set('leadTime', e.target.value)} />
+          <input className="input" placeholder="Tags (comma separated)" value={f.tags} onChange={(e) => set('tags', e.target.value)} />
           {canPrice && (
             <div className="grid grid-cols-3 gap-3">
               <select className="input" value={f.priceMode} onChange={(e) => set('priceMode', e.target.value)}>

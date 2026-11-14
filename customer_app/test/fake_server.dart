@@ -28,6 +28,8 @@ class FakeServer {
     if (p == '/api/public/catalog/products') return _j({'data': [], 'total': 0, 'limit': 48, 'offset': 0});
     if (p == '/api/public/catalog/banners') return _j({'data': [], 'direction': 'LTR', 'intervalSeconds': 5});
     if (p == '/api/public/catalog/status') return _j({'homepageEnabled': true, 'hasPublished': true, 'showMarketplace': true});
+    if (p.endsWith('/related') && p.startsWith('/api/public/catalog/products/')) return _j({'data': []});
+    if (p.startsWith('/api/public/catalog/products/')) return _j({'data': {'id': 'p1', 'slug': 'demo', 'title': 'Demo', 'images': [], 'price': {}}});
     if (!p.startsWith('/api/portal/')) return _j({'error': 'staff endpoint called'}, 500);
     if (p == '/api/portal/auth/login') {
       final b = jsonDecode(req.body) as Map;
@@ -44,6 +46,12 @@ class FakeServer {
       return _j({'token': validToken, 'data': me});
     }
     if (mustChange) return _j({'error': 'Please change your temporary password first', 'code': 'password_change'}, 403);
+    if (p == '/api/portal/catalog/favorites/ids') return _j({'data': []});
+    if (p == '/api/portal/catalog/favorites' || p.startsWith('/api/portal/catalog/favorites/')) {
+      if (req.method == 'DELETE') return http.Response('', 204);
+      if (req.method == 'PUT') return _j({'ok': true}, 201);
+      return _j({'data': []});
+    }
     if (p == '/api/portal/requests') return _j({'data': requests});
     if (p.startsWith('/api/portal/requests/')) return _j({'data': requests.firstWhere((r) => p.endsWith('/${r['id']}'))});
     if (p == '/api/portal/shipping-requests') return _j({'data': ships});

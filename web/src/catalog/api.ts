@@ -16,6 +16,7 @@ export const publicCatalog = {
     return get<{ data: Product[]; total: number; limit: number; offset: number }>(`/api/public/catalog/products${s ? `?${s}` : ''}`);
   },
   product: (slug: string) => get<{ data: Product }>(`/api/public/catalog/products/${encodeURIComponent(slug)}`).then((r) => r.data),
+  related: (slug: string) => get<{ data: Product[] }>(`/api/public/catalog/products/${encodeURIComponent(slug)}/related`).then((r) => r.data),
   banners: () => get<{ data: Banner[] } & BannerSettings>('/api/public/catalog/banners'),
   enquire: async (id: string, body: Record<string, unknown>) => {
     const r = await fetch(`/api/public/catalog/products/${encodeURIComponent(id)}/enquire`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { publicCatalog } from './api';
 import { CurrencyProvider } from './currency';
 import { HomePage, ListingPage, ProductPage } from './pages';
+import { FavoritesPage } from './FavoriteButton';
 import { TopBar } from './TopBar';
 import type { Banner, BannerSettings, Category, Product, PromoStrip, TrustItem } from './types';
 
@@ -32,7 +33,7 @@ export function Marketplace() {
   useEffect(() => {
     void publicCatalog.categories().then(setCategories).catch(() => setCategories([]));
     void publicCatalog.banners().then((r) => { setBanners(r.data); setSettings({ direction: r.direction, intervalSeconds: r.intervalSeconds }); }).catch(() => undefined);
-    void publicCatalog.products({ limit: 48 }).then((r) => setHomeProducts(r.data)).catch(() => setHomeProducts([]));
+    void publicCatalog.products({ limit: 48, sort: 'trending', window: 7 }).then((r) => setHomeProducts(r.data)).catch(() => setHomeProducts([]));
     void publicCatalog.status().then((s) => { setTrust(s.trust); setPromo(s.promo); }).catch(() => undefined);
   }, []);
   useEffect(() => { document.title = 'Source Easy — Marketplace'; document.documentElement.classList.remove('dark'); }, []);
@@ -52,6 +53,7 @@ export function Marketplace() {
     const cat = categories.find((x) => x.slug === slug);
     page = <ListingPage title={cat?.name || 'Category'} category={slug} categories={categories} />;
   } else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} categories={categories} />;
+  else if (loc.p === '/favorites') page = <FavoritesPage />;
   else page = <HomePage products={homeProducts} banners={banners} settings={settings} categories={categories} trust={trust} />;
 
   return (

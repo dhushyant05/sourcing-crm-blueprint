@@ -25,7 +25,7 @@ export function ProductCard({ product, variant = 'grid' }: { product: Product; v
         onMouseLeave={() => setI(start < 0 ? 0 : start)}>
         {img ? <img src={photoSrc(img, true)} alt={img.altText || product.title} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-ink-100" />}
         {product.isSample && <span className="absolute left-2 top-2 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">Sample</span>}
-        {product.pinned && <span className="absolute right-2 top-2 rounded bg-warm-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">Trending</span>}
+        {(product.pinned || product.trending) && <span className="absolute right-2 top-2 rounded bg-warm-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">Trending</span>}
         {photos.length > 1 && (
           <div className="absolute inset-x-0 bottom-1.5 flex justify-center gap-1">
             {photos.map((ph, idx) => (

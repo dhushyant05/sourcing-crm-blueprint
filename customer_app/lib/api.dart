@@ -67,9 +67,21 @@ class PortalApi {
 
   Future<Json> catalogStatus() async => await _public('GET', '/api/public/catalog/status');
   Future<List<Json>> catalogCategories() async => ((await _public('GET', '/api/public/catalog/categories'))['data'] as List).cast<Json>();
-  Future<Json> catalogProducts({String? q, String? category}) async =>
-      await _public('GET', '/api/public/catalog/products', query: {if (q != null && q.isNotEmpty) 'q': q, if (category != null) 'category': category, 'limit': '48'});
+  Future<Json> catalogProducts({String? q, String? category, String sort = 'trending', int window = 7}) async =>
+      await _public('GET', '/api/public/catalog/products', query: {
+        if (q != null && q.isNotEmpty) 'q': q,
+        if (category != null) 'category': category,
+        'sort': sort,
+        'window': '$window',
+        'limit': '48',
+      });
   Future<Json> catalogProduct(String slug) async => (await _public('GET', '/api/public/catalog/products/${_e(slug)}'))['data'] as Json;
+  Future<List<Json>> catalogRelated(String slug) async =>
+      ((await _public('GET', '/api/public/catalog/products/${_e(slug)}/related'))['data'] as List? ?? []).cast<Json>();
+  Future<List<String>> favoriteIds() async => ((await call('GET', '/api/portal/catalog/favorites/ids'))['data'] as List? ?? []).map((e) => '$e').toList();
+  Future<List<Json>> favoriteList() async => ((await call('GET', '/api/portal/catalog/favorites'))['data'] as List? ?? []).cast<Json>();
+  Future<void> favoriteAdd(String productId) async { await call('PUT', '/api/portal/catalog/favorites/${_e(productId)}'); }
+  Future<void> favoriteRemove(String productId) async { await call('DELETE', '/api/portal/catalog/favorites/${_e(productId)}'); }
   Future<List<Json>> catalogBanners() async => ((await _public('GET', '/api/public/catalog/banners'))['data'] as List).cast<Json>();
   Future<List<Json>> catalogGreetings() async => ((await _public('GET', '/api/public/greetings'))['data'] as List? ?? []).cast<Json>();
   Future<Json> catalogEnquire(String id, Json body) async {
