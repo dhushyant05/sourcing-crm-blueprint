@@ -452,7 +452,7 @@ export function Attachments({ leadId, canEdit }: { leadId: string; canEdit: bool
               </button>
             )}
             <div className="flex items-center gap-2 p-2">
-              <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium text-ink-800 dark:text-ink-100">{a.name}</div><div className="text-[11px] text-ink-400">{fmtSize(a.size)}</div></div>
+              <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium text-ink-800 dark:text-ink-100">{a.name}</div><div className="text-[11px] text-ink-400">{fmtSize(a.size)}{a.kind ? ` · ${t(`leads.fileKind.${a.kind}`, { defaultValue: a.kind })}` : ''}</div></div>
               <button onClick={() => open(a, true)} aria-label={`${t('leads.download')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"><Download size={15} /></button>
               {canDel(a) && <button data-testid="attachment-delete" onClick={() => void del(a)} aria-label={`${t('common.remove')} ${a.name}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
             </div>

@@ -225,8 +225,15 @@ export class ShippingStore {
   }
   async hasAccepted(requestId: string) { return !!(await this.db.get("SELECT 1 FROM freight_quotes WHERE request_id = ? AND status = 'ACCEPTED'", requestId)); }
   // ---- files ----
-  async addFiles(requestId: string, fileIds: string[], byKind: 'CUSTOMER' | 'STAFF') {
-    for (const f of fileIds) await this.db.run('INSERT INTO shipping_request_files (request_id, file_id, uploaded_by_kind, customer_visible) VALUES (?,?,?,?) ON CONFLICT DO NOTHING', requestId, f, byKind, byKind === 'CUSTOMER');
+  async addFiles(requestId: string, fileIds: Array<string | { id: string; kind?: string | null }>, byKind: 'CUSTOMER' | 'STAFF') {
+    for (const x of fileIds) {
+      const f = typeof x === 'string' ? { id: x, kind: null as string | null } : x;
+      await this.db.run('INSERT INTO shipping_request_files (request_id, file_id, uploaded_by_kind, customer_visible, kind) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING', requestId, f.id, byKind, byKind === 'CUSTOMER', f.kind ?? null);
+    }
+  }
+  async fileKinds(requestId: string) {
+    const rows = await this.db.all<{ file_id: string; kind: string | null }>('SELECT file_id, kind FROM shipping_request_files WHERE request_id = ?', requestId);
+    return new Map(rows.map((r) => [r.file_id, r.kind]));
   }
   async customerFileIds(requestId: string) { return new Set((await this.db.all('SELECT file_id FROM shipping_request_files WHERE request_id = ? AND customer_visible', requestId)).map((r: any) => r.file_id as string)); }
 }

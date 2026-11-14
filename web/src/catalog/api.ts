@@ -18,12 +18,21 @@ export const publicCatalog = {
   product: (slug: string) => get<{ data: Product }>(`/api/public/catalog/products/${encodeURIComponent(slug)}`).then((r) => r.data),
   related: (slug: string) => get<{ data: Product[] }>(`/api/public/catalog/products/${encodeURIComponent(slug)}/related`).then((r) => r.data),
   banners: () => get<{ data: Banner[] } & BannerSettings>('/api/public/catalog/banners'),
-  enquire: async (id: string | undefined, body: Record<string, unknown>) => {
-    const path = id ? `/api/public/catalog/products/${encodeURIComponent(id)}/enquire` : '/api/public/catalog/enquire';
-    const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  enquire: async (id: string | undefined, body: Record<string, unknown>, files: { field: string; file: File }[] = []) => {
+    const path = id && !files.length ? `/api/public/catalog/products/${encodeURIComponent(id)}/enquire` : '/api/public/catalog/enquire';
+    let r: Response;
+    if (files.length) {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(body)) if (v != null && v !== '') fd.append(k, String(v));
+      if (id) fd.append('productId', id);
+      for (const f of files) fd.append(f.field, f.file, f.file.name);
+      r = await fetch('/api/public/catalog/enquire', { method: 'POST', body: fd });
+    } else {
+      r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, ...(id ? { productId: id } : {}) }) });
+    }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new Error(j.error || 'Could not send enquiry'), { code: j.code });
-    return j as { ok: true; reference: string; loginRequested?: boolean };
+    return j as { ok: true; reference: string; kind?: 'SOURCING' | 'SHIPPING'; loginRequested?: boolean; attachments?: number };
   },
 };
 
