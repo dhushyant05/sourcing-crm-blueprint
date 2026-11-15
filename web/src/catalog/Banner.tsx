@@ -49,11 +49,11 @@ export function BannerCarousel({ banners, settings, variant = 'hero' }: { banner
   };
 
   return (
-    <section className={`relative overflow-hidden bg-ink-50 ${variant === 'card' ? 'h-full rounded-2xl' : variant === 'wide' ? 'h-full rounded-xl' : ''}`}
+    <section className={`relative min-w-0 overflow-hidden bg-ink-50 ${variant === 'card' ? 'h-full w-full rounded-2xl' : variant === 'wide' ? 'h-full w-full rounded-xl' : ''}`}
       onMouseEnter={() => hoverPause(true)} onMouseLeave={() => hoverPause(false)}
       onTouchStart={onStart} onTouchEnd={onEnd} aria-roledescription="carousel" aria-label="Featured banners"
       data-testid="banner-carousel" data-active-index={i} data-slide-count={n}>
-      <div className={variant === 'card' ? 'relative h-full min-h-[220px]' : variant === 'wide' ? 'relative h-full w-full' : 'relative mx-auto h-[220px] max-w-7xl sm:h-[280px] lg:h-[340px]'}>
+      <div className={variant === 'card' ? 'relative h-full min-h-[220px] w-full' : variant === 'wide' ? 'relative h-full w-full' : 'relative mx-auto h-[220px] max-w-7xl sm:h-[280px] lg:h-[340px]'}>
         {slides.map((b, idx) => (
           <a key={b.id} href={b.href || '/products'} onClick={(e) => { if (b.href?.startsWith('/')) { e.preventDefault(); history.pushState({}, '', b.href); dispatchEvent(new PopStateEvent('popstate')); } }}
             className={`absolute inset-0 ${reduceMotion ? '' : 'transition-opacity duration-700 ease-out'} ${idx === i ? 'opacity-100' : 'pointer-events-none opacity-0'}`} aria-hidden={idx !== i}>

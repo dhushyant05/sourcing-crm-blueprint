@@ -1549,9 +1549,9 @@
   "banners": {
     "sizeTitle": "Image size requirements",
     "intro": "Up to 6 live slides. They auto-scroll on the marketplace homepage. Festival greetings are shown in their own section above the products, not in this carousel.",
-    "sizeDesktop": "Desktop image: 1920 × 640 pixels (3:1). This is the size the site stores. The homepage slot is a little shorter and wider, so the top and bottom may be cropped.",
-    "sizeMobile": "Optional mobile image: 1080 × 720 pixels (3:2). This is used on screens narrower than 640 px. If you do not upload one, the desktop image is cropped to this size.",
-    "sizeSafe": "Safe area: keep logos and text in the centre. Leave about 10% clear on the left and right, and keep important content in the middle 60% of the height so cropping does not cut it off.",
+    "sizeDesktop": "Desktop image: 1920 × 640 pixels (3:1). This is the size the site stores, and the homepage shows the image at this exact ratio with no extra cropping.",
+    "sizeMobile": "Optional mobile image: 1080 × 720 pixels (3:2). This is used on screens narrower than 640 px, shown at this same ratio. If you do not upload one, the desktop image is cropped to this size.",
+    "sizeSafe": "Safe area: keep logos and text in the centre. Leave about 15% clear at the bottom for the View more button and the slide dots, and about 5% on the left and right.",
     "sizeFiles": "File type: JPEG, PNG or WebP, up to 10 MB.",
     "uploadHint": "Upload a desktop image at 1920 × 640. A separate mobile image (1080 × 720) is optional."
   },

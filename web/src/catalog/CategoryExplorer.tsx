@@ -65,7 +65,7 @@ export function CategoryExplorer({ categories, products, banners, settings, icon
 
         <div className="flex min-h-[260px] flex-col gap-3 border-t border-ink-100 p-3 sm:min-h-[300px] md:min-h-[380px] md:border-l md:border-t-0 md:p-4" data-testid="category-panel">
           {!cat && banners.length > 0 && (
-            <div className="relative h-[150px] shrink-0 overflow-hidden rounded-xl sm:h-[180px] lg:h-[200px]">
+            <div className="relative aspect-[3/2] w-full min-w-0 shrink-0 overflow-hidden rounded-xl sm:aspect-[3/1]" data-testid="banner-slot">
               <BannerCarousel banners={banners} settings={settings} variant="wide" />
               <button type="button" onClick={() => go('/products')}
                 className="absolute bottom-3 left-3 z-10 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-brand-700 shadow-soft hover:bg-warm-50">View more</button>

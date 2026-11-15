@@ -57,13 +57,13 @@ export function Banners() {
             <div className={`grid ${b.mobileUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-ink-100`}>
               <div className="bg-ink-50">
                 {b.imageUrl
-                  ? <img src={b.imageUrl} alt={`${b.altText} (desktop)`} className="h-36 w-full object-cover" data-testid="banner-desktop-preview" />
-                  : <div className="flex h-36 items-center justify-center px-3 text-center text-xs text-ink-400">No desktop image yet</div>}
+                  ? <img src={b.imageUrl} alt={`${b.altText} (desktop)`} className="aspect-[3/1] w-full object-cover" data-testid="banner-desktop-preview" />
+                  : <div className="flex aspect-[3/1] items-center justify-center px-3 text-center text-xs text-ink-400">No desktop image yet</div>}
                 {b.imageUrl && <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-ink-500">Desktop</p>}
               </div>
               {b.mobileUrl && (
                 <div className="bg-ink-50">
-                  <img src={b.mobileUrl} alt={`${b.altText} (mobile)`} className="h-36 w-full object-cover" data-testid="banner-mobile-preview" />
+                  <img src={b.mobileUrl} alt={`${b.altText} (mobile)`} className="aspect-[3/2] w-full object-cover" data-testid="banner-mobile-preview" />
                   <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-ink-500">Mobile</p>
                 </div>
               )}
