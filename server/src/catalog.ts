@@ -1138,9 +1138,9 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     const list = await store.rateList();
     return { data: list.map((r: any) => ({ base: r.base, quote: r.quote, rate: Number(r.rate), asOf: r.asOf })) };
   });
-  app.get('/api/public/catalog/categories', async () => ({ data: await store.categories(true) }));
+  app.get('/api/public/catalog/categories', async (_req, reply) => reply.header('cache-control', 'no-store').send({ data: await store.categories(true) }));
 
-  app.get<{ Querystring: Record<string, string> }>('/api/public/catalog/products', async (req) => {
+  app.get<{ Querystring: Record<string, string> }>('/api/public/catalog/products', async (req, reply) => {
     const q = req.query ?? {};
     const rates = await store.rates();
     const { rows, total, limit, offset } = await store.searchPublic({
@@ -1151,28 +1151,28 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     });
     const data = [];
     for (const r of rows) data.push(await publicView(store, r, rates));
-    return { data, total, limit, offset };
+    return reply.header('cache-control', 'no-store').send({ data, total, limit, offset });
   });
 
   app.get<{ Params: { slug: string } }>('/api/public/catalog/products/:slug/related', async (req, reply) => {
     const row = await store.get(req.params.slug);
-    if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+    if (!row || row.status !== 'PUBLISHED' || row.deleted_at) return reply.code(404).header('cache-control', 'no-store').send({ error: 'This product is no longer available' });
     const rates = await store.rates();
     const rows = await relatedProducts(store.db, row, 8);
     const data = [];
     for (const r of rows) data.push(await publicView(store, r, rates));
-    return { data };
+    return reply.header('cache-control', 'no-store').send({ data });
   });
 
   app.get<{ Params: { slug: string } }>('/api/public/catalog/products/:slug', async (req, reply) => {
     const row = await store.get(req.params.slug);
-    if (!row || row.status !== 'PUBLISHED') return reply.code(404).send({ error: 'Not found' });
+    if (!row || row.status !== 'PUBLISHED' || row.deleted_at) return reply.code(404).header('cache-control', 'no-store').send({ error: 'This product is no longer available' });
     await recordView(store.db, row.id, req);
     const rates = await store.rates();
     const sc = (await scoresFor(store.db, [row.id], 7)).get(row.id);
     const paidMember = deps.isPaidMember ? await deps.isPaidMember(req) : false;
     const data = await publicView(store, { ...row, trending_score: sc?.score ?? 0, view_count: sc?.views ?? 0, enquiry_count: sc?.enquiries ?? 0 }, rates, { paidMember });
-    return { data };
+    return reply.header('cache-control', 'no-store').send({ data });
   });
 
   app.get('/api/public/catalog/banners', async () => {

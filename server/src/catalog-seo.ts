@@ -101,9 +101,20 @@ export function categoryHead(origin: string, name: string, slug: string) {
   `;
 }
 
-function sendHtml(reply: FastifyReply, html: string) {
-  return reply.type('text/html; charset=utf-8').header('cache-control', 'public, max-age=60').send(html);
+function sendHtml(reply: FastifyReply, html: string, cache = 'no-cache') {
+  return reply.type('text/html; charset=utf-8').header('cache-control', cache).send(html);
 }
+
+function goneHead(origin: string, slug: string) {
+  const url = `${origin}/p/${encodeURIComponent(slug)}`;
+  return `
+    <title>This product is no longer available — Source Easy</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content="This product is no longer available." />
+    <link rel="canonical" href="${escapeHtml(url)}" />
+  `;
+}
+
 
 export function registerCatalogSeo(app: FastifyInstance, deps: CatalogDeps, webDir?: string) {
   const store = new CatalogStore(deps.db);
@@ -147,13 +158,13 @@ export function registerCatalogSeo(app: FastifyInstance, deps: CatalogDeps, webD
       const last = (u as any).last ? `<lastmod>${new Date((u as any).last).toISOString()}</lastmod>` : '';
       return `  <url><loc>${escapeHtml(u.loc)}</loc>${last}<changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`;
     }).join('\n')}\n</urlset>\n`;
-    return reply.type('application/xml; charset=utf-8').header('cache-control', 'public, max-age=300').send(xml);
+    return reply.type('application/xml; charset=utf-8').header('cache-control', 'no-cache').send(xml);
   });
 
   app.get<{ Params: { slug: string } }>('/p/:slug', async (req, reply) => {
     const row = await store.get(req.params.slug);
-    if (!row || row.status !== 'PUBLISHED') {
-      return sendHtml(reply.code(404), htmlShell());
+    if (!row || row.status !== 'PUBLISHED' || row.deleted_at) {
+      return sendHtml(reply.code(404), injectHead(htmlShell(), goneHead(publicOrigin(req), req.params.slug)), 'no-store');
     }
     const data = await publicView(store, row, await store.rates());
     return sendHtml(reply, injectHead(htmlShell(), productHead(publicOrigin(req), data)));
@@ -162,7 +173,8 @@ export function registerCatalogSeo(app: FastifyInstance, deps: CatalogDeps, webD
   app.get<{ Params: { slug: string } }>('/c/:slug', async (req, reply) => {
     const cats = await store.categories(true);
     const cat = cats.find((c: any) => c.slug === req.params.slug);
-    if (!cat) return sendHtml(reply.code(404), htmlShell());
+    if (!cat) return sendHtml(reply.code(404), injectHead(htmlShell(), `<title>This category is no longer available — Source Easy</title>
+    <meta name="robots" content="noindex, nofollow" />`), 'no-store');
     return sendHtml(reply, injectHead(htmlShell(), categoryHead(publicOrigin(req), cat.name, cat.slug)));
   });
 }
