@@ -6,11 +6,11 @@ export function SupplierStatus() {
   const { session, updateSession } = useApp();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const rejected = session?.supplierStatus === 'REJECTED';
+  const rejected = session?.supplierStatus === 'DECLINED' || session?.supplierStatus === 'REJECTED';
   const resubmit = async () => {
     setBusy(true); setErr(null);
     try {
-      const r = await staffReq<{ data: { status: 'PENDING' | 'VERIFIED' | 'REJECTED' } }>('POST', '/api/supplier/me/resubmit', {});
+      const r = await staffReq<{ data: { status: 'PENDING' | 'APPROVED' | 'DECLINED' | 'VERIFIED' | 'REJECTED' } }>('POST', '/api/supplier/me/resubmit', {});
       updateSession({ supplierStatus: r.data.status, supplierRejectReason: null });
     } catch (e) { setErr((e as Error).message); }
     finally { setBusy(false); }

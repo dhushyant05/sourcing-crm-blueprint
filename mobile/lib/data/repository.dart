@@ -498,6 +498,8 @@ class SourceEasyRepository {
       ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/restore', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
   Future<Map<String, dynamic>> publishProduct(String id, {bool on = true}) async =>
       ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/${on ? 'publish' : 'unpublish'}', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> getProduct(String id) async =>
+      ((await api.send('GET', '/api/products/${Uri.encodeComponent(id)}') as Map)['data'] as Map).cast<String, dynamic>();
   Future<void> addProductImage(String id, String path) async {
     await api.upload('/api/products/${Uri.encodeComponent(id)}/images', [path], field: 'file');
   }

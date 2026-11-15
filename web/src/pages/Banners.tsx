@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
 import { PageHeader } from '../components/ui';
+import { ImageSizeGuide } from '../components/ImageSizeGuide';
 import { staffReq } from '../catalog/api';
 import { FIXTURE_BANNERS } from '../catalog/fixtures';
 import type { Banner } from '../catalog/types';
 
 export function Banners() {
   const { session } = useApp();
+  const { t } = useTranslation();
   const demo = !!session?.demo;
   const [rows, setRows] = useState<(Banner & { id: string })[]>(demo ? FIXTURE_BANNERS : []);
   const [err, setErr] = useState<string | null>(null);
@@ -30,8 +33,8 @@ export function Banners() {
     await staffReq('DELETE', `/api/banners/${id}`);
     await load();
   };
-  const upload = async (id: string, file: File) => {
-    const fd = new FormData(); fd.append('file', file);
+  const upload = async (id: string, file: File, kind: 'file' | 'mobile' = 'file') => {
+    const fd = new FormData(); fd.append(kind, file);
     await staffReq('POST', `/api/banners/${id}/image`, fd);
     await load();
   };
@@ -39,7 +42,13 @@ export function Banners() {
   return (
     <>
       <PageHeader title="Banners" />
-      <p className="mb-4 text-sm text-ink-500">Up to 6 live slides. They auto-scroll on the marketplace homepage. Festival greetings also appear in the same banner.</p>
+      <ImageSizeGuide title={t('banners.sizeTitle')}>
+        <p>{t('banners.sizeDesktop')}</p>
+        <p>{t('banners.sizeMobile')}</p>
+        <p>{t('banners.sizeSafe')}</p>
+        <p>{t('banners.sizeFiles')}</p>
+      </ImageSizeGuide>
+      <p className="mb-4 text-sm text-ink-500">{t('banners.intro')}</p>
       {err && <p className="mb-3 text-sm text-red-600">{err}</p>}
       <button className="btn-primary mb-4" onClick={() => void add()}>Add slide</button>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -49,8 +58,10 @@ export function Banners() {
             <div className="p-4">
               <p className="font-medium text-ink-900 dark:text-white">{b.altText}</p>
               {b.isSample && <p className="text-xs text-brand-700">Sample</p>}
+              <p className="mt-2 text-xs text-ink-500">{t('banners.uploadHint')}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {!demo && <label className="btn-outline !py-1 text-xs">Upload image<input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(b.id, f); }} /></label>}
+                {!demo && <label className="btn-outline !py-1 text-xs">Upload desktop image (1920×640)<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(b.id, f, 'file'); }} /></label>}
+                {!demo && <label className="btn-outline !py-1 text-xs">Upload mobile image (1080×720, optional)<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(b.id, f, 'mobile'); }} /></label>}
                 <button className="btn-outline !py-1 text-xs text-red-600" onClick={() => void remove(b.id)}>Delete</button>
               </div>
             </div>

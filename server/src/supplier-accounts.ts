@@ -1,15 +1,18 @@
 /**
- * Supplier self-signup and verification.
- * A SUPPLIER login is linked to one catalog supplier card. Public supplier
- * details still follow consent + paid-membership rules on the catalog.
+ * Supplier self-signup and review.
+ * Account status (pending / approved / declined) is separate from the public
+ * verified badge. Public supplier details still follow consent + paid-membership
+ * rules on the catalog.
  */
 import { randomUUID } from 'node:crypto';
 import type { Db } from './db.js';
 import type { User, UserStore } from './users.js';
 
 export const SUPPLIER_MIN_PASSWORD = 8;
-export const SUPPLIER_STATUSES = ['PENDING', 'VERIFIED', 'REJECTED'] as const;
+export const SUPPLIER_STATUSES = ['PENDING', 'APPROVED', 'DECLINED'] as const;
 export type SupplierStatus = (typeof SUPPLIER_STATUSES)[number];
+export const SUPPLIER_DISPLAY = ['PENDING', 'APPROVED', 'DECLINED', 'VERIFIED'] as const;
+export type SupplierDisplayStatus = (typeof SUPPLIER_DISPLAY)[number];
 
 export class SupplierAccountError extends Error {
   status: number; appCode?: string;
@@ -39,10 +42,28 @@ const SEL = `SELECT p.id, p.user_id AS "userId", p.supplier_id AS "supplierId", 
   s.public_years AS "publicYears", s.public_verified AS "publicVerified"
   FROM supplier_profiles p JOIN suppliers s ON s.id = p.supplier_id`;
 
+export function displayStatus(row: { status: string; publicVerified?: boolean }): SupplierDisplayStatus {
+  if (row.status === 'DECLINED') return 'DECLINED';
+  if (row.status === 'PENDING') return 'PENDING';
+  if (row.publicVerified) return 'VERIFIED';
+  return 'APPROVED';
+}
+
+const snapshot = (row: SupplierProfile) => ({
+  company: row.company, contactName: row.contactName, phone: row.phone, email: row.email,
+  status: row.status, rejectReason: row.rejectReason, catalogConsent: !!row.catalogConsent,
+  publicRegion: row.publicRegion, publicAbout: row.publicAbout,
+  publicYears: row.publicYears == null ? null : Number(row.publicYears),
+  publicVerified: !!row.publicVerified,
+});
+
 export function ownView(row: SupplierProfile) {
+  const declined = row.status === 'DECLINED';
   return {
     id: row.id, company: row.company, contactName: row.contactName, phone: row.phone, email: row.email,
-    status: row.status, rejectReason: row.status === 'REJECTED' ? row.rejectReason : null,
+    status: row.status,
+    displayStatus: displayStatus(row),
+    rejectReason: declined ? row.rejectReason : null,
     catalogConsent: !!row.catalogConsent, publicRegion: row.publicRegion, publicAbout: row.publicAbout,
     publicYears: row.publicYears == null ? null : Number(row.publicYears),
     publicVerified: !!row.publicVerified,
@@ -67,9 +88,21 @@ export class SupplierAccountStore {
   async byId(id: string): Promise<SupplierProfile | null> {
     return (await this.db.get(`${SEL} WHERE p.id = ?`, id)) as SupplierProfile | null;
   }
+
   async list(status?: string) {
-    const where = status && SUPPLIER_STATUSES.includes(status as SupplierStatus) ? 'AND p.status = ?' : '';
-    const params: unknown[] = where ? [status] : [];
+    let where = '';
+    const params: unknown[] = [];
+    const raw = String(status ?? '').toUpperCase();
+    if (raw === 'VERIFIED') {
+      where = "AND p.status = 'APPROVED' AND s.public_verified = true";
+    } else if (raw === 'APPROVED' || raw === 'PENDING' || raw === 'DECLINED') {
+      where = 'AND p.status = ?';
+      params.push(raw);
+    } else if (raw === 'REJECTED') {
+      where = "AND p.status = 'DECLINED'";
+    } else if (raw === 'VERIFIED_LEGACY' || raw === 'OLD_VERIFIED') {
+      where = "AND p.status = 'APPROVED'";
+    }
     return this.db.all(
       `SELECT p.id, p.user_id AS "userId", p.supplier_id AS "supplierId", p.company, p.contact_name AS "contactName",
         p.phone, p.email, p.status, p.reject_reason AS "rejectReason", p.reviewed_by AS "reviewedBy", p.reviewed_at AS "reviewedAt",
@@ -84,6 +117,13 @@ export class SupplierAccountStore {
        ORDER BY p.created_at DESC`,
       ...params,
     ) as Promise<(SupplierProfile & { loginEmail: string; loginName: string; loginActive: boolean })[]>;
+  }
+
+  private async audit(profileId: string, by: string | null, action: string, before: unknown, after: unknown) {
+    await this.db.run(
+      `INSERT INTO supplier_application_audit (profile_id, by_user, action, before, after) VALUES (?,?,?,?::jsonb,?::jsonb)`,
+      profileId, by, action, before == null ? null : JSON.stringify(before), after == null ? null : JSON.stringify(after),
+    );
   }
 
   async signup(input: Record<string, unknown>) {
@@ -131,13 +171,14 @@ export class SupplierAccountStore {
     return { user, profile };
   }
 
-  async updateOwn(userId: string, patch: Record<string, unknown>) {
-    const cur = (await this.byUser(userId)) ?? bad('Supplier profile not found', 404);
+  private parsePatch(cur: SupplierProfile, patch: Record<string, unknown>) {
     const company = patch.company !== undefined ? clean(patch.company, 120) : cur.company;
     const contactName = patch.contactName !== undefined ? clean(patch.contactName, 120) : cur.contactName;
     if (!company) bad('Company name is required');
     if (!contactName) bad('Contact name is required');
     const phone = patch.phone !== undefined ? (clean(patch.phone, 40) || null) : cur.phone;
+    const email = patch.email !== undefined ? (clean(patch.email, 160).toLowerCase() || null) : cur.email;
+    if (email && !emailOk(email)) bad('A valid email is required', 400, 'email');
     const consent = patch.catalogConsent === undefined ? !!cur.catalogConsent : (patch.catalogConsent === true || patch.catalogConsent === 'true');
     const region = patch.publicRegion !== undefined ? (clean(patch.publicRegion, 80) || null) : cur.publicRegion;
     const about = patch.publicAbout !== undefined ? (clean(patch.publicAbout, 2000) || null) : cur.publicAbout;
@@ -149,34 +190,86 @@ export class SupplierAccountStore {
         if (!Number.isFinite(years)) bad('Years in business must be a number');
       }
     }
-    await this.db.run('UPDATE supplier_profiles SET company = ?, contact_name = ?, phone = ?, updated_at = now() WHERE id = ?',
-      company, contactName, phone, cur.id);
+    return { company, contactName, phone, email, consent, region, about, years };
+  }
+
+  private async writeProfile(cur: SupplierProfile, next: ReturnType<SupplierAccountStore['parsePatch']>) {
+    await this.db.run(
+      'UPDATE supplier_profiles SET company = ?, contact_name = ?, phone = ?, email = ?, updated_at = now() WHERE id = ?',
+      next.company, next.contactName, next.phone, next.email, cur.id,
+    );
     await this.db.run(
       `UPDATE suppliers SET name = ?, catalog_consent = ?,
         consent_at = CASE WHEN ? THEN coalesce(consent_at, now()) ELSE consent_at END,
         public_region = ?, public_about = ?, public_years = ? WHERE id = ?`,
-      company, consent, consent, region, about, years, cur.supplierId,
+      next.company, next.consent, next.consent, next.region, next.about, next.years, cur.supplierId,
     );
-    if (contactName !== cur.contactName) await this.users.update(userId, { name: contactName });
+    if (next.contactName !== cur.contactName) await this.users.update(cur.userId, { name: next.contactName });
+  }
+
+  async updateOwn(userId: string, patch: Record<string, unknown>) {
+    const cur = (await this.byUser(userId)) ?? bad('Supplier profile not found', 404);
+    const next = this.parsePatch(cur, patch);
+    await this.writeProfile(cur, next);
     return (await this.byUser(userId))!;
   }
 
-  async verify(id: string, by: string) {
+  async updateByStaff(id: string, by: string, patch: Record<string, unknown>) {
     const cur = (await this.byId(id)) ?? bad('Application not found', 404);
-    await this.db.run(`UPDATE supplier_profiles SET status = 'VERIFIED', reject_reason = null, reviewed_by = ?, reviewed_at = now(), updated_at = now() WHERE id = ?`, by, id);
-    return (await this.byId(id))!;
+    const next = this.parsePatch(cur, patch);
+    await this.writeProfile(cur, next);
+    const after = (await this.byId(id))!;
+    await this.audit(id, by, 'EDIT', snapshot(cur), snapshot(after));
+    return after;
   }
-  async reject(id: string, by: string, reason: string) {
+
+  async accept(id: string, by: string) {
     const cur = (await this.byId(id)) ?? bad('Application not found', 404);
-    const why = clean(reason, 500);
-    if (!why) bad('A reason is required to reject a supplier');
-    await this.db.run(`UPDATE supplier_profiles SET status = 'REJECTED', reject_reason = ?, reviewed_by = ?, reviewed_at = now(), updated_at = now() WHERE id = ?`, why, by, id);
-    return (await this.byId(id))!;
+    await this.db.run(
+      `UPDATE supplier_profiles SET status = 'APPROVED', reject_reason = null, reviewed_by = ?, reviewed_at = now(), updated_at = now() WHERE id = ?`,
+      by, id,
+    );
+    await this.users.update(cur.userId, { active: true });
+    const after = (await this.byId(id))!;
+    await this.audit(id, by, 'ACCEPT', snapshot(cur), snapshot(after));
+    return after;
   }
+
+  async decline(id: string, by: string, reason?: string) {
+    const cur = (await this.byId(id)) ?? bad('Application not found', 404);
+    const why = clean(reason, 500) || null;
+    await this.db.run(
+      `UPDATE supplier_profiles SET status = 'DECLINED', reject_reason = ?, reviewed_by = ?, reviewed_at = now(), updated_at = now() WHERE id = ?`,
+      why, by, id,
+    );
+    await this.users.update(cur.userId, { active: false });
+    const after = (await this.byId(id))!;
+    await this.audit(id, by, 'DECLINE', snapshot(cur), snapshot(after));
+    return after;
+  }
+
+  async setVerified(id: string, by: string, on: boolean) {
+    const cur = (await this.byId(id)) ?? bad('Application not found', 404);
+    if (cur.status !== 'APPROVED') bad('Approve the supplier before setting the verified badge', 409, 'not_approved');
+    await this.db.run(`UPDATE suppliers SET public_verified = ? WHERE id = ?`, on, cur.supplierId);
+    await this.db.run(`UPDATE supplier_profiles SET updated_at = now() WHERE id = ?`, id);
+    const after = (await this.byId(id))!;
+    await this.audit(id, by, on ? 'VERIFY' : 'UNVERIFY', snapshot(cur), snapshot(after));
+    return after;
+  }
+
+  /** @deprecated kept so older callers still compile; prefer accept(). */
+  async verify(id: string, by: string) { return this.accept(id, by); }
+  /** @deprecated prefer decline(); reason is now optional. */
+  async reject(id: string, by: string, reason: string) { return this.decline(id, by, reason); }
+
   async resubmit(userId: string) {
     const cur = (await this.byUser(userId)) ?? bad('Supplier profile not found', 404);
-    if (cur.status !== 'REJECTED') bad('Only a rejected application can be sent back for review');
+    if (cur.status !== 'DECLINED') bad('Only a declined application can be sent back for review');
     await this.db.run(`UPDATE supplier_profiles SET status = 'PENDING', reject_reason = null, reviewed_by = null, reviewed_at = null, updated_at = now() WHERE id = ?`, cur.id);
-    return (await this.byUser(userId))!;
+    await this.users.update(userId, { active: true });
+    const after = (await this.byUser(userId))!;
+    await this.audit(cur.id, userId, 'RESUBMIT', snapshot(cur), snapshot(after));
+    return after;
   }
 }

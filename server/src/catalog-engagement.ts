@@ -111,9 +111,15 @@ export async function relatedProducts(db: Db, row: any, limit = 8) {
   const tagParams = tags.map(() => '?').join(',');
   const where = [`p.status = 'PUBLISHED'`, 'p.deleted_at IS NULL', 'p.id <> ?'];
   const whereParams: unknown[] = [row.id];
-  if (row.category_id || tags.length) {
+  const extraCats = (await db.all<{ category_id: string }>('SELECT category_id FROM product_categories WHERE product_id = ?', row.id)).map((r) => r.category_id);
+  const catIds = [...new Set([row.category_id, ...extraCats].filter(Boolean))] as string[];
+  if (catIds.length || tags.length) {
     const parts: string[] = [];
-    if (row.category_id) { parts.push('p.category_id = ?'); whereParams.push(row.category_id); }
+    if (catIds.length) {
+      const ph = catIds.map(() => '?').join(',');
+      parts.push(`(p.category_id IN (${ph}) OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${ph})))`);
+      whereParams.push(...catIds, ...catIds);
+    }
     if (tags.length) {
       parts.push(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(coalesce(p.tags, '[]'::jsonb)) t(tag) WHERE t.tag IN (${tagParams}))`);
       whereParams.push(...tags);

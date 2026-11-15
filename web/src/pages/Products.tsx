@@ -1,12 +1,24 @@
-import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { useApp } from '../lib/store';
 import { PageHeader } from '../components/ui';
 import { staffReq } from '../catalog/api';
 import { FIXTURE_PRODUCTS } from '../catalog/fixtures';
 import type { Category, Merchandising, Product } from '../catalog/types';
 import { optionLabel, topLevel, childrenOf } from '../catalog/tree';
+import { CategoryPicker } from '../catalog/CategoryPicker';
 
 type StaffProduct = Product & { status?: string; deletedAt?: string | null };
+const PHOTO_MAX = 15;
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+type PhotoDraft = { key: string; file: File; url: string; cover: boolean };
+
+function checkPhoto(file: File) {
+  if (!PHOTO_TYPES.includes(file.type)) return 'Photos must be JPEG, PNG or WebP.';
+  if (file.size > PHOTO_MAX_BYTES) return 'Each photo must be 10 MB or smaller.';
+  return null;
+}
+
 
 export function Products() {
   const { session, perms } = useApp();
@@ -64,7 +76,7 @@ export function Products() {
         </select>
         <button className="btn-primary ml-auto" onClick={() => setEdit('new')}>Add product</button>
       </div>
-      {!demo && !isSupplier && <CategoryManager />}
+      {!demo && (session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM') && <CategoryManager />}
       {err && <p className="mb-3 text-sm text-red-600">{err}</p>}
       <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
         <table className="w-full text-sm">
@@ -99,7 +111,7 @@ export function Products() {
       </div>
       {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} canLink={canLink} busy={busy}
         onClose={() => setEdit(null)}
-        onSave={async (body, files) => {
+        onSave={async (body, photos) => {
           setBusy(true); setErr(null);
           try {
             if (demo) {
@@ -109,9 +121,23 @@ export function Products() {
               const saved = edit === 'new'
                 ? (await staffReq<{ data: StaffProduct }>('POST', '/api/products', body)).data
                 : (await staffReq<{ data: StaffProduct }>('PATCH', `/api/products/${(edit as StaffProduct).id}`, body)).data;
-              for (const file of files) {
-                const fd = new FormData(); fd.append('file', file);
+              const existingCount = (saved.images ?? []).length;
+              for (const photo of photos) {
+                const fd = new FormData(); fd.append('file', photo.file);
                 await staffReq('POST', `/api/products/${saved.id}/images`, fd);
+              }
+              if (photos.length) {
+                const fresh = (await staffReq<{ data: StaffProduct }>('GET', `/api/products/${saved.id}`)).data;
+                const imgs = fresh.images ?? [];
+                const added = imgs.slice(Math.max(0, imgs.length - photos.length));
+                const coverIdx = Math.max(0, photos.findIndex((x) => x.cover));
+                const coverId = added[coverIdx]?.id ?? added[0]?.id;
+                if (coverId) {
+                  await staffReq('PATCH', `/api/products/${saved.id}/images`, {
+                    order: [...imgs.slice(0, existingCount).map((im) => im.id), ...added.map((im) => im.id)],
+                    cover: coverId,
+                  });
+                }
               }
               await load();
             }
@@ -125,8 +151,10 @@ export function Products() {
 
 function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
   product: StaffProduct | null; canPrice: boolean; canLink: boolean; busy: boolean; onClose: () => void;
-  onSave: (body: any, files: File[]) => Promise<void>;
+  onSave: (body: any, photos: PhotoDraft[]) => Promise<void>;
 }) {
+  const { session } = useApp();
+  const canCreate = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
   const specsObj = product?.specs && typeof product.specs === 'object' ? product.specs : {};
   const [f, setF] = useState({
     title: product?.title ?? '', summary: product?.summary ?? '', moq: product?.moq != null ? String(product.moq) : '',
@@ -136,6 +164,8 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
     priceMin: product?.priceMin != null ? String(product.priceMin) : '', priceMax: product?.priceMax != null ? String(product.priceMax) : '',
     baseCurrency: product?.baseCurrency ?? 'USD',
     categoryId: product?.categoryId ?? product?.category?.id ?? '',
+    extraCategoryIds: (product?.extraCategories ?? []).map((c: { id: string }) => c.id),
+
     supplierId: product?.supplierId ?? product?.catalogSupplier?.id ?? '',
     tags: Array.isArray(product?.tags) ? product!.tags.join(', ') : '',
   });
@@ -177,7 +207,8 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
   const [protections, setProtections] = useState<{ title: string; text: string }[]>(
     (merch.protections ?? []).concat([{ title: '', text: '' }]),
   );
-  const [files, setFiles] = useState<File[]>([]);
+  const [photos, setPhotos] = useState<PhotoDraft[]>([]);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicYears?: number | null; publicVerified?: boolean }[]>([]);
   const [newSup, setNewSup] = useState({ name: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false, publicVerified: false });
@@ -228,13 +259,13 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
     void onSave({
       title: f.title, summary: f.summary, moq: f.moq ? Number(f.moq) : null, unit: f.unit, leadTime: f.leadTime,
       capacity: f.capacity, packaging: f.packaging, customization: f.customization, samplePolicy: f.samplePolicy,
-      categoryId: f.categoryId || null, tags: f.tags, specs: allAttrs.length ? allAttrs : specs, merchandising,
+      categoryId: f.categoryId || null, extraCategoryIds: f.extraCategoryIds, tags: f.tags, specs: allAttrs.length ? allAttrs : specs, merchandising,
       ...(canPrice ? {
         priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null,
         baseCurrency: f.baseCurrency, tiers: f.priceMode === 'TIERS' ? pricedTiers : [],
       } : {}),
       ...(canLink ? { supplierId: f.supplierId || null } : {}),
-    }, files);
+    }, photos);
   };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4" onClick={onClose}>
@@ -246,10 +277,15 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
             <div className="space-y-3">
               <input className="input" required placeholder="Title" value={f.title} onChange={(e) => set('title', e.target.value)} data-testid="product-title" />
               <textarea className="input min-h-[80px]" placeholder="Description / summary" value={f.summary} onChange={(e) => set('summary', e.target.value)} />
-              <select className="input" value={f.categoryId} onChange={(e) => set('categoryId', e.target.value)} data-testid="product-category">
-                <option value="">Select a category</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{optionLabel(categories, c)}</option>)}
-              </select>
+              <CategoryPicker
+                categories={categories}
+                value={f.categoryId}
+                extraIds={f.extraCategoryIds ?? []}
+                onChange={(id) => setF((s: any) => ({ ...s, categoryId: id, extraCategoryIds: (s.extraCategoryIds ?? []).filter((x: string) => x !== id) }))}
+                onExtrasChange={(ids) => setF((s) => ({ ...s, extraCategoryIds: ids }))}
+                onCategoriesChange={setCategories}
+                canCreate={canCreate}
+              />
               <input className="input" placeholder="Tags (comma separated)" value={f.tags} onChange={(e) => set('tags', e.target.value)} />
             </div>
           </section>
@@ -465,11 +501,13 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
           )}
 
           {product?.id && !product.id.startsWith('local-') && <ImageManager productId={product.id} images={product.images ?? []} />}
-          <div>
-            <label className="text-sm font-medium text-ink-700">Add photos</label>
-            <input className="input mt-1" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-            {files.length > 0 && <p className="mt-1 text-xs text-ink-500">{files.length} new photo{files.length === 1 ? '' : 's'} will upload on save.</p>}
-          </div>
+          <PhotoDrafts
+            photos={photos}
+            setPhotos={setPhotos}
+            error={photoErr}
+            setError={setPhotoErr}
+            already={(product?.images ?? []).length}
+          />
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
@@ -547,6 +585,81 @@ function CategoryBranch({ cat, all, depth }: { cat: Category; all: Category[]; d
       <span style={{ paddingLeft: depth * 12 }} className="block text-ink-800">{cat.name}</span>
       {kids.length > 0 && <ul>{kids.map((k) => <CategoryBranch key={k.id} cat={k} all={all} depth={depth + 1} />)}</ul>}
     </li>
+  );
+}
+
+
+function PhotoDrafts({ photos, setPhotos, error, setError, already }: {
+  photos: PhotoDraft[]; setPhotos: Dispatch<SetStateAction<PhotoDraft[]>>;
+  error: string | null; setError: (s: string | null) => void; already: number;
+}) {
+  const [over, setOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => () => { photos.forEach((p) => URL.revokeObjectURL(p.url)); }, []); // eslint-disable-line
+  const room = Math.max(0, PHOTO_MAX - already - photos.length);
+  const add = (list: File[]) => {
+    const next: PhotoDraft[] = [];
+    let err: string | null = null;
+    for (const file of list) {
+      const why = checkPhoto(file);
+      if (why) { err = why; continue; }
+      if (already + photos.length + next.length >= PHOTO_MAX) { err = `Up to ${PHOTO_MAX} photos per product.`; break; }
+      next.push({ key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`, file, url: URL.createObjectURL(file), cover: false });
+    }
+    setError(err);
+    if (!next.length) return;
+    setPhotos((xs) => {
+      const merged = [...xs, ...next];
+      if (!merged.some((x) => x.cover) && already === 0) merged[0] = { ...merged[0], cover: true };
+      return merged;
+    });
+  };
+  const move = (i: number, d: number) => {
+    const j = i + d; if (j < 0 || j >= photos.length) return;
+    const next = photos.slice(); const [it] = next.splice(i, 1); next.splice(j, 0, it);
+    setPhotos(next);
+  };
+  const cover = (key: string) => setPhotos((xs) => xs.map((x) => ({ ...x, cover: x.key === key })));
+  const remove = (key: string) => setPhotos((xs) => {
+    const hit = xs.find((x) => x.key === key);
+    if (hit) URL.revokeObjectURL(hit.url);
+    const next = xs.filter((x) => x.key !== key);
+    if (already === 0 && next.length && !next.some((x) => x.cover)) next[0] = { ...next[0], cover: true };
+    return next;
+  });
+  return (
+    <div data-testid="product-photo-drafts">
+      <p className="text-sm font-medium text-ink-700">Photos</p>
+      <p className="mt-1 text-xs text-ink-500">JPEG, PNG or WebP, up to 10 MB each. You can add up to {PHOTO_MAX} photos. The first photo, or the one you mark as cover, is the main image. They upload when you save.</p>
+      <div
+        className={`mt-2 rounded-2xl border-2 border-dashed p-4 text-center ${over ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-ink-50/60'}`}
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); add(Array.from(e.dataTransfer.files)); }}
+        data-testid="photo-dropzone"
+      >
+        <p className="text-sm text-ink-600">Drag and drop photos here, or</p>
+        <button type="button" className="btn-outline mt-2" onClick={() => inputRef.current?.click()} data-testid="photo-add">Choose photos</button>
+        <input ref={inputRef} className="hidden" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e) => { add(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+        {room === 0 && <p className="mt-2 text-xs text-ink-500">This product already has the maximum of {PHOTO_MAX} photos.</p>}
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {photos.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2" data-testid="photo-draft-grid">
+          {photos.map((im, i) => (
+            <div key={im.key} className={`overflow-hidden rounded-xl border ${im.cover ? 'border-brand-500 ring-2 ring-brand-200' : 'border-ink-200'}`}>
+              <img src={im.url} alt="" className="aspect-square w-full object-cover" />
+              <div className="flex flex-wrap gap-1 p-1 text-[10px]">
+                <button type="button" className="btn-outline !px-1.5 !py-0.5" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
+                <button type="button" className="btn-outline !px-1.5 !py-0.5" onClick={() => move(i, 1)} disabled={i === photos.length - 1}>↓</button>
+                <button type="button" className="btn-outline !px-1.5 !py-0.5" onClick={() => cover(im.key)}>{im.cover ? 'Cover' : 'Set cover'}</button>
+                <button type="button" className="btn-outline !px-1.5 !py-0.5 text-red-600" onClick={() => remove(im.key)}>Remove</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

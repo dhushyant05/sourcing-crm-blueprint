@@ -31,7 +31,7 @@ function Shell() {
   const { session, perms, api } = useApp();
   const catalogOnly = session?.role === 'MARKETPLACE_TEAM' || session?.role === 'SUPPLIER';
   const isSupplier = session?.role === 'SUPPLIER';
-  const supplierReady = !isSupplier || session?.supplierStatus === 'VERIFIED';
+  const supplierReady = !isSupplier || session?.supplierStatus === 'APPROVED';
   const canReviewSuppliers = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
   const [route, setRoute] = useState<Route>(() => fromHash(catalogOnly ? 'products' : 'dashboard'));
   const [search, setSearch] = useState('');
