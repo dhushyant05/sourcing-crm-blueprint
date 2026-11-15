@@ -483,10 +483,27 @@ class SourceEasyRepository {
   Future<Map<String, dynamic>> claimShippingRequest(String id) async =>
       ((await api.send('POST', '/api/shipping-requests/${Uri.encodeComponent(id)}/assign', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
 
-  Future<List<Map<String, dynamic>>> listProducts({String q = '', String status = ''}) async {
-    final query = <String, String>{if (q.isNotEmpty) 'q': q, if (status.isNotEmpty) 'status': status};
+  Future<List<Map<String, dynamic>>> listProducts({String q = '', String status = '', bool includeDeleted = false}) async {
+    final query = <String, String>{
+      if (q.isNotEmpty) 'q': q,
+      if (status.isNotEmpty) 'status': status,
+      if (includeDeleted) 'deleted': '1',
+    };
     return _list(await api.send('GET', '/api/products', query: query.isEmpty ? null : query));
   }
+  Future<List<Map<String, dynamic>>> listCategories() async =>
+      _list(await api.send('GET', '/api/catalog/categories'));
+  Future<Map<String, dynamic>> createCategory({required String name, String? parentId}) async =>
+      ((await api.send('POST', '/api/catalog/categories', body: {
+        'name': name,
+        if (parentId != null) 'parentId': parentId,
+      }) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<List<Map<String, dynamic>>> listCatalogSuppliers() async =>
+      _list(await api.send('GET', '/api/catalog/suppliers'));
+  Future<Map<String, dynamic>> createCatalogSupplier(Map<String, dynamic> body) async =>
+      ((await api.send('POST', '/api/catalog/suppliers', body: body) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> submitProductReview(String id, {bool on = true}) async =>
+      ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/${on ? 'submit-review' : 'withdraw-review'}', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
   Future<Map<String, dynamic>> createProduct(Map<String, dynamic> body) async =>
       ((await api.send('POST', '/api/products', body: body) as Map)['data'] as Map).cast<String, dynamic>();
   Future<Map<String, dynamic>> updateProduct(String id, Map<String, dynamic> body) async =>

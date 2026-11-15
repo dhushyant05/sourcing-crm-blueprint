@@ -41,4 +41,23 @@ void main() {
     expect(const Permissions(Role.superAdmin, {}).canCreateQuotation, isTrue);
     expect(const Permissions(Role.indiaStaff).canEditPayment, isTrue); // offline before /api/me: role defaults
   });
+
+  test('Marketplace Team and super admin can create categories and link suppliers; suppliers cannot price or publish', () {
+    const mkt = Permissions(Role.marketplaceTeam, {'catalog.edit', 'catalog.publish'});
+    expect(mkt.canManageCategories, isTrue);
+    expect(mkt.canLinkCatalogSupplier, isTrue);
+    expect(mkt.canPriceCatalog, isFalse);
+    expect(mkt.canPublishCatalog, isTrue);
+    const sa = Permissions(Role.superAdmin);
+    expect(sa.canManageCategories && sa.canLinkCatalogSupplier && sa.canPriceCatalog && sa.canPublishCatalog, isTrue);
+    const supplier = Permissions(Role.supplier, {'catalog.edit'});
+    expect(supplier.isSupplier, isTrue);
+    expect(supplier.canEditCatalog, isTrue);
+    expect(supplier.canPriceCatalog, isFalse);
+    expect(supplier.canPublishCatalog, isFalse);
+    expect(supplier.canManageCategories, isFalse);
+    expect(supplier.canLinkCatalogSupplier, isFalse);
+    expect(const Permissions(Role.indiaStaff).canLinkCatalogSupplier, isFalse);
+    expect(const Permissions(Role.chinaStaff).canLinkCatalogSupplier, isTrue);
+  });
 }

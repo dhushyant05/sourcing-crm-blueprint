@@ -89,4 +89,11 @@ class Permissions {
   bool get canPriceCatalog => role == Role.superAdmin || can('catalog.price');
   bool get canPublishCatalog => role == Role.superAdmin || can('catalog.publish');
   bool get canManageBanners => role == Role.superAdmin || can('catalog.banners');
+  bool get isSupplier => role == Role.supplier;
+  /// Matches the web editor: super admin, Marketplace Team, and China can link a catalog supplier.
+  /// India never sees supplier identity.
+  bool get canLinkCatalogSupplier =>
+      role == Role.superAdmin || role == Role.marketplaceTeam || role.office == Office.china;
+  bool get canManageCategories => role == Role.superAdmin || role == Role.marketplaceTeam;
 }
+
