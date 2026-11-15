@@ -36,10 +36,10 @@ export function CategoryExplorer({ categories, products, banners, settings, icon
   return (
     <section id="categories" className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
       <div
-        className="grid overflow-hidden rounded-2xl border border-ink-100 bg-white md:grid-cols-[230px_minmax(0,1fr)]"
+        className="grid w-full min-w-0 overflow-hidden rounded-2xl border border-ink-100 bg-white md:grid-cols-[230px_minmax(0,1fr)]"
         onMouseLeave={() => setActive(null)}
       >
-        <aside className="bg-white">
+        <aside className="min-w-0 bg-white">
           <div className="border-b border-ink-100 px-4 py-3 text-sm font-semibold text-ink-800">Categories for you</div>
           <ul className="flex gap-1 overflow-x-auto px-2 py-2 md:block md:divide-y md:divide-ink-50 md:overflow-visible md:px-0 md:py-0">
             {roots.map((c) => {
@@ -63,7 +63,7 @@ export function CategoryExplorer({ categories, products, banners, settings, icon
           </ul>
         </aside>
 
-        <div className="flex min-h-[260px] flex-col gap-3 border-t border-ink-100 p-3 sm:min-h-[300px] md:min-h-[380px] md:border-l md:border-t-0 md:p-4" data-testid="category-panel">
+        <div className="flex min-h-[260px] w-full min-w-0 flex-col gap-3 border-t border-ink-100 p-3 sm:min-h-[300px] md:min-h-[380px] md:border-l md:border-t-0 md:p-4" data-testid="category-panel">
           {!cat && banners.length > 0 && (
             <div className="relative aspect-[3/2] w-full min-w-0 shrink-0 overflow-hidden rounded-xl sm:aspect-[3/1]" data-testid="banner-slot">
               <BannerCarousel banners={banners} settings={settings} variant="wide" />
