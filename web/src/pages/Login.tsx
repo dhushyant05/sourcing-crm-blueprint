@@ -41,7 +41,8 @@ export function Login() {
           <button disabled={busy} className="btn-primary mt-6 w-full justify-center py-2.5 disabled:opacity-60">{busy ? t('login.signingIn') : t('login.title')} <ArrowRight size={16} /></button>
           <div className="my-6 flex items-center gap-3 text-xs text-ink-400"><span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" />{t('login.or')}<span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" /></div>
           <button type="button" className="btn-outline w-full justify-center py-2.5" onClick={() => signIn({ name: 'Dhushyanth Kumar', email: 'demo@sourceeasy.app', role: 'SUPER_ADMIN', demo: true })}>{t('login.demo')}</button>
-          <div className="mt-6 text-center"><a href="/download/source-easy.apk" download data-testid="staff-apk" className="btn-outline w-full justify-center py-2.5">{t('login.staffApk')}</a><a href="/download" className="mt-2 inline-block text-xs text-ink-500 underline">{t('login.staffApkHelp')}</a></div>
+          <p className="mt-6 text-center text-sm"><a href="/supplier" className="font-medium text-brand-700 hover:underline">Supplier signup or login</a></p>
+          <div className="mt-4 text-center"><a href="/download/source-easy.apk" download data-testid="staff-apk" className="btn-outline w-full justify-center py-2.5">{t('login.staffApk')}</a><a href="/download" className="mt-2 inline-block text-xs text-ink-500 underline">{t('login.staffApkHelp')}</a></div>
         </form>
       </div>
     </div>

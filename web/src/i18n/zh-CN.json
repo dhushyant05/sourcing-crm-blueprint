@@ -23,7 +23,8 @@
     "customers": "客户",
     "greetings": "节日问候",
     "products": "产品",
-    "banners": "横幅"
+    "banners": "横幅",
+    "applications": "供应商申请"
   },
   "header": {
     "search": "按参考编号、线索、产品搜索…",
@@ -39,7 +40,8 @@
     "INDIA_ADMIN": "印度管理员",
     "CHINA_ADMIN": "中国管理员",
     "SUPER_ADMIN": "超级管理员",
-    "MARKETPLACE_TEAM": "商城团队"
+    "MARKETPLACE_TEAM": "商城团队",
+    "SUPPLIER": "供应商"
   },
   "office": {
     "INDIA_STAFF": "印度办公室用户",
@@ -47,7 +49,8 @@
     "CHINA_STAFF": "中国办公室用户",
     "CHINA_ADMIN": "中国办公室用户",
     "SUPER_ADMIN": "所有办公室",
-    "MARKETPLACE_TEAM": "商城团队"
+    "MARKETPLACE_TEAM": "商城团队",
+    "SUPPLIER": "供应商目录"
   },
   "status": {
     "NEW": "新建",
@@ -159,7 +162,11 @@
     "clientName": "客户名称",
     "create": "创建线索",
     "attachments": "照片、视频和文件",
-    "fileKind": { "PHOTO": "照片", "INVOICE": "发票", "PACKING_LIST": "装箱单" },
+    "fileKind": {
+      "PHOTO": "照片",
+      "INVOICE": "发票",
+      "PACKING_LIST": "装箱单"
+    },
     "noAttachments": "没有附件",
     "open": "打开",
     "download": "下载",
@@ -1204,7 +1211,11 @@
     "saveNote": "保存备注",
     "files": "文件",
     "fromCustomer": "来自客户",
-    "fileKind": { "PHOTO": "照片", "INVOICE": "发票", "PACKING_LIST": "装箱单" },
+    "fileKind": {
+      "PHOTO": "照片",
+      "INVOICE": "发票",
+      "PACKING_LIST": "装箱单"
+    },
     "timeline": "时间线",
     "customerSees": "客户可见：{{text}}",
     "internal": "内部",
@@ -1483,5 +1494,38 @@
     "ageNote": "显示 {{n}} 天前（{{cutoff}} 之前，服务器时间）上传的文件：{{files}} 个，{{size}}。上传日期未知的 {{unknown}} 个文件不会包含在内。只有选择文件并确认后才会删除。",
     "ageDays": "{{n}} 天前",
     "ageUnknown": "日期未知"
+  },
+  "supplier": {
+    "loginTitle": "供应商登录",
+    "signupTitle": "供应商注册",
+    "signupHint": "创建供应商账号。商城团队审核通过后，您才能添加产品。",
+    "company": "公司名称",
+    "contactName": "联系人姓名",
+    "already": "已有账号？请登录",
+    "create": "创建供应商账号",
+    "pendingTitle": "您的申请正在审核",
+    "pendingBody": "商城团队将核实您的供应商账号。您可以稍后再次登录查看状态。",
+    "rejectedTitle": "您的申请未获批准",
+    "rejectedBody": "如需修改资料，请更新后再次提交审核。",
+    "resubmit": "再次提交审核",
+    "verifiedHint": "账号已通过验证。您可以添加产品，由商城团队发布。",
+    "consent": "我同意 Source Easy 向付费会员展示本公司的公开目录信息卡",
+    "region": "公开所在地",
+    "about": "公开简介",
+    "years": "经营年限",
+    "staffLogin": "员工登录",
+    "link": "供应商登录",
+    "applications": "供应商申请",
+    "verify": "通过",
+    "reject": "拒绝",
+    "reason": "拒绝原因",
+    "submitReview": "提交审核",
+    "withdrawReview": "撤回审核",
+    "noApplications": "暂无供应商申请。",
+    "statusPending": "待审核",
+    "statusVerified": "已验证",
+    "statusRejected": "已拒绝",
+    "signedUp": "账号已创建。商城团队验证后即可登录，也可随时查看状态。",
+    "profile": "供应商资料"
   }
 }

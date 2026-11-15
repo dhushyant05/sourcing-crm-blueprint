@@ -3,7 +3,7 @@ import { DemoApi, ServerApi, type Api, type Me } from './api';
 import { perms, type Role } from './roles';
 import { deviceLang, LANGS, setLang, type Lang } from '../i18n';
 
-export interface Session { id?: string; name: string; email: string; role: Role; demo: boolean; avatarUrl?: string | null; permissions?: string[] }
+export interface Session { id?: string; name: string; email: string; role: Role; demo: boolean; avatarUrl?: string | null; permissions?: string[]; supplierStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null; supplierRejectReason?: string | null }
 interface Ctx { session: Session | null; api: Api; perms: ReturnType<typeof perms>; signIn(s: Session, token?: string): void; signOut(): void; setRole(r: Role): void;
   /** Staff name → picture URL (for avatars next to names). */ people: Record<string, string>; refreshPeople(): void;
   updateSession(p: Partial<Session>): void; replaceToken(t: string): void }
@@ -36,7 +36,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((r) => (r.status === 401 ? (signOut(), null) : r.json()))
       .then((me: Me | null) => {
         if (!me?.role) return;
-        setSession((s) => (s ? { ...s, id: me.id, name: me.name, email: me.email, role: me.role, avatarUrl: me.avatarUrl ?? null, permissions: me.permissions } : s));
+        setSession((s) => (s ? { ...s, id: me.id, name: me.name, email: me.email, role: me.role, avatarUrl: me.avatarUrl ?? null, permissions: me.permissions, supplierStatus: me.supplierStatus ?? null, supplierRejectReason: me.supplierRejectReason ?? null } : s));
         // Device choice wins; otherwise adopt the language saved on the account.
         if (!deviceLang() && LANGS.includes(me.language as Lang)) setLang(me.language as Lang);
       })

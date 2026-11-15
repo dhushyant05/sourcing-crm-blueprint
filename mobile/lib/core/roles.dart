@@ -12,7 +12,8 @@ enum Role {
   indiaAdmin('INDIA_ADMIN', Office.india, isAdmin: true),
   chinaAdmin('CHINA_ADMIN', Office.china, isAdmin: true),
   superAdmin('SUPER_ADMIN', null, isAdmin: true),
-  marketplaceTeam('MARKETPLACE_TEAM', null, isAdmin: false);
+  marketplaceTeam('MARKETPLACE_TEAM', null, isAdmin: false),
+  supplier('SUPPLIER', null, isAdmin: false);
 
   const Role(this.code, this.office, {required this.isAdmin});
   final String code;
@@ -29,6 +30,7 @@ enum Role {
         Role.chinaAdmin => 'China admin',
         Role.superAdmin => 'Super admin',
         Role.marketplaceTeam => 'Marketplace team',
+        Role.supplier => 'Supplier',
       };
 }
 
@@ -81,7 +83,7 @@ class Permissions {
   bool get canManageUsers => role.isAdmin && can('staff.manage');
   bool get canDownloadBackups => role == Role.superAdmin;
 
-  bool get catalogOnly => role == Role.marketplaceTeam;
+  bool get catalogOnly => role == Role.marketplaceTeam || role == Role.supplier;
   bool get canEditCatalog => role == Role.superAdmin || can('catalog.edit');
   bool get canDeleteCatalog => role == Role.superAdmin || can('catalog.delete');
   bool get canPriceCatalog => role == Role.superAdmin || can('catalog.price');

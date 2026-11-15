@@ -2,7 +2,7 @@ import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supp
 import type { Role } from './roles';
 import { demo } from './demo';
 
-export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null; permissions?: string[] }
+export interface Me { id: string; email: string; name: string; role: Role; language?: string | null; avatarUrl?: string | null; permissions?: string[]; supplierStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null; supplierRejectReason?: string | null }
 export interface NewLead { customerId?: string; clientName: string; productInterest: string; quantity: number; targetPrice?: number; targetCurrency: Currency; summary?: string }
 export interface Api {
   leads(): Promise<Lead[]>;
