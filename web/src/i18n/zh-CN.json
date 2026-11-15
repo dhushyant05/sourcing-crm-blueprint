@@ -1477,8 +1477,11 @@
     "o": {
       "LEAD": "询盘",
       "QUOTE": "供应商报价",
-      "SHIPPING": "货运申请",
-      "GREETING": "问候横幅"
+      "SHIPPING": "运输申请",
+      "GREETING": "节日问候",
+      "PRODUCT": "产品",
+      "BANNER": "横幅",
+      "MARKETPLACE": "商城"
     },
     "place": {
       "LEAD_ATTACHMENT": "询盘附件",
@@ -1489,16 +1492,27 @@
       "GREETING_DESKTOP": "问候图片",
       "GREETING_MOBILE": "问候手机图片",
       "GREETING_UNUSED": "未使用的问候图片",
-      "NO_RECORD": "无关联记录"
+      "NO_RECORD": "无关联记录",
+      "PRODUCT_IMAGE": "产品图片",
+      "PRODUCT_COVER": "产品封面图",
+      "PRODUCT_UNUSED": "未使用的产品文件",
+      "BANNER_DESKTOP": "横幅（电脑）",
+      "BANNER_MOBILE": "横幅（手机）",
+      "BANNER_IMAGE": "横幅图片",
+      "BANNER_UNUSED": "未使用的横幅文件",
+      "CATALOG_ENQUIRY": "商城询价表单"
     },
     "blocked": {
-      "published_greeting": "问候已发布 — 请先取消发布"
+      "published_greeting": "问候已发布 — 请先取消发布",
+      "published_product": "已发布产品 — 请先取消发布",
+      "live_banner": "正在展示的横幅 — 请先关闭"
     },
     "olderThan": "上传超过",
     "days": "天",
     "ageNote": "显示 {{n}} 天前（{{cutoff}} 之前，服务器时间）上传的文件：{{files}} 个，{{size}}。上传日期未知的 {{unknown}} 个文件不会包含在内。只有选择文件并确认后才会删除。",
     "ageDays": "{{n}} 天前",
-    "ageUnknown": "日期未知"
+    "ageUnknown": "日期未知",
+    "marketplace": "商城：{{files}} 个文件 · {{size}}"
   },
   "supplier": {
     "loginTitle": "供应商登录",
