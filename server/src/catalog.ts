@@ -1038,7 +1038,7 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
   });
 
   app.get<{ Params: { id: string }; Querystring: { k?: string } }>('/api/public/catalog/banners/:id/image', async (req, reply) => {
-    const r = await deps.db.get<any>('SELECT * FROM banner_slides WHERE id = ? AND active = true', req.params.id);
+    const r = await deps.db.get<any>('SELECT * FROM banner_slides WHERE id = ?', req.params.id);
     if (!r) return reply.code(404).send({ error: 'Not found' });
     const fid = req.query.k === 'mobile' && r.mobile_file_id ? r.mobile_file_id : r.file_id;
     if (!fid) return reply.code(404).send({ error: 'Not found' });
@@ -1470,11 +1470,13 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
 
 function bannerDto(r: any) {
   if (!r) return r;
+  // Public image URLs: an <img> cannot send a bearer token, so staff previews must use a public file route.
+  const v = r.updated_at ? `&v=${new Date(r.updated_at).getTime()}` : '';
   return {
     id: r.id, sort: r.sort, altText: r.alt_text, linkKind: r.link_kind, productId: r.product_id, categoryId: r.category_id, url: r.url,
-    startsAt: r.starts_at, endsAt: r.ends_at, active: !!r.active, isSample: !!r.is_sample,
-    imageUrl: r.file_id ? `/api/banners/${r.id}/image?k=desktop` : null,
-    mobileUrl: r.mobile_file_id ? `/api/banners/${r.id}/image?k=mobile` : null,
+    startsAt: r.starts_at, endsAt: r.ends_at, active: !!r.active, isSample: !!r.is_sample, updatedAt: r.updated_at,
+    imageUrl: r.file_id ? `/api/public/catalog/banners/${r.id}/image?k=desktop${v}` : null,
+    mobileUrl: r.mobile_file_id ? `/api/public/catalog/banners/${r.id}/image?k=mobile${v}` : null,
   };
 }
 

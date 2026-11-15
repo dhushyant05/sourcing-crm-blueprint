@@ -442,3 +442,32 @@ describe('public quote types and attachments', () => {
     expect(china.canPrice).toBe(false);
   }, 180_000);
 });
+
+describe('staff banner previews', () => {
+  it('returns public image URLs so the admin page can show them without a bearer token', async () => {
+    const { app, call, as, tok } = await setupCatalog();
+    const created = await call('sa', 'POST', '/api/banners', { altText: 'TEST QA banner preview' });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().data.id as string;
+    const jpeg = await photo();
+    const B = '----sebanner';
+    const payload = Buffer.concat([
+      Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="file"; filename="desk.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
+      jpeg,
+      Buffer.from(`\r\n--${B}--\r\n`),
+    ]);
+    const up = await as(tok.sa, 'POST', `/api/banners/${id}/image`, payload, { 'content-type': `multipart/form-data; boundary=${B}` });
+    expect(up.statusCode).toBe(201);
+    const staff = (await call('sa', 'GET', '/api/banners')).json().data.find((b: any) => b.id === id);
+    expect(staff.imageUrl).toMatch(new RegExp(`^/api/public/catalog/banners/${id}/image\\?k=desktop`));
+    expect(staff.mobileUrl).toMatch(new RegExp(`^/api/public/catalog/banners/${id}/image\\?k=mobile`));
+    const anon = await app.inject({ method: 'GET', url: staff.imageUrl });
+    expect(anon.statusCode).toBe(200);
+    expect(String(anon.headers['content-type'])).toMatch(/image\//);
+    const hide = await call('sa', 'PATCH', `/api/banners/${id}`, { active: false });
+    expect(hide.statusCode).toBe(200);
+    const hidden = (await call('sa', 'GET', '/api/banners')).json().data.find((b: any) => b.id === id);
+    const preview = await app.inject({ method: 'GET', url: hidden.imageUrl });
+    expect(preview.statusCode).toBe(200);
+  }, 60_000);
+});

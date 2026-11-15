@@ -5,14 +5,35 @@ export function BannerCarousel({ banners, settings, variant = 'hero' }: { banner
   const slides = banners.filter((b) => b.source !== 'greeting');
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const n = slides.length;
+
+  useEffect(() => {
+    const mobile = window.matchMedia('(max-width: 639px)');
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => {
+      setIsMobile(mobile.matches);
+      setReduceMotion(motion.matches);
+    };
+    sync();
+    mobile.addEventListener('change', sync);
+    motion.addEventListener('change', sync);
+    return () => {
+      mobile.removeEventListener('change', sync);
+      motion.removeEventListener('change', sync);
+    };
+  }, []);
+
   useEffect(() => {
     if (n <= 1 || paused) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const t = setInterval(() => setI((x) => (settings.direction === 'RTL' ? (x - 1 + n) % n : (x + 1) % n)), (settings.intervalSeconds || 5) * 1000);
+    const ms = Math.max(3, Math.min(10, settings.intervalSeconds || 5)) * 1000;
+    const t = setInterval(() => setI((x) => (settings.direction === 'RTL' ? (x - 1 + n) % n : (x + 1) % n)), ms);
     return () => clearInterval(t);
   }, [n, paused, settings.direction, settings.intervalSeconds]);
+
   if (!n) return null;
+
   let startX = 0;
   const onStart = (e: React.TouchEvent) => { startX = e.touches[0].clientX; };
   const onEnd = (e: React.TouchEvent) => {
@@ -20,14 +41,23 @@ export function BannerCarousel({ banners, settings, variant = 'hero' }: { banner
     if (Math.abs(dx) < 40) return;
     setI((x) => (dx < 0 ? (x + 1) % n : (x - 1 + n) % n));
   };
+  const hoverPause = (on: boolean) => {
+    // Only pause for real hover pointers. A tap on a phone can fire mouseenter
+    // and never mouseleave, which used to freeze the carousel.
+    if (on && !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    setPaused(on);
+  };
+
   return (
-    <section className={`relative overflow-hidden bg-ink-50 ${variant === 'card' ? 'h-full rounded-2xl' : variant === 'wide' ? 'h-full rounded-xl' : ''}`} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
-      onTouchStart={onStart} onTouchEnd={onEnd} aria-roledescription="carousel" aria-label="Featured banners">
+    <section className={`relative overflow-hidden bg-ink-50 ${variant === 'card' ? 'h-full rounded-2xl' : variant === 'wide' ? 'h-full rounded-xl' : ''}`}
+      onMouseEnter={() => hoverPause(true)} onMouseLeave={() => hoverPause(false)}
+      onTouchStart={onStart} onTouchEnd={onEnd} aria-roledescription="carousel" aria-label="Featured banners"
+      data-testid="banner-carousel" data-active-index={i} data-slide-count={n}>
       <div className={variant === 'card' ? 'relative h-full min-h-[220px]' : variant === 'wide' ? 'relative h-full w-full' : 'relative mx-auto h-[220px] max-w-7xl sm:h-[280px] lg:h-[340px]'}>
         {slides.map((b, idx) => (
           <a key={b.id} href={b.href || '/products'} onClick={(e) => { if (b.href?.startsWith('/')) { e.preventDefault(); history.pushState({}, '', b.href); dispatchEvent(new PopStateEvent('popstate')); } }}
-            className={`absolute inset-0 transition-opacity duration-700 ease-out ${idx === i ? 'opacity-100' : 'pointer-events-none opacity-0'}`} aria-hidden={idx !== i}>
-            <img src={b.mobileUrl && window.innerWidth < 640 ? b.mobileUrl : b.imageUrl} alt={b.altText} className={`h-full w-full object-cover ${variant === 'card' ? 'object-left' : 'object-center'}`} />
+            className={`absolute inset-0 ${reduceMotion ? '' : 'transition-opacity duration-700 ease-out'} ${idx === i ? 'opacity-100' : 'pointer-events-none opacity-0'}`} aria-hidden={idx !== i}>
+            <img src={b.mobileUrl && isMobile ? b.mobileUrl : b.imageUrl} alt={b.altText} className={`h-full w-full object-cover ${variant === 'card' ? 'object-left' : 'object-center'}`} />
           </a>
         ))}
       </div>

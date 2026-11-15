@@ -53,8 +53,21 @@ export function Banners() {
       <button className="btn-primary mb-4" onClick={() => void add()}>Add slide</button>
       <div className="grid gap-4 sm:grid-cols-2">
         {rows.map((b) => (
-          <article key={b.id} className="overflow-hidden rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
-            {b.imageUrl && <img src={b.imageUrl.startsWith('/') && !demo ? b.imageUrl : b.imageUrl} alt={b.altText} className="h-36 w-full object-cover" />}
+          <article key={b.id} className="overflow-hidden rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900" data-testid={`banner-slide-${b.id}`}>
+            <div className={`grid ${b.mobileUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-ink-100`}>
+              <div className="bg-ink-50">
+                {b.imageUrl
+                  ? <img src={b.imageUrl} alt={`${b.altText} (desktop)`} className="h-36 w-full object-cover" data-testid="banner-desktop-preview" />
+                  : <div className="flex h-36 items-center justify-center px-3 text-center text-xs text-ink-400">No desktop image yet</div>}
+                {b.imageUrl && <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-ink-500">Desktop</p>}
+              </div>
+              {b.mobileUrl && (
+                <div className="bg-ink-50">
+                  <img src={b.mobileUrl} alt={`${b.altText} (mobile)`} className="h-36 w-full object-cover" data-testid="banner-mobile-preview" />
+                  <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-ink-500">Mobile</p>
+                </div>
+              )}
+            </div>
             <div className="p-4">
               <p className="font-medium text-ink-900 dark:text-white">{b.altText}</p>
               {b.isSample && <p className="text-xs text-brand-700">Sample</p>}
