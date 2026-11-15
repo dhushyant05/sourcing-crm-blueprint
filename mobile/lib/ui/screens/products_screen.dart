@@ -1,9 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/session.dart';
+import 'product_form_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -15,11 +14,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<Map<String, dynamic>> _rows = [];
   String? _err;
   bool _loading = true;
+  String _q = '';
+  String _status = '';
 
   Future<void> _load() async {
     setState(() { _loading = true; _err = null; });
     try {
-      final rows = await context.read<Session>().repo.listProducts();
+      final s = context.read<Session>();
+      final rows = await s.repo.listProducts(q: _q, status: _status, includeDeleted: s.perms.isSuperAdmin);
       if (mounted) setState(() { _rows = rows; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _err = e.toString(); _loading = false; });
@@ -28,6 +30,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   void initState() { super.initState(); _load(); }
+
+  Future<void> _openForm({Map<String, dynamic>? existing}) async {
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => ProductFormScreen(existing: existing)));
+    if (saved == true) _load();
+  }
 
   Future<void> _delete(Map<String, dynamic> p) async {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
@@ -47,214 +54,74 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<Session>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('Products')),
-      floatingActionButton: s.perms.canEditCatalog ? FloatingActionButton.extended(
-        icon: const Icon(Icons.add), label: const Text('Add product'),
-        onPressed: () async {
-          final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const _ProductForm()));
-          if (saved == true) _load();
-        },
-      ) : null,
-      body: RefreshIndicator(onRefresh: _load, child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 96), children: [
-              if (_err != null) Padding(padding: const EdgeInsets.all(16), child: Text(_err!, style: const TextStyle(color: Colors.red))),
-              if (_rows.isEmpty && _err == null) const Padding(padding: EdgeInsets.all(32), child: Text('No products yet.', textAlign: TextAlign.center)),
-              for (final p in _rows)
-                Card(child: ListTile(
-                  title: Text('${p['title'] ?? ''}'),
-                  subtitle: Text('${p['status'] ?? ''}${p['isSample'] == true ? ' · Sample' : ''}'),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (s.perms.canPublishCatalog && p['status'] != 'PUBLISHED' && p['status'] != 'DELETED')
-                      IconButton(icon: const Icon(Icons.publish_outlined), tooltip: 'Publish', onPressed: () async { await s.repo.publishProduct('${p['id']}'); _load(); }),
-                    if (s.perms.canDeleteCatalog && p['status'] != 'DELETED')
-                      IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _delete(p)),
-                    if (s.perms.isSuperAdmin && p['status'] == 'DELETED')
-                      IconButton(icon: const Icon(Icons.restore), tooltip: 'Restore', onPressed: () async { await s.repo.restoreProduct('${p['id']}'); _load(); }),
-                  ]),
-                  onTap: () async {
-                    final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => _ProductForm(existing: p)));
-                    if (saved == true) _load();
-                  },
-                )),
-            ])),
-    );
-  }
-}
-
-class _ProductForm extends StatefulWidget {
-  const _ProductForm({this.existing});
-  final Map<String, dynamic>? existing;
-  @override
-  State<_ProductForm> createState() => _ProductFormState();
-}
-
-class _ProductFormState extends State<_ProductForm> {
-  late final _title = TextEditingController(text: '${widget.existing?['title'] ?? ''}');
-  late final _summary = TextEditingController(text: '${widget.existing?['summary'] ?? ''}');
-  late final _moq = TextEditingController(text: widget.existing?['moq'] == null ? '' : '${widget.existing?['moq']}');
-  late final _unit = TextEditingController(text: '${widget.existing?['unit'] ?? 'pcs'}');
-  late final _lead = TextEditingController(text: '${widget.existing?['leadTime'] ?? ''}');
-  final List<_PendingPhoto> _pending = [];
-  final List<Map<String, dynamic>> _images = [];
-  bool _busy = false;
-  static const _photoMax = 15;
-  static const _photoMaxBytes = 10 * 1024 * 1024;
-
-  @override
-  void initState() {
-    super.initState();
-    _images.addAll(((widget.existing?['images'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)));
-  }
-
-  @override
-  void dispose() { _title.dispose(); _summary.dispose(); _moq.dispose(); _unit.dispose(); _lead.dispose(); super.dispose(); }
-
-  String _abs(String url, Session s) {
-    if (url.startsWith('http')) return url;
-    return Uri.parse(s.serverUrl).resolve(url).toString();
-  }
-
-  Future<void> _save() async {
-    setState(() => _busy = true);
+  Future<void> _run(Future<void> Function() fn) async {
     try {
-      final repo = context.read<Session>().repo;
-      final body = {
-        'title': _title.text.trim(),
-        'summary': _summary.text.trim(),
-        if (_moq.text.trim().isNotEmpty) 'moq': num.tryParse(_moq.text.trim()),
-        'unit': _unit.text.trim(),
-        'leadTime': _lead.text.trim(),
-      };
-      Map<String, dynamic> saved;
-      if (widget.existing == null) {
-        saved = await repo.createProduct(body);
-      } else {
-        saved = await repo.updateProduct('${widget.existing!['id']}', body);
-      }
-      final existingIds = _images.map((e) => '${e['id']}').toList();
-      for (final photo in _pending) {
-        await repo.addProductImage('${saved['id']}', photo.path);
-      }
-      if (_pending.isNotEmpty || _images.isNotEmpty) {
-        final fresh = await repo.getProduct('${saved['id']}');
-        final imgs = ((fresh['images'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        final added = imgs.skip(existingIds.length).map((e) => '${e['id']}').toList();
-        final coverPending = _pending.indexWhere((p) => p.cover);
-        String? coverId;
-        if (coverPending >= 0 && coverPending < added.length) coverId = added[coverPending];
-        coverId ??= _images.cast<Map?>().firstWhere((e) => e?['cover'] == true, orElse: () => _images.isEmpty ? null : _images.first)?['id']?.toString();
-        coverId ??= added.isNotEmpty ? added.first : null;
-        final order = [...existingIds, ...added];
-        if (order.isNotEmpty) {
-          await repo.reorderProductImages('${saved['id']}', order: order, cover: coverId);
-        }
-      }
-      if (mounted) Navigator.pop(context, true);
+      await fn();
+      await _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final session = context.watch<Session>();
+    final s = context.watch<Session>();
+    const statuses = ['', 'DRAFT', 'READY_FOR_PRICE', 'PENDING_REVIEW', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'];
     return Scaffold(
-      appBar: AppBar(title: Text(widget.existing == null ? 'Add product' : 'Edit product')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _title, decoration: const InputDecoration(labelText: 'Title')),
-        TextField(controller: _summary, decoration: const InputDecoration(labelText: 'Summary'), maxLines: 3),
-        TextField(controller: _moq, decoration: const InputDecoration(labelText: 'Minimum order quantity'), keyboardType: TextInputType.number),
-        TextField(controller: _unit, decoration: const InputDecoration(labelText: 'Unit')),
-        TextField(controller: _lead, decoration: const InputDecoration(labelText: 'Lead time')),
-        const SizedBox(height: 16),
-        const Text('Photos', style: TextStyle(fontWeight: FontWeight.w700)),
+      appBar: AppBar(title: const Text('Products')),
+      floatingActionButton: s.perms.canEditCatalog ? FloatingActionButton.extended(
+        icon: const Icon(Icons.add), label: const Text('Add product'),
+        onPressed: () => _openForm(),
+      ) : null,
+      body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 96), children: [
+        TextField(
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search products'),
+          onChanged: (v) { _q = v; },
+          onSubmitted: (_) => _load(),
+        ),
         const SizedBox(height: 8),
-        if (_images.isNotEmpty)
-          SizedBox(height: 148, child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _images.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (c, i) {
-              final im = _images[i];
-              final url = '${im['cardUrl'] ?? im['url'] ?? ''}';
-              return SizedBox(width: 120, child: Column(children: [
-                Expanded(child: Stack(children: [
-                  Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: url.isEmpty
-                    ? const ColoredBox(color: Color(0xFFF1F5F9))
-                    : Image.network(_abs(url, session), fit: BoxFit.cover, headers: {if (session.accessToken != null) 'Authorization': 'Bearer ${session.accessToken}'}))),
-                  if (im['cover'] == true) const Positioned(left: 6, top: 6, child: Chip(label: Text('Cover', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact)),
-                ])),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  IconButton(icon: const Icon(Icons.chevron_left, size: 18), onPressed: i == 0 ? null : () { setState(() { final x = _images.removeAt(i); _images.insert(i - 1, x); }); }),
-                  IconButton(icon: const Icon(Icons.star_outline, size: 18), tooltip: 'Set cover', onPressed: () { setState(() { for (final x in _images) { x['cover'] = false; } _images[i]['cover'] = true; }); }),
-                  IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: () async {
-                    final id = widget.existing?['id'];
-                    if (id != null) { await session.repo.deleteProductImage('$id', '${im['id']}'); }
-                    setState(() => _images.removeAt(i));
-                  }),
-                  IconButton(icon: const Icon(Icons.chevron_right, size: 18), onPressed: i == _images.length - 1 ? null : () { setState(() { final x = _images.removeAt(i); _images.insert(i + 1, x); }); }),
-                ]),
-              ]));
+        DropdownButtonFormField<String>(
+          value: _status,
+          decoration: const InputDecoration(labelText: 'Status'),
+          items: [for (final st in statuses) DropdownMenuItem(value: st, child: Text(st.isEmpty ? 'All statuses' : st))],
+          onChanged: (v) { setState(() => _status = v ?? ''); _load(); },
+        ),
+        const SizedBox(height: 12),
+        if (_loading) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+        if (_err != null) Padding(padding: const EdgeInsets.all(16), child: Text(_err!, style: const TextStyle(color: Colors.red))),
+        if (!_loading && _rows.isEmpty && _err == null) const Padding(padding: EdgeInsets.all(32), child: Text('No products yet.', textAlign: TextAlign.center)),
+        for (final p in _rows)
+          Card(child: ListTile(
+            title: Text('${p['title'] ?? ''}'),
+            subtitle: Text([
+              '${p['status'] ?? ''}',
+              if (p['isSample'] == true) 'Sample',
+              if (p['categoryName'] != null) '${p['categoryName']}',
+            ].join(' · ')),
+            isThreeLine: false,
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (s.perms.isSupplier && (p['status'] == 'DRAFT' || p['status'] == 'UNPUBLISHED' || p['status'] == 'READY_FOR_PRICE'))
+                IconButton(icon: const Icon(Icons.rate_review_outlined), tooltip: 'Submit for review', onPressed: () => _run(() => s.repo.submitProductReview('${p['id']}', on: true))),
+              if (s.perms.isSupplier && p['status'] == 'PENDING_REVIEW')
+                IconButton(icon: const Icon(Icons.undo), tooltip: 'Withdraw review', onPressed: () => _run(() => s.repo.submitProductReview('${p['id']}', on: false))),
+              if (s.perms.canPublishCatalog && p['status'] != 'PUBLISHED' && p['status'] != 'DELETED')
+                IconButton(icon: const Icon(Icons.publish_outlined), tooltip: 'Publish', onPressed: () => _run(() => s.repo.publishProduct('${p['id']}'))),
+              if (s.perms.canPublishCatalog && p['status'] == 'PUBLISHED')
+                IconButton(icon: const Icon(Icons.unpublished_outlined), tooltip: 'Unpublish', onPressed: () => _run(() => s.repo.publishProduct('${p['id']}', on: false))),
+              if (s.perms.canDeleteCatalog && p['status'] != 'DELETED')
+                IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _delete(p)),
+              if (s.perms.isSuperAdmin && p['status'] == 'DELETED')
+                IconButton(icon: const Icon(Icons.restore), tooltip: 'Restore', onPressed: () => _run(() => s.repo.restoreProduct('${p['id']}'))),
+            ]),
+            onTap: () {
+              if (s.perms.isSupplier && p['status'] == 'PUBLISHED') {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Published products are locked for suppliers. Ask the Marketplace Team if a change is needed.')));
+                return;
+              }
+              _openForm(existing: p);
             },
           )),
-        const Text('JPEG, PNG or WebP, up to 10 MB each, at most 15 photos. They upload when you save. Mark one as the cover.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-        if (_pending.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          SizedBox(height: 148, child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _pending.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (c, i) {
-              final im = _pending[i];
-              return SizedBox(width: 120, child: Column(children: [
-                Expanded(child: Stack(children: [
-                  Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(im.path), fit: BoxFit.cover))),
-                  if (im.cover) const Positioned(left: 6, top: 6, child: Chip(label: Text('Cover', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact)),
-                ])),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  IconButton(icon: const Icon(Icons.chevron_left, size: 18), onPressed: i == 0 ? null : () { setState(() { final x = _pending.removeAt(i); _pending.insert(i - 1, x); }); }),
-                  IconButton(icon: const Icon(Icons.star_outline, size: 18), tooltip: 'Set cover', onPressed: () { setState(() { for (final x in _pending) { x.cover = false; } _pending[i].cover = true; }); }),
-                  IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: () { setState(() => _pending.removeAt(i)); }),
-                  IconButton(icon: const Icon(Icons.chevron_right, size: 18), onPressed: i == _pending.length - 1 ? null : () { setState(() { final x = _pending.removeAt(i); _pending.insert(i + 1, x); }); }),
-                ]),
-              ]));
-            },
-          )),
-        ],
-        const SizedBox(height: 8),
-        OutlinedButton.icon(icon: const Icon(Icons.photo_outlined), label: const Text('Add photos'),
-          onPressed: () async {
-            final files = await ImagePicker().pickMultiImage(maxWidth: 2000, imageQuality: 88);
-            if (files.isEmpty) return;
-            final room = _photoMax - _images.length - _pending.length;
-            final take = files.take(room < 0 ? 0 : room).toList();
-            if (take.isEmpty) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Up to 15 photos per product.')));
-              return;
-            }
-            setState(() {
-              final startEmpty = _pending.isEmpty && _images.isEmpty;
-              _pending.addAll(take.map((f) => _PendingPhoto(f.path)));
-              if (startEmpty && _pending.isNotEmpty && !_pending.any((p) => p.cover)) _pending.first.cover = true;
-            });
-          }),
-        const SizedBox(height: 20),
-        FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
-      ]),
+      ])),
     );
   }
-}
-
-
-class _PendingPhoto {
-  _PendingPhoto(this.path, {this.cover = false});
-  final String path;
-  bool cover;
 }
