@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import sharp from 'sharp';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PNG, form, pngOf, setup } from './portal-helpers.js';
@@ -155,4 +156,81 @@ describe('storage manager (super admin)', () => {
     expect(existsSync(join(uploadsDir, f.key, f.id))).toBe(false);
     expect((await list()).uploads.files).toBe(6);
   });
+});
+
+describe('storage manager marketplace files', () => {
+  const photo = () => sharp({ create: { width: 80, height: 80, channels: 3, background: { r: 32, g: 120, b: 180 } } }).jpeg().toBuffer();
+  const jpegPart = async (filename: string) => {
+    const buf = await photo();
+    const B = '----img' + Math.random().toString(16).slice(2);
+    const payload = Buffer.concat([
+      Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/jpeg\r\n\r\n`),
+      buf,
+      Buffer.from(`\r\n--${B}--\r\n`),
+    ]);
+    return { payload, headers: { 'content-type': `multipart/form-data; boundary=${B}` } };
+  };
+
+  it('lists product and banner files under Marketplace, links the owner, blocks live use, and cleans references on delete', async () => {
+    const t = await setup();
+    const list = (qs = '') => t.call('sa', 'GET', `/api/storage${qs}`).then((r) => r.json().data);
+    const upload = async (url: string, filename: string) => {
+      const part = await jpegPart(filename);
+      return t.app.inject({ method: 'POST', url, payload: part.payload, headers: { ...part.headers, authorization: `Bearer ${t.tok.sa}` } });
+    };
+
+    const created = await t.call('sa', 'POST', '/api/products', { title: 'TEST QA storage tumbler', summary: 'storage manager', moq: 10, unit: 'pcs' });
+    expect(created.statusCode).toBe(201);
+    const product = created.json().data;
+    expect((await upload(`/api/products/${product.id}/images`, 'one.jpg')).statusCode).toBe(201);
+    expect((await upload(`/api/products/${product.id}/images`, 'two.jpg')).statusCode).toBe(201);
+
+    const beforePub = await list('?owner=MARKETPLACE');
+    expect(beforePub.uploads.marketplace.files).toBeGreaterThan(0);
+    const productFiles = beforePub.items.filter((x: any) => x.owner === 'PRODUCT' && x.record === product.id);
+    expect(productFiles.length).toBeGreaterThan(1);
+    expect(productFiles[0].places[0]).toMatchObject({ recordId: product.id, ref: 'TEST QA storage tumbler', href: '/app#/products' });
+    expect(['PRODUCT_IMAGE', 'PRODUCT_COVER']).toContain(productFiles[0].places[0].kind);
+    expect((await list('?owner=PRODUCT')).items.every((x: any) => x.owner === 'PRODUCT')).toBe(true);
+    expect((await list('?q=storage tumbler')).total).toBe(productFiles.length);
+
+    const cover = productFiles.find((x: any) => x.places[0].kind === 'PRODUCT_COVER') ?? productFiles[0];
+    const other = productFiles.find((x: any) => x.id !== cover.id);
+    expect(other).toBeTruthy();
+    const delDraft = await t.call('sa', 'POST', '/api/storage/delete', { items: [{ key: other.key, id: other.id, size: other.size, places: other.places.length }], confirm: true });
+    expect(delDraft.json().data.results[0].ok).toBe(true);
+    expect(existsSync(join(t.uploadsDir, other.key, other.id))).toBe(false);
+    const left = await t.db.all('SELECT file_id, is_cover FROM product_images WHERE product_id = ?', product.id) as { file_id: string; is_cover: boolean }[];
+    expect(left.some((r) => r.file_id === other.id)).toBe(false);
+    expect(left.some((r) => r.is_cover)).toBe(true);
+
+    await t.call('sa', 'PATCH', `/api/products/${product.id}`, { priceMode: 'GET_QUOTE' });
+    expect((await t.call('sa', 'POST', `/api/products/${product.id}/publish`)).statusCode).toBe(200);
+    const liveProd = (await list(`?q=storage tumbler`)).items.find((x: any) => x.id === cover.id);
+    expect(liveProd.blocked).toBe('published_product');
+    expect(liveProd.places[0].href).toBe(`/p/${product.slug}`);
+    const blocked = await t.call('sa', 'POST', '/api/storage/delete', { items: [{ key: cover.key, id: cover.id, size: cover.size, places: cover.places.length }], confirm: true });
+    expect(blocked.json().data.results[0]).toMatchObject({ ok: false, code: 'published_product' });
+    expect(existsSync(join(t.uploadsDir, cover.key, cover.id))).toBe(true);
+
+    const banner = await t.call('sa', 'POST', '/api/banners', { altText: 'TEST QA storage banner' });
+    expect(banner.statusCode).toBe(201);
+    const bid = banner.json().data.id as string;
+    expect((await upload(`/api/banners/${bid}/image`, 'desk.jpg')).statusCode).toBe(201);
+    const liveBan = (await list('?owner=BANNER')).items.filter((x: any) => x.record === bid);
+    expect(liveBan.length).toBeGreaterThan(0);
+    expect(liveBan[0].blocked).toBe('live_banner');
+    expect(liveBan[0].places[0].href).toBe('/');
+    const blockedBan = await t.call('sa', 'POST', '/api/storage/delete', { items: [{ key: liveBan[0].key, id: liveBan[0].id, size: liveBan[0].size, places: liveBan[0].places.length }], confirm: true });
+    expect(blockedBan.json().data.results[0]).toMatchObject({ ok: false, code: 'live_banner' });
+
+    expect((await t.call('sa', 'PATCH', `/api/banners/${bid}`, { active: false })).statusCode).toBe(200);
+    const off = (await list('?owner=BANNER')).items.filter((x: any) => x.record === bid);
+    expect(off.every((x: any) => !x.blocked)).toBe(true);
+    const desktop = off.find((x: any) => x.places[0].kind === 'BANNER_DESKTOP') ?? off[0];
+    const gone = await t.call('sa', 'POST', '/api/storage/delete', { items: [{ key: desktop.key, id: desktop.id, size: desktop.size, places: desktop.places.length }], confirm: true, reason: 'TEST storage cleanup' });
+    expect(gone.json().data.results[0].ok).toBe(true);
+    const row = await t.db.get('SELECT file_id, mobile_file_id FROM banner_slides WHERE id = ?', bid) as any;
+    expect(row.file_id === desktop.id || row.mobile_file_id === desktop.id).toBe(false);
+  }, 60_000);
 });

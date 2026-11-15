@@ -2822,57 +2822,83 @@ export async function buildApp(o: AppOptions) {
     // clears every reference to them in one go (after the super admin confirmed the exact place count), keeps an audit
     // row forever, and logs customer-safe timeline lines. No automatic / age / orphan-scan deletion exists.
     const saOnly = (u: User) => { if (u.role !== 'SUPER_ADMIN') throw new Forbidden('Only the super admin can manage storage'); };
-    type Place = { kind: string; ref: string | null; recordId: string | null; customerVisible?: boolean };
+    type Place = { kind: string; ref: string | null; recordId: string | null; customerVisible?: boolean; href?: string | null };
+    const MARKETPLACE_OWNERS = new Set(['PRODUCT', 'BANNER', 'GREETING']);
+    const bannerIsLive = (rec: any, now: number) => {
+      if (!rec || rec.active === false || rec.active === 0 || rec.active === 'false') return false;
+      const start = rec.starts_at ? Date.parse(rec.starts_at) : NaN;
+      const end = rec.ends_at ? Date.parse(rec.ends_at) : NaN;
+      if (Number.isFinite(start) && start > now) return false;
+      if (Number.isFinite(end) && end <= now) return false;
+      return true;
+    };
     const storageCtx = async () => {
-      const leadsM = new Map((await o.db.all('SELECT id, lead_ref FROM leads')).map((r: any) => [String(r.id), r.lead_ref as string | null]));
+      const leadRows = await o.db.all('SELECT id, lead_ref, source_channel FROM leads') as any[];
+      const leadsM = new Map(leadRows.map((r) => [String(r.id), r.lead_ref as string | null]));
+      const catalogLeadIds = new Set(leadRows.filter((r) => String(r.source_channel ?? '') === 'CATALOG').map((r) => String(r.id)));
       const qM = new Map((await o.db.all('SELECT id, lead_id FROM quotes')).map((r: any) => [qKey(r.id), { id: r.id as string, leadId: r.lead_id as string }]));
       const srM = new Map((await o.db.all('SELECT id, ref, deleted_at FROM shipping_requests')).map((r: any) => [srKey(r.id), { id: r.id as string, ref: r.ref as string, deleted: !!r.deleted_at }]));
       const srf = new Map((await o.db.all('SELECT request_id, file_id, customer_visible FROM shipping_request_files')).map((r: any) => [`${srKey(r.request_id)}/${r.file_id}`, !!r.customer_visible]));
       const grM = new Map((await o.db.all('SELECT id, name, status, image_desktop, image_mobile FROM greetings')).map((r: any) => [grKey(r.id), r]));
-      const prM = new Map((await o.db.all("SELECT id, title, status FROM products")).map((r: any) => [r.id as string, r]));
-      const bnM = new Map((await o.db.all("SELECT id, alt_text FROM banner_slides")).map((r: any) => [r.id as string, r]));
-      return (f: StoredFile): { places: Place[]; blocked: string | null; record: string | null } => {
+      const prM = new Map((await o.db.all('SELECT id, title, slug, status FROM products')).map((r: any) => [r.id as string, r]));
+      const prFiles = new Map((await o.db.all('SELECT product_id, file_id, is_cover FROM product_images')).map((r: any) => [`${r.product_id}/${r.file_id}`, !!r.is_cover]));
+      const bnM = new Map((await o.db.all('SELECT id, alt_text, file_id, mobile_file_id, active, starts_at, ends_at FROM banner_slides')).map((r: any) => [r.id as string, r]));
+      const now = Date.now();
+      const staffLeads = '/app#/leads';
+      return (f: StoredFile): { places: Place[]; blocked: string | null; record: string | null; marketplace: boolean } => {
         const places: Place[] = [];
-        if (f.owner === 'LEAD') { const ok = leadsM.has(f.key); places.push({ kind: ok ? 'LEAD_ATTACHMENT' : 'NO_RECORD', ref: leadsM.get(f.key) ?? null, recordId: ok ? f.key : null }); return { places, blocked: null, record: ok ? f.key : null }; }
+        if (f.owner === 'LEAD') {
+          const ok = leadsM.has(f.key);
+          const catalog = catalogLeadIds.has(f.key);
+          places.push({ kind: !ok ? 'NO_RECORD' : catalog ? 'CATALOG_ENQUIRY' : 'LEAD_ATTACHMENT', ref: leadsM.get(f.key) ?? null, recordId: ok ? f.key : null, href: ok ? staffLeads : null });
+          return { places, blocked: null, record: ok ? f.key : null, marketplace: catalog };
+        }
         if (f.owner === 'QUOTE') {
-          const q = qM.get(f.key); if (!q) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
-          places.push({ kind: 'QUOTE_FILE', ref: leadsM.get(q.leadId) ?? null, recordId: q.id });
-          if (/^image\/(png|jpe?g)$/.test(f.mime)) places.push({ kind: 'QUOTE_PDF_PHOTO', ref: leadsM.get(q.leadId) ?? null, recordId: q.id });
-          return { places, blocked: null, record: q.id };
+          const q = qM.get(f.key); if (!q) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null, marketplace: false };
+          places.push({ kind: 'QUOTE_FILE', ref: leadsM.get(q.leadId) ?? null, recordId: q.id, href: staffLeads });
+          if (/^image\/(png|jpe?g)$/.test(f.mime)) places.push({ kind: 'QUOTE_PDF_PHOTO', ref: leadsM.get(q.leadId) ?? null, recordId: q.id, href: staffLeads });
+          return { places, blocked: null, record: q.id, marketplace: false };
         }
         if (f.owner === 'SHIPPING') {
-          const r = srM.get(f.key); if (!r) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
+          const r = srM.get(f.key); if (!r) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null, marketplace: false };
           const vis = srf.get(`${f.key}/${f.id}`);
-          if (r.deleted) { places.push({ kind: 'DELETED_SHIPPING_FILE', ref: r.ref, recordId: r.id }); return { places, blocked: null, record: r.id }; }
-          places.push({ kind: 'SHIPPING_FILE', ref: r.ref, recordId: r.id, customerVisible: !!vis });
-          if (vis) places.push({ kind: 'CUSTOMER_PORTAL', ref: r.ref, recordId: r.id, customerVisible: true });
-          return { places, blocked: null, record: r.id };
+          if (r.deleted) { places.push({ kind: 'DELETED_SHIPPING_FILE', ref: r.ref, recordId: r.id, href: '/app#/shipping' }); return { places, blocked: null, record: r.id, marketplace: false }; }
+          places.push({ kind: 'SHIPPING_FILE', ref: r.ref, recordId: r.id, customerVisible: !!vis, href: '/app#/shipping' });
+          if (vis) places.push({ kind: 'CUSTOMER_PORTAL', ref: r.ref, recordId: r.id, customerVisible: true, href: '/app#/shipping' });
+          return { places, blocked: null, record: r.id, marketplace: false };
         }
         if (f.owner === 'PRODUCT' || f.key.startsWith('p_')) {
           const id = f.key.startsWith('p_') ? f.key.slice(2) : f.key;
           const rec = prM.get(id);
-          if (!rec) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
-          places.push({ kind: 'PRODUCT_IMAGE', ref: rec.title as string, recordId: rec.id as string });
-          return { places, blocked: rec.status === 'PUBLISHED' ? 'published_product' : null, record: rec.id as string };
+          if (!rec) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null, marketplace: true };
+          const linked = prFiles.has(`${id}/${f.id}`);
+          const cover = !!prFiles.get(`${id}/${f.id}`);
+          const href = rec.status === 'PUBLISHED' && rec.slug ? `/p/${encodeURIComponent(rec.slug as string)}` : '/app#/products';
+          places.push({ kind: !linked ? 'PRODUCT_UNUSED' : cover ? 'PRODUCT_COVER' : 'PRODUCT_IMAGE', ref: rec.title as string, recordId: rec.id as string, href });
+          return { places, blocked: rec.status === 'PUBLISHED' && linked ? 'published_product' : null, record: rec.id as string, marketplace: true };
         }
         if (f.owner === 'BANNER' || f.key.startsWith('bn_')) {
           const id = f.key.startsWith('bn_') ? f.key.slice(3) : f.key;
           const rec = bnM.get(id);
-          if (!rec) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
-          places.push({ kind: 'BANNER_IMAGE', ref: (rec.alt_text as string) || 'Banner', recordId: rec.id as string });
-          return { places, blocked: null, record: rec.id as string };
+          if (!rec) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null, marketplace: true };
+          const kind = rec.file_id === f.id ? 'BANNER_DESKTOP' : rec.mobile_file_id === f.id ? 'BANNER_MOBILE' : 'BANNER_UNUSED';
+          const live = kind !== 'BANNER_UNUSED' && bannerIsLive(rec, now);
+          places.push({ kind, ref: (rec.alt_text as string) || 'Banner', recordId: rec.id as string, href: live ? '/' : '/app#/banners' });
+          return { places, blocked: live ? 'live_banner' : null, record: rec.id as string, marketplace: true };
         }
-        const g = grM.get(f.key); if (!g) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null };
-        if (g.image_desktop === f.id) places.push({ kind: 'GREETING_DESKTOP', ref: g.name, recordId: g.id });
-        if (g.image_mobile === f.id) places.push({ kind: 'GREETING_MOBILE', ref: g.name, recordId: g.id });
-        if (!places.length) places.push({ kind: 'GREETING_UNUSED', ref: g.name, recordId: g.id });
-        return { places, blocked: g.status === 'PUBLISHED' && places.some((p) => p.kind !== 'GREETING_UNUSED') ? 'published_greeting' : null, record: g.id };
+        const g = grM.get(f.key); if (!g) return { places: [{ kind: 'NO_RECORD', ref: null, recordId: null }], blocked: null, record: null, marketplace: f.owner === 'GREETING' };
+        if (g.image_desktop === f.id) places.push({ kind: 'GREETING_DESKTOP', ref: g.name, recordId: g.id, href: '/app#/greetings' });
+        if (g.image_mobile === f.id) places.push({ kind: 'GREETING_MOBILE', ref: g.name, recordId: g.id, href: '/app#/greetings' });
+        if (!places.length) places.push({ kind: 'GREETING_UNUSED', ref: g.name, recordId: g.id, href: '/app#/greetings' });
+        const used = places.some((p) => p.kind !== 'GREETING_UNUSED');
+        return { places, blocked: g.status === 'PUBLISHED' && used ? 'published_greeting' : null, record: g.id, marketplace: true };
       };
     };
     api.get<{ Querystring: Record<string, string | undefined> }>('/api/storage', async (req) => {
       saOnly(req.user!);
       const q = req.query, all = inventory(uploads.root), ctx = await storageCtx();
-      const type = ['image', 'video', 'document'].includes(q.type ?? '') ? q.type : null, owner = ['LEAD', 'QUOTE', 'SHIPPING', 'GREETING'].includes(q.owner ?? '') ? q.owner : null;
+      const ownerOk = ['LEAD', 'QUOTE', 'SHIPPING', 'GREETING', 'PRODUCT', 'BANNER', 'MARKETPLACE'];
+      const type = ['image', 'video', 'document'].includes(q.type ?? '') ? q.type : null, owner = ownerOk.includes(q.owner ?? '') ? q.owner : null;
       const search = String(q.q ?? '').trim().toLowerCase().slice(0, 100);
       // Upload age: from the file's recorded upload time only (server clock). Unknown/invalid/future times never count as old.
       let days: number | null = null;
@@ -2885,14 +2911,23 @@ export async function buildApp(o: AppOptions) {
       const unknownAge = all.filter((f) => uploadedAt(f) == null).length;
       const rows = all.map((f) => { const t = uploadedAt(f); return { ...f, ...ctx(f), ageDays: t == null ? null : Math.floor((now - t) / 86_400_000) }; })
         .filter((f) => (cutoff == null || (uploadedAt(f) ?? Infinity) < cutoff))
-        .filter((f) => (!type || f.type === type) && (!owner || f.owner === owner) && (!search || f.name.toLowerCase().includes(search) || f.places.some((p) => (p.ref ?? '').toLowerCase().includes(search))))
+        .filter((f) => (!type || f.type === type)
+          && (!owner || (owner === 'MARKETPLACE' ? f.marketplace : f.owner === owner))
+          && (!search || f.name.toLowerCase().includes(search) || f.places.some((p) => (p.ref ?? '').toLowerCase().includes(search))))
         .sort((a, b) => b.size - a.size || a.key.localeCompare(b.key) || a.id.localeCompare(b.id));
       const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200), offset = Math.max(Number(q.offset) || 0, 0);
+      const annotated = all.map((f) => ({ f, c: ctx(f) }));
       const byType: Record<string, { files: number; bytes: number }> = {};
-      for (const f of all) { const t = (byType[f.type] ??= { files: 0, bytes: 0 }); t.files++; t.bytes += f.size; }
+      const byOwner: Record<string, { files: number; bytes: number }> = {};
+      for (const { f } of annotated) {
+        const t = (byType[f.type] ??= { files: 0, bytes: 0 }); t.files++; t.bytes += f.size;
+        const ow = (byOwner[f.owner] ??= { files: 0, bytes: 0 }); ow.files++; ow.bytes += f.size;
+      }
+      const market = annotated.filter((x) => x.c.marketplace);
       let disk: ReturnType<typeof diskOf> | null = null; try { disk = diskOf(uploads.root); } catch { /* unsupported fs */ }
       return { data: {
-        disk, uploads: { files: all.length, bytes: all.reduce((n, f) => n + f.size, 0), missing: all.filter((f) => f.missing).length, byType },
+        disk, uploads: { files: all.length, bytes: all.reduce((n, f) => n + f.size, 0), missing: all.filter((f) => f.missing).length, byType, byOwner,
+          marketplace: { files: market.length, bytes: market.reduce((n, x) => n + x.f.size, 0) } },
         total: rows.length, totalBytes: rows.reduce((n, f) => n + f.size, 0), offset, limit, items: rows.slice(offset, offset + limit),
         serverTime: new Date(now).toISOString(), olderThanDays: days, cutoff: cutoff != null ? new Date(cutoff).toISOString() : null, unknownAge,
       } };
@@ -2927,6 +2962,19 @@ export async function buildApp(o: AppOptions) {
             if (!n && c.places.some((p) => p.kind !== 'GREETING_UNUSED')) { fail('published_greeting'); continue; } // published in the meantime
           }
           if (f.owner === 'SHIPPING' && c.record) await o.db.run('DELETE FROM shipping_request_files WHERE request_id = ? AND file_id = ?', c.record, id);
+          if ((f.owner === 'PRODUCT' || key.startsWith('p_')) && c.record) {
+            await o.db.run('DELETE FROM product_images WHERE product_id = ? AND file_id = ?', c.record, id);
+            const left = await o.db.all('SELECT file_id FROM product_images WHERE product_id = ? ORDER BY sort, created_at', c.record) as { file_id: string }[];
+            const covers = await o.db.all('SELECT file_id FROM product_images WHERE product_id = ? AND is_cover = true', c.record) as { file_id: string }[];
+            if (left.length && !covers.length) await o.db.run('UPDATE product_images SET is_cover = true WHERE product_id = ? AND file_id = ?', c.record, left[0].file_id);
+            await o.db.run('INSERT INTO product_audit (product_id, by_user, action, before, after) VALUES (?,?,?,?,?)', c.record, u.id, 'IMAGE_DELETE', JSON.stringify({ fileId: id, storage: true }), null);
+          }
+          if ((f.owner === 'BANNER' || key.startsWith('bn_')) && c.record) {
+            const rec = await o.db.get('SELECT id, active, starts_at, ends_at, file_id, mobile_file_id FROM banner_slides WHERE id = ?', c.record) as any;
+            const used = rec && (rec.file_id === id || rec.mobile_file_id === id);
+            if (used && bannerIsLive(rec, Date.now())) { fail('live_banner'); continue; }
+            await o.db.run('UPDATE banner_slides SET file_id = CASE WHEN file_id = ? THEN NULL ELSE file_id END, mobile_file_id = CASE WHEN mobile_file_id = ? THEN NULL ELSE mobile_file_id END, updated_at = now() WHERE id = ?', id, id, c.record);
+          }
           const rest = uploads.remove(key, id); if (!rest) { fail('not_found'); continue; }
           if (f.owner === 'LEAD' || f.owner === 'QUOTE') await mediaSync(key, rest);
           await o.db.run('INSERT INTO storage_deletions (owner_key, file_id, name, mime, size, places, by_user, reason) VALUES (?,?,?,?,?,?,?,?)', key, id, f.name, f.mime, f.size, JSON.stringify(c.places), u.id, reason);

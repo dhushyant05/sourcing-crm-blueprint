@@ -40,12 +40,12 @@ export function StorageCard() {
         <div className="h-2 overflow-hidden rounded-full bg-ink-100"><div className="h-full bg-brand-600" style={{ width: `${Math.min(100, (d.used / d.total) * 100)}%` }} /></div>
         <p className="mt-1 text-sm">{t('storage.disk', { used: fmt(d.used), total: fmt(d.total), free: fmt(d.free) })}</p>
         <p className="text-xs text-ink-400">{t('storage.diskNote')}</p></div>}
-      {page && <p className="mt-2 text-sm" data-testid="storage-uploads">{t('storage.uploads', { files: page.uploads.files, size: fmt(page.uploads.bytes) })}{page.uploads.missing ? ` · ${t('storage.missing', { n: page.uploads.missing })}` : ''}</p>}
+      {page && <p className="mt-2 text-sm" data-testid="storage-uploads">{t('storage.uploads', { files: page.uploads.files, size: fmt(page.uploads.bytes) })}{page.uploads.marketplace ? ` · ${t('storage.marketplace', { files: page.uploads.marketplace.files, size: fmt(page.uploads.marketplace.bytes) })}` : ''}{page.uploads.missing ? ` · ${t('storage.missing', { n: page.uploads.missing })}` : ''}</p>}
       <div className="mt-4 flex flex-wrap gap-2 text-sm">
         <select className="input !w-auto" value={type} onChange={(e) => { setType(e.target.value); setOffset(0); }} aria-label={t('storage.type')}>
           <option value="">{t('storage.allTypes')}</option>{['image', 'video', 'document'].map((x) => <option key={x} value={x}>{t(`storage.t.${x}`)}</option>)}</select>
         <select className="input !w-auto" value={owner} onChange={(e) => { setOwner(e.target.value); setOffset(0); }} aria-label={t('storage.owner')}>
-          <option value="">{t('storage.allOwners')}</option>{['LEAD', 'QUOTE', 'SHIPPING', 'GREETING'].map((x) => <option key={x} value={x}>{t(`storage.o.${x}`)}</option>)}</select>
+          <option value="">{t('storage.allOwners')}</option>{['MARKETPLACE', 'LEAD', 'QUOTE', 'SHIPPING', 'GREETING', 'PRODUCT', 'BANNER'].map((x) => <option key={x} value={x}>{t(`storage.o.${x}`)}</option>)}</select>
         <label className="flex items-center gap-1">{t('storage.olderThan')}<input className="input !w-20" type="number" min={1} max={3650} step={1} inputMode="numeric" value={days} data-testid="storage-days"
           onChange={(e) => { setDays(e.target.value.replace(/\D/g, '')); setOffset(0); setSel({}); }} />{t('storage.days')}</label>
         <input className="input !w-48" placeholder={t('storage.search')} value={q} onChange={(e) => { setQ(e.target.value); setOffset(0); }} />
@@ -60,7 +60,7 @@ export function StorageCard() {
           <td className="max-w-[16rem] truncate py-2 pr-2"><button className="text-brand-600 underline" onClick={() => open(f)} disabled={f.missing}>{f.name}</button>{f.missing && <span className="ml-1 text-xs text-amber-700">{t('storage.fileMissing')}</span>}</td>
           <td className="py-2 pr-2 font-medium">{fmt(f.size)}</td>
           <td className="py-2 pr-2">{t(`storage.t.${f.type}`)}</td>
-          <td className="py-2 pr-2 text-xs">{f.places.map((p, i) => <div key={i}>{t(`storage.place.${p.kind}`, { defaultValue: p.kind })}{p.ref ? ` · ${p.ref}` : ''}</div>)}</td>
+          <td className="py-2 pr-2 text-xs">{f.places.map((p, i) => <div key={i}>{t(`storage.place.${p.kind}`, { defaultValue: p.kind })}{p.ref ? <> · {p.href ? <a href={p.href} className="text-brand-600 underline" target={p.href.startsWith('/p/') || p.href === '/' ? '_blank' : undefined} rel="noreferrer" data-testid="storage-place-link">{p.ref}</a> : p.ref}</> : null}</div>)}</td>
           <td className="py-2 pr-2 text-xs text-ink-500">{f.ageDays != null ? <>{new Date(f.createdAt).toLocaleDateString()}<div>{t('storage.ageDays', { n: f.ageDays })}</div></> : t('storage.ageUnknown')}</td>
           <td className="py-2">{f.blocked ? <span className="text-xs text-amber-700" data-testid="storage-blocked">{t(`storage.blocked.${f.blocked}`)}</span>
             : <button disabled={busy} className="text-rose-600 underline" onClick={() => void remove([f])} data-testid="storage-delete">{t('storage.delete')}</button>}</td>

@@ -1478,7 +1478,10 @@
       "LEAD": "Leads",
       "QUOTE": "Supplier quotes",
       "SHIPPING": "Shipping requests",
-      "GREETING": "Greetings"
+      "GREETING": "Greetings",
+      "PRODUCT": "Products",
+      "BANNER": "Banners",
+      "MARKETPLACE": "Marketplace"
     },
     "place": {
       "LEAD_ATTACHMENT": "Lead attachment",
@@ -1489,16 +1492,27 @@
       "GREETING_DESKTOP": "Greeting artwork",
       "GREETING_MOBILE": "Greeting mobile artwork",
       "GREETING_UNUSED": "Unused greeting image",
-      "NO_RECORD": "No linked record"
+      "NO_RECORD": "No linked record",
+      "PRODUCT_IMAGE": "Product photo",
+      "PRODUCT_COVER": "Product cover photo",
+      "PRODUCT_UNUSED": "Unused product file",
+      "BANNER_DESKTOP": "Banner (desktop)",
+      "BANNER_MOBILE": "Banner (mobile)",
+      "BANNER_IMAGE": "Banner image",
+      "BANNER_UNUSED": "Unused banner file",
+      "CATALOG_ENQUIRY": "Marketplace quote form"
     },
     "blocked": {
-      "published_greeting": "Published greeting — unpublish first"
+      "published_greeting": "Published greeting — unpublish first",
+      "published_product": "Published product — unpublish first",
+      "live_banner": "Live banner — turn it off first"
     },
     "olderThan": "Uploaded more than",
     "days": "days ago",
     "ageNote": "Showing files uploaded more than {{n}} days ago (before {{cutoff}}, server time): {{files}} files, {{size}}. {{unknown}} files with an unknown upload date are never included. Nothing is deleted until you select files and confirm.",
     "ageDays": "{{n}} days old",
-    "ageUnknown": "Unknown date"
+    "ageUnknown": "Unknown date",
+    "marketplace": "Marketplace: {{files}} files · {{size}}"
   },
   "supplier": {
     "loginTitle": "Supplier login",
