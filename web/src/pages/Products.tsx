@@ -1,9 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { useApp } from '../lib/store';
 import { PageHeader } from '../components/ui';
 import { staffReq } from '../catalog/api';
 import { FIXTURE_PRODUCTS } from '../catalog/fixtures';
-import type { Category, Product } from '../catalog/types';
+import type { Category, Merchandising, Product } from '../catalog/types';
 import { optionLabel, topLevel, childrenOf } from '../catalog/tree';
 
 type StaffProduct = Product & { status?: string; deletedAt?: string | null };
@@ -138,6 +138,37 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
     (product?.tiers ?? []).map((t) => ({ minQty: String(t.minQty ?? ''), maxQty: t.maxQty != null ? String(t.maxQty) : '', unitPrice: String(t.amounts?.USD ?? t.amounts?.[product?.baseCurrency ?? 'USD'] ?? '') }))
       .concat([{ minQty: '', maxQty: '', unitPrice: '' }]),
   );
+  const merch: Merchandising = product?.merchandising ?? {};
+  const [variations, setVariations] = useState<{ name: string; options: { label: string; hex: string }[] }[]>(
+    (merch.variations ?? []).map((v) => ({ name: v.name, options: (v.options ?? []).map((o) => ({ label: o.label, hex: o.hex || '' })).concat([{ label: '', hex: '' }]) })).concat([{ name: '', options: [{ label: '', hex: '' }] }]),
+  );
+  const [customizations, setCustomizations] = useState<{ label: string; moq: string; note: string }[]>(
+    (merch.customizations ?? []).map((c) => ({ label: c.label, moq: c.moq != null ? String(c.moq) : '', note: c.note || '' })).concat([{ label: '', moq: '', note: '' }]),
+  );
+  const [leadTimes, setLeadTimes] = useState<{ minQty: string; maxQty: string; time: string }[]>(
+    (merch.leadTimes ?? []).map((t) => ({ minQty: String(t.minQty), maxQty: t.maxQty != null ? String(t.maxQty) : '', time: t.time })).concat([{ minQty: '', maxQty: '', time: '' }]),
+  );
+  const [industryAttrs, setIndustryAttrs] = useState<{ key: string; value: string }[]>(
+    (merch.industryAttributes ?? []).concat([{ key: '', value: '' }]),
+  );
+  const [otherAttrs, setOtherAttrs] = useState<{ key: string; value: string }[]>(
+    (merch.otherAttributes?.length ? merch.otherAttributes : []).concat([{ key: '', value: '' }]),
+  );
+  const [sampleAmount, setSampleAmount] = useState(merch.samplePrice?.amount != null ? String(merch.samplePrice.amount) : '');
+  const [sampleCurrency, setSampleCurrency] = useState<'USD' | 'CNY' | 'INR'>(merch.samplePrice?.currency ?? 'USD');
+  const [sampleLead, setSampleLead] = useState(merch.samplePrice?.leadTime ?? '');
+  const [shipOrigin, setShipOrigin] = useState(merch.shipping?.origin ?? '');
+  const [shipEstimate, setShipEstimate] = useState(merch.shipping?.estimate ?? '');
+  const [shipNote, setShipNote] = useState(merch.shipping?.note ?? '');
+  const [sellingUnits, setSellingUnits] = useState(merch.packing?.sellingUnits ?? '');
+  const [packageSize, setPackageSize] = useState(merch.packing?.singlePackageSize ?? '');
+  const [grossWeight, setGrossWeight] = useState(merch.packing?.grossWeight ?? '');
+  const [packageType, setPackageType] = useState(merch.packing?.packageType ?? '');
+  const [longDescription, setLongDescription] = useState(merch.description ?? '');
+  const [reviewsNote, setReviewsNote] = useState(merch.reviewsNote ?? '');
+  const [protections, setProtections] = useState<{ title: string; text: string }[]>(
+    (merch.protections ?? []).concat([{ title: '', text: '' }]),
+  );
   const [files, setFiles] = useState<File[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicYears?: number | null; publicVerified?: boolean }[]>([]);
@@ -163,10 +194,33 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
     const pricedTiers = tiers.filter((t) => t.unitPrice.trim()).map((t) => ({
       minQty: t.minQty ? Number(t.minQty) : 1, maxQty: t.maxQty ? Number(t.maxQty) : null, unitPrice: Number(t.unitPrice),
     }));
+    const merchandising = {
+      variations: variations.filter((v) => v.name.trim()).map((v) => ({
+        name: v.name.trim(),
+        options: v.options.filter((o) => o.label.trim()).map((o) => ({ label: o.label.trim(), hex: o.hex.trim() || null })),
+      })).filter((v) => v.options.length),
+      customizations: customizations.filter((c) => c.label.trim()).map((c) => ({
+        label: c.label.trim(), moq: c.moq ? Number(c.moq) : null, note: c.note.trim() || null,
+      })),
+      leadTimes: leadTimes.filter((x) => x.minQty && x.time.trim()).map((x) => ({
+        minQty: Number(x.minQty), maxQty: x.maxQty ? Number(x.maxQty) : null, time: x.time.trim(),
+      })),
+      samplePrice: sampleAmount ? { amount: Number(sampleAmount), currency: sampleCurrency, leadTime: sampleLead.trim() || null } : null,
+      shipping: (shipOrigin || shipEstimate || shipNote) ? { origin: shipOrigin || null, estimate: shipEstimate || null, note: shipNote || null } : null,
+      industryAttributes: industryAttrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() })),
+      otherAttributes: otherAttrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() })),
+      packing: (sellingUnits || packageSize || grossWeight || packageType) ? {
+        sellingUnits: sellingUnits || null, singlePackageSize: packageSize || null, grossWeight: grossWeight || null, packageType: packageType || null,
+      } : null,
+      description: longDescription.trim() || null,
+      reviewsNote: reviewsNote.trim() || null,
+      protections: protections.filter((x) => x.title.trim() && x.text.trim()).map((x) => ({ title: x.title.trim(), text: x.text.trim() })),
+    };
+    const allAttrs = [...merchandising.industryAttributes, ...merchandising.otherAttributes];
     void onSave({
       title: f.title, summary: f.summary, moq: f.moq ? Number(f.moq) : null, unit: f.unit, leadTime: f.leadTime,
       capacity: f.capacity, packaging: f.packaging, customization: f.customization, samplePolicy: f.samplePolicy,
-      categoryId: f.categoryId || null, tags: f.tags, specs,
+      categoryId: f.categoryId || null, tags: f.tags, specs: allAttrs.length ? allAttrs : specs, merchandising,
       ...(canPrice ? {
         priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null,
         baseCurrency: f.baseCurrency, tiers: f.priceMode === 'TIERS' ? pricedTiers : [],
@@ -240,8 +294,41 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
           )}
 
           <section>
-            <h3 className="mb-2 text-sm font-semibold text-ink-700">Key attributes</h3>
-            <div className="space-y-2" data-testid="product-attributes">
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Variations (colour, size, capacity)</h3>
+            <p className="mb-2 text-xs text-ink-500">Each variation has options. Add a hex colour (e.g. #1f3a5f) to show a swatch.</p>
+            <div className="space-y-3" data-testid="product-variations-editor">
+              {variations.map((v, i) => (
+                <div key={i} className="rounded-xl border border-ink-100 p-3">
+                  <input className="input mb-2" placeholder="Variation name (e.g. Colour)" value={v.name} onChange={(e) => setVariations((xs) => {
+                    const next = xs.map((x, j) => j === i ? { ...x, name: e.target.value } : x);
+                    if (i === next.length - 1 && e.target.value) next.push({ name: '', options: [{ label: '', hex: '' }] });
+                    return next;
+                  })} />
+                  {v.options.map((o, k) => (
+                    <div key={k} className="mb-1 grid grid-cols-[1fr_8rem] gap-2">
+                      <input className="input" placeholder="Option (e.g. Black)" value={o.label} onChange={(e) => setVariations((xs) => xs.map((x, j) => {
+                        if (j !== i) return x;
+                        const options = x.options.map((op, n) => n === k ? { ...op, label: e.target.value } : op);
+                        if (k === options.length - 1 && e.target.value) options.push({ label: '', hex: '' });
+                        return { ...x, options };
+                      }))} />
+                      <input className="input" placeholder="#hex" value={o.hex} onChange={(e) => setVariations((xs) => xs.map((x, j) => j === i ? { ...x, options: x.options.map((op, n) => n === k ? { ...op, hex: e.target.value } : op) } : x))} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Industry-specific attributes</h3>
+            <AttrRows testId="product-industry-attributes" rows={industryAttrs} setRows={setIndustryAttrs} keyPh="Attribute (e.g. Material)" />
+          </section>
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Other attributes</h3>
+            <AttrRows testId="product-other-attributes" rows={otherAttrs} setRows={setOtherAttrs} keyPh="Attribute (e.g. Origin)" />
+            <p className="mt-2 text-xs text-ink-500">Legacy key attributes still save if the grouped lists above are empty.</p>
+            <div className="mt-2 space-y-2" data-testid="product-attributes">
               {attrs.map((a, i) => (
                 <div key={i} className="grid grid-cols-2 gap-2">
                   <input className="input" placeholder="Attribute (e.g. Material)" value={a.key} onChange={(e) => setAttrs((xs) => xs.map((x, j) => j === i ? { ...x, key: e.target.value } : x))} />
@@ -255,10 +342,98 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
             </div>
           </section>
 
-          <section className="grid gap-3 sm:grid-cols-3">
-            <label className="text-sm">Packaging & delivery<textarea className="input mt-1 min-h-[80px]" value={f.packaging} onChange={(e) => set('packaging', e.target.value)} /></label>
-            <label className="text-sm">Customization<textarea className="input mt-1 min-h-[80px]" value={f.customization} onChange={(e) => set('customization', e.target.value)} /></label>
-            <label className="text-sm">Samples<textarea className="input mt-1 min-h-[80px]" value={f.samplePolicy} onChange={(e) => set('samplePolicy', e.target.value)} /></label>
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Customization options</h3>
+            <div className="space-y-2" data-testid="product-customizations-editor">
+              {customizations.map((c, i) => (
+                <div key={i} className="grid grid-cols-[1fr_6rem_1fr] gap-2">
+                  <input className="input" placeholder="Option (logo, packaging, graphic)" value={c.label} onChange={(e) => setCustomizations((xs) => {
+                    const next = xs.map((x, j) => j === i ? { ...x, label: e.target.value } : x);
+                    if (i === next.length - 1 && e.target.value) next.push({ label: '', moq: '', note: '' });
+                    return next;
+                  })} />
+                  <input className="input" placeholder="Min qty" value={c.moq} onChange={(e) => setCustomizations((xs) => xs.map((x, j) => j === i ? { ...x, moq: e.target.value } : x))} />
+                  <input className="input" placeholder="Note" value={c.note} onChange={(e) => setCustomizations((xs) => xs.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} />
+                </div>
+              ))}
+            </div>
+            <label className="mt-3 block text-sm">Customization notes<textarea className="input mt-1 min-h-[80px]" value={f.customization} onChange={(e) => set('customization', e.target.value)} /></label>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Sample price</h3>
+            <div className="grid grid-cols-3 gap-2" data-testid="product-sample-price">
+              <input className="input" placeholder="Sample price" value={sampleAmount} onChange={(e) => setSampleAmount(e.target.value)} />
+              <select className="input" value={sampleCurrency} onChange={(e) => setSampleCurrency(e.target.value as 'USD' | 'CNY' | 'INR')}>
+                {['USD', 'CNY', 'INR'].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input className="input" placeholder="Sample lead time" value={sampleLead} onChange={(e) => setSampleLead(e.target.value)} />
+            </div>
+            <label className="mt-3 block text-sm">Sample policy<textarea className="input mt-1 min-h-[80px]" value={f.samplePolicy} onChange={(e) => set('samplePolicy', e.target.value)} /></label>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Lead time by quantity</h3>
+            <div className="space-y-2" data-testid="product-lead-times">
+              {leadTimes.map((row, i) => (
+                <div key={i} className="grid grid-cols-3 gap-2">
+                  <input className="input" placeholder="Min qty" value={row.minQty} onChange={(e) => setLeadTimes((xs) => {
+                    const next = xs.map((x, j) => j === i ? { ...x, minQty: e.target.value } : x);
+                    if (i === next.length - 1 && e.target.value) next.push({ minQty: '', maxQty: '', time: '' });
+                    return next;
+                  })} />
+                  <input className="input" placeholder="Max qty" value={row.maxQty} onChange={(e) => setLeadTimes((xs) => xs.map((x, j) => j === i ? { ...x, maxQty: e.target.value } : x))} />
+                  <input className="input" placeholder="Time (e.g. 15 days)" value={row.time} onChange={(e) => setLeadTimes((xs) => xs.map((x, j) => j === i ? { ...x, time: e.target.value } : x))} />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Shipping and delivery estimate</h3>
+            <div className="grid gap-2 sm:grid-cols-2" data-testid="product-shipping">
+              <input className="input" placeholder="Ships from (e.g. Ningbo, China)" value={shipOrigin} onChange={(e) => setShipOrigin(e.target.value)} />
+              <input className="input" placeholder="Typical transit (e.g. 18–25 days by sea to India)" value={shipEstimate} onChange={(e) => setShipEstimate(e.target.value)} />
+              <textarea className="input min-h-[80px] sm:col-span-2" placeholder="Shipping note (no live rate is calculated on the product page)" value={shipNote} onChange={(e) => setShipNote(e.target.value)} />
+            </div>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Packaging & delivery</h3>
+            <div className="grid gap-2 sm:grid-cols-2" data-testid="product-packing">
+              <input className="input" placeholder="Selling units (e.g. Single item)" value={sellingUnits} onChange={(e) => setSellingUnits(e.target.value)} />
+              <input className="input" placeholder="Single package size (e.g. 8 × 8 × 25 cm)" value={packageSize} onChange={(e) => setPackageSize(e.target.value)} />
+              <input className="input" placeholder="Single gross weight (e.g. 0.35 kg)" value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} />
+              <input className="input" placeholder="Package type" value={packageType} onChange={(e) => setPackageType(e.target.value)} />
+            </div>
+            <label className="mt-3 block text-sm">Packaging notes<textarea className="input mt-1 min-h-[80px]" value={f.packaging} onChange={(e) => set('packaging', e.target.value)} /></label>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Product description</h3>
+            <textarea className="input min-h-[140px]" placeholder="Long product description (shown with product photos)" value={longDescription} onChange={(e) => setLongDescription(e.target.value)} data-testid="product-long-description" />
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Source Easy protections</h3>
+            <p className="mb-2 text-xs text-ink-500">Leave blank to use the standard Source Easy guarantees. Do not enter Alibaba Trade Assurance wording.</p>
+            <div className="space-y-2" data-testid="product-protections">
+              {protections.map((row, i) => (
+                <div key={i} className="grid gap-2 sm:grid-cols-2">
+                  <input className="input" placeholder="Title" value={row.title} onChange={(e) => setProtections((xs) => {
+                    const next = xs.map((x, j) => j === i ? { ...x, title: e.target.value } : x);
+                    if (i === next.length - 1 && e.target.value) next.push({ title: '', text: '' });
+                    return next;
+                  })} />
+                  <input className="input" placeholder="Details" value={row.text} onChange={(e) => setProtections((xs) => xs.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Reviews note</h3>
+            <input className="input" placeholder="Optional reviews placeholder (leave blank for the default message)" value={reviewsNote} onChange={(e) => setReviewsNote(e.target.value)} />
           </section>
 
           {canLink && (
@@ -293,6 +468,24 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
           <button className="btn-primary" disabled={busy} data-testid="product-save">{busy ? 'Saving…' : 'Save'}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+
+function AttrRows({ rows, setRows, keyPh, testId }: { rows: { key: string; value: string }[]; setRows: Dispatch<SetStateAction<{ key: string; value: string }[]>>; keyPh: string; testId: string }) {
+  return (
+    <div className="space-y-2" data-testid={testId}>
+      {rows.map((a, i) => (
+        <div key={i} className="grid grid-cols-2 gap-2">
+          <input className="input" placeholder={keyPh} value={a.key} onChange={(e) => setRows((xs) => {
+            const next = xs.map((x, j) => j === i ? { ...x, key: e.target.value } : x);
+            if (i === next.length - 1 && e.target.value) next.push({ key: '', value: '' });
+            return next;
+          })} />
+          <input className="input" placeholder="Value" value={a.value} onChange={(e) => setRows((xs) => xs.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} />
+        </div>
+      ))}
     </div>
   );
 }

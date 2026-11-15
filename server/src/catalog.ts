@@ -17,6 +17,7 @@ import {
   addFavorite, favoriteIds, listFavorites, parseTags, pinOrder, recordEnquiryEvent, recordView,
   relatedProducts, removeFavorite, scoreJoin, scoresFor, tagsOf, windowDays,
 } from './catalog-engagement.js';
+import { normalizeMerchandising, parseMerchandising, publicMerchandising } from './merchandising.js';
 
 export const PRODUCT_STATUSES = ['DRAFT', 'READY_FOR_PRICE', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'] as const;
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
@@ -405,11 +406,12 @@ export class CatalogStore {
     const id = randomUUID();
     const slug = await this.uniqueSlug(String(input.slug ?? title));
     const base = CURRENCIES.includes(input.baseCurrency as Currency) ? input.baseCurrency : 'USD';
-    await this.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, capacity, packaging, customization, sample_policy, price_mode, base_currency, created_by, is_sample)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,false)`,
+    await this.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, capacity, packaging, customization, sample_policy, merchandising, price_mode, base_currency, created_by, is_sample)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,false)`,
       id, slug, title, emptyToNull(input.summary, 4000), input.specs ? JSON.stringify(normalizeSpecs(input.specs)) : null,
       emptyToNull(input.categoryId), 'DRAFT', numOrNull(input.moq), emptyToNull(input.unit, 24), emptyToNull(input.leadTime, 80),
       emptyToNull(input.capacity, 400), emptyToNull(input.packaging, 4000), emptyToNull(input.customization, 4000), emptyToNull(input.samplePolicy, 2000),
+      JSON.stringify(normalizeMerchandising(input.merchandising)),
       'GET_QUOTE', base, by);
     const tags = parseTags(input.tags);
     if (tags.length) await this.db.run('UPDATE products SET tags = ?::jsonb WHERE id = ?', JSON.stringify(tags), id);
@@ -432,6 +434,7 @@ export class CatalogStore {
     if (patch.packaging !== undefined) next.packaging = emptyToNull(patch.packaging, 4000);
     if (patch.customization !== undefined) next.customization = emptyToNull(patch.customization, 4000);
     if (patch.samplePolicy !== undefined) next.sample_policy = emptyToNull(patch.samplePolicy, 2000);
+    if (patch.merchandising !== undefined) next.merchandising = JSON.stringify(normalizeMerchandising(patch.merchandising));
     if (opts.linkSupplier && patch.supplierId !== undefined) {
       const sid = emptyToNull(patch.supplierId);
       if (sid && !(await this.catalogSupplier(String(sid)))) bad('Supplier not found', 400);
@@ -454,7 +457,7 @@ export class CatalogStore {
     }
     const cols = Object.keys(next);
     if (!cols.length) return cur;
-    const assign = cols.map((c) => c === 'tags' ? `${c} = ?::jsonb` : `${c} = ?`);
+    const assign = cols.map((c) => (c === 'tags' || c === 'merchandising') ? `${c} = ?::jsonb` : `${c} = ?`);
     await this.db.run(`UPDATE products SET ${assign.join(', ')}, updated_at = now() WHERE id = ?`, ...cols.map((c) => next[c]), id);
     if (opts.prices && Array.isArray(patch.tiers)) {
       await this.db.run('DELETE FROM product_price_tiers WHERE product_id = ?', id);
@@ -690,6 +693,7 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap, 
     moq: row.moq, unit: row.unit, leadTime: row.lead_time,
     capacity: row.capacity ?? null, packaging: row.packaging ?? null,
     customization: row.customization ?? null, samplePolicy: row.sample_policy ?? null,
+    merchandising: publicMerchandising(row.merchandising),
     price, tiers: pubTiers,
     images: publicPhotos(images as any, row.id),
     isSample: !!row.is_sample,
@@ -723,6 +727,7 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
     status: row.status, moq: row.moq, unit: row.unit, leadTime: row.lead_time,
     capacity: row.capacity ?? null, packaging: row.packaging ?? null,
     customization: row.customization ?? null, samplePolicy: row.sample_policy ?? null,
+    merchandising: parseMerchandising(row.merchandising),
     priceMode: row.price_mode, baseCurrency: row.base_currency,
     pinned: !!row.pinned, pinStartsAt: row.pin_starts_at, pinEndsAt: row.pin_ends_at,
     isSample: !!row.is_sample, deletedAt: row.deleted_at, publishedAt: row.published_at,

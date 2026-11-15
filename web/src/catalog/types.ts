@@ -6,6 +6,29 @@ export type CatalogSupplier = { company: string; region?: string | null; years?:
 export type PriceTier = { minQty: number; maxQty: number | null; amounts: Record<string, number | null> };
 export type ProductImage = { id: string; kind?: string; altText?: string | null; url: string; cardUrl?: string | null; cover?: boolean; fileIds?: string[]; sort?: number };
 export type TrustItem = { title: string; text: string };
+
+export type VariationOption = { label: string; hex?: string | null };
+export type ProductVariation = { name: string; options: VariationOption[] };
+export type CustomizationOption = { label: string; moq?: number | null; note?: string | null };
+export type LeadTimeTier = { minQty: number; maxQty: number | null; time: string };
+export type AttrRow = { key: string; value: string };
+export type SamplePrice = { amount: number; currency: Currency; leadTime?: string | null };
+export type ShippingEstimate = { origin?: string | null; estimate?: string | null; note?: string | null };
+export type PackingDetail = { sellingUnits?: string | null; singlePackageSize?: string | null; grossWeight?: string | null; packageType?: string | null };
+export type Protection = { title: string; text: string };
+export type Merchandising = {
+  variations?: ProductVariation[];
+  customizations?: CustomizationOption[];
+  samplePrice?: SamplePrice | null;
+  leadTimes?: LeadTimeTier[];
+  shipping?: ShippingEstimate | null;
+  protections?: Protection[];
+  industryAttributes?: AttrRow[];
+  otherAttributes?: AttrRow[];
+  packing?: PackingDetail | null;
+  description?: string | null;
+  reviewsNote?: string | null;
+};
 export type Product = {
   id: string; slug: string; title: string; summary?: string | null; specs?: Record<string, unknown> | null;
   category?: { id?: string; slug: string | null; name: string | null } | null;
@@ -17,6 +40,7 @@ export type Product = {
   status?: string; categoryId?: string | null; categoryName?: string | null; categorySlug?: string | null;
   priceMode?: string; baseCurrency?: string; priceMin?: number | null; priceMax?: number | null;
   deletedAt?: string | null; publishedAt?: string | null;
+  merchandising?: Merchandising;
   supplier?: CatalogSupplier | null; supplierAvailable?: boolean;
   supplierId?: string | null; catalogSupplier?: { id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicAbout?: string | null; publicYears?: number | null; publicVerified?: boolean } | null;
 };
