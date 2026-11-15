@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { publicCatalog } from './api';
 import type { Product } from './types';
 import { EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
@@ -12,12 +12,16 @@ const FILE_FIELDS: { key: FileKind; label: string }[] = [
 ];
 const MODES: [string, string][] = [['', 'Not sure'], ['SEA', 'Sea'], ['AIR', 'Air'], ['EXPRESS', 'Courier / express'], ['ROAD', 'Road']];
 
-export function EnquireForm({ product, onDone }: { product?: Product; onDone?: () => void }) {
-  const [kind, setKind] = useState<QuoteType>('SOURCING');
-  const [f, setF] = useState(emptyQuoteFields);
+export function EnquireForm({ product, onDone, inquiryNote, defaultQty, defaultKind }: {
+  product?: Product; onDone?: () => void; inquiryNote?: string; defaultQty?: string; defaultKind?: QuoteType;
+}) {
+  const [kind, setKind] = useState<QuoteType>(defaultKind ?? 'SOURCING');
+  const [f, setF] = useState(() => ({ ...emptyQuoteFields, quantity: defaultQty ?? '' }));
   const [files, setFiles] = useState<Record<FileKind, File[]>>(emptyQuoteFiles);
   const [fileTick, setFileTick] = useState(0);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (defaultKind) setKind(defaultKind); }, [defaultKind]);
+  useEffect(() => { if (defaultQty) setF((s) => ({ ...s, quantity: defaultQty })); }, [defaultQty]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
   const allFiles = () => FILE_FIELDS.flatMap((x) => files[x.key]);
@@ -49,7 +53,7 @@ export function EnquireForm({ product, onDone }: { product?: Product; onDone?: (
       const body: Record<string, unknown> = {
         type: kind, name: f.name.trim(), phone: f.phone.trim(), phoneCode: f.phoneCode, email: f.email.trim(),
         company: f.company.trim() || undefined, quantity: f.quantity ? Number(f.quantity) : undefined, unit: f.unit || undefined,
-        message: f.message.trim() || undefined, requestLogin: f.requestLogin,
+        message: [inquiryNote ? `Selected: ${inquiryNote}` : '', f.message.trim()].filter(Boolean).join('\n') || undefined, requestLogin: f.requestLogin,
       };
       if (kind === 'SOURCING') body.requirement = !product ? (f.requirement.trim() || undefined) : undefined;
       else {
@@ -63,7 +67,7 @@ export function EnquireForm({ product, onDone }: { product?: Product; onDone?: (
       const attachments = FILE_FIELDS.flatMap((x) => files[x.key].map((file) => ({ field: x.key, file })));
       const r = await publicCatalog.enquire(product?.id, body, attachments);
       const where = r.kind === 'SHIPPING' ? 'shipping request' : 'lead';
-      setF(emptyQuoteFields);
+      setF({ ...emptyQuoteFields, quantity: defaultQty ?? '' });
       setFiles(emptyQuoteFiles());
       setFileTick((n) => n + 1);
       setMsg({ ok: true, text: `Request sent as a ${where}. Your reference is ${r.reference}.` });
@@ -82,7 +86,7 @@ export function EnquireForm({ product, onDone }: { product?: Product; onDone?: (
       </div>
       {product ? (
         <p className="rounded-lg border border-ink-100 bg-ink-50 px-3 py-2 text-sm text-ink-700" data-testid="enquire-product">
-          Product: <span className="font-medium">{product.title}</span>
+          Product: <span className="font-medium">{product.title}</span>{inquiryNote ? <> · {inquiryNote}</> : null}{defaultQty ? <> · Qty {defaultQty}</> : null}
         </p>
       ) : kind === 'SOURCING' ? (
         <input className="input" placeholder="Product or requirement (optional)" value={f.requirement} onChange={(e) => set('requirement', e.target.value)} data-testid="enquire-requirement" />

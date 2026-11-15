@@ -1,6 +1,6 @@
 import { FavoriteButton } from './FavoriteButton';
 import { useEffect, useState } from 'react';
-import { Factory, FileText, GitCompare, Home, Lamp, MessageCircle, Package, Search, Share2, ShieldCheck, Shirt, Sparkles, TrendingUp, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
+import { Clock, Factory, FileText, GitCompare, Home, Lamp, MessageCircle, Package, Search, Share2, Shield, ShieldCheck, Shirt, Sparkles, TrendingUp, Truck, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
 import { publicCatalog } from './api';
 import { CategoryExplorer } from './CategoryExplorer';
 import { MarketplaceGreeting } from './GreetingStrip';
@@ -10,7 +10,7 @@ import { Gallery } from './Gallery';
 import { ProductCard } from './ProductCard';
 import { DEFAULT_TRUST } from './fixtures';
 import { priceLabel, useCurrency } from './currency';
-import { type Banner, type BannerSettings, type Breadcrumb, type Category, type Product, type TrustItem } from './types';
+import { type Banner, type BannerSettings, type Breadcrumb, type Category, type Merchandising, type Product, type TrustItem } from './types';
 import { breadcrumbOf, childrenOf, categoryBySlug, topLevel } from './tree';
 
 const CAT_ICON: Record<string, typeof Factory> = {
@@ -186,28 +186,58 @@ export function ProductPage({ slug }: { slug: string }) {
   const [p, setP] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTab] = useState<'attributes' | 'description' | 'packaging' | 'customization' | 'samples'>('attributes');
   const [chatOpen, setChatOpen] = useState(false);
+  const [quoteKind, setQuoteKind] = useState<'SOURCING' | 'SHIPPING'>('SOURCING');
+  const [qty, setQty] = useState('');
+  const [selected, setSelected] = useState<Record<string, string>>({});
   useEffect(() => {
-    let on = true; setP(null); setErr(null); setChatOpen(false);
+    let on = true; setP(null); setErr(null); setChatOpen(false); setQuoteKind('SOURCING'); setSelected({});
     publicCatalog.product(slug).then((d) => {
       if (!on) return;
       setP(d);
+      setQty(d.moq != null ? String(d.moq) : '1');
+      const first: Record<string, string> = {};
+      for (const v of d.merchandising?.variations ?? []) {
+        if (v.options?.[0]?.label) first[v.name] = v.options[0].label;
+      }
+      setSelected(first);
       publicCatalog.related(d.slug).then((rows) => { if (on) setRelated(rows.slice(0, 8)); }).catch(() => undefined);
     }).catch((e) => { if (on) setErr((e as Error).message); });
     return () => { on = false; };
   }, [slug]);
   if (err) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-500">This product is not available.</div>;
   if (!p) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-400">Loading…</div>;
+  const m: Merchandising = p.merchandising ?? {};
   const specs = p.specs && typeof p.specs === 'object' ? Object.entries(p.specs).filter(([, v]) => v != null && String(v).trim()) : [];
+  const industry = m.industryAttributes?.length ? m.industryAttributes : [];
+  const other = m.otherAttributes?.length ? m.otherAttributes : (industry.length ? [] : specs.map(([key, value]) => ({ key, value: String(value) })));
   const tiers = p.tiers ?? [];
+  const leadTimes = m.leadTimes ?? [];
+  const customizations = m.customizations ?? [];
+  const protections = m.protections ?? [];
+  const packing = m.packing;
   const crumbs: Breadcrumb[] = p.breadcrumbs?.length ? p.breadcrumbs : (p.category?.slug && p.category.name ? [{ id: p.category.id || p.category.slug, slug: p.category.slug, name: p.category.name }] : []);
-  const scrollQuote = () => {
-    document.getElementById('quote')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const inquiryNote = Object.entries(selected).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setChatOpen(false);
   };
+  const openEnquiry = (kind: 'SOURCING' | 'SHIPPING' = 'SOURCING') => {
+    setQuoteKind(kind);
+    scrollTo('quote');
+  };
+  const sections: [string, string][] = [
+    ['attributes', 'Key attributes'],
+    ['lead-time', 'Lead time'],
+    ['customization', 'Customization'],
+    ['packaging', 'Packaging & delivery'],
+    ['description', 'Description'],
+    ['protections', 'Source Easy protections'],
+    ['reviews', 'Reviews'],
+    ['quote', 'Send enquiry'],
+  ];
   return (
-    <div className="bg-white">
+    <div className="bg-white pb-28 lg:pb-8">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         <CatalogBreadcrumbs items={[{ href: '/', label: 'Home' }, { href: '/products', label: 'Products' }, ...crumbs.map((c) => ({ href: `/c/${c.slug}`, label: c.name })), { label: p.title }]} />
 
@@ -228,11 +258,11 @@ export function ProductPage({ slug }: { slug: string }) {
               </div>
             </div>
 
-            <p className="mt-4 text-2xl font-semibold text-brand-700">{priceLabel(p.price, currency)}</p>
+            <p className="mt-4 text-2xl font-semibold text-brand-700" data-testid="product-price">{priceLabel(p.price, currency)}</p>
             <p className="mt-1 text-sm text-ink-400">Sourced in China · Prices in USD, RMB and INR</p>
 
             {tiers.length > 0 && (
-              <div className="mt-5 overflow-hidden rounded-2xl border border-ink-100">
+              <div className="mt-5 overflow-hidden rounded-2xl border border-ink-100" data-testid="price-tiers">
                 <table className="w-full text-sm">
                   <thead className="bg-ink-50 text-left text-ink-500"><tr><th className="px-4 py-2">Quantity</th><th className="px-4 py-2">USD</th><th className="px-4 py-2">RMB</th><th className="px-4 py-2">INR</th></tr></thead>
                   <tbody>
@@ -251,21 +281,117 @@ export function ProductPage({ slug }: { slug: string }) {
               </div>
             )}
 
+            {(m.variations ?? []).length > 0 && (
+              <div className="mt-5 space-y-4" data-testid="product-variations">
+                {(m.variations ?? []).map((v) => (
+                  <div key={v.name}>
+                    <p className="text-sm font-medium text-ink-700">{v.name}{selected[v.name] ? <span className="font-normal text-ink-500"> · {selected[v.name]}</span> : null}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {v.options.map((o) => {
+                        const on = selected[v.name] === o.label;
+                        return (
+                          <button key={o.label} type="button" onClick={() => setSelected((s) => ({ ...s, [v.name]: o.label }))}
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${on ? 'border-brand-600 bg-brand-50 font-medium text-brand-800' : 'border-ink-200 bg-white text-ink-700 hover:border-brand-200'}`}>
+                            {o.hex && <span className="h-4 w-4 rounded-full border border-ink-200" style={{ backgroundColor: o.hex }} aria-hidden />}
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-end gap-3">
+              <label className="text-sm text-ink-600">
+                Quantity
+                <span className="mt-1 flex items-center overflow-hidden rounded-full border border-ink-200">
+                  <button type="button" className="px-3 py-2 text-ink-600" onClick={() => setQty(String(Math.max(p.moq ?? 1, (Number(qty) || 0) - 1)))} aria-label="Decrease quantity">−</button>
+                  <input className="w-20 border-x border-ink-200 py-2 text-center text-ink-800" type="number" min={p.moq ?? 1} value={qty} onChange={(e) => setQty(e.target.value)} data-testid="product-qty" />
+                  <button type="button" className="px-3 py-2 text-ink-600" onClick={() => setQty(String((Number(qty) || 0) + 1))} aria-label="Increase quantity">+</button>
+                </span>
+              </label>
+              {p.moq != null && <p className="pb-2 text-sm text-ink-500">Minimum order {p.moq} {p.unit || 'pcs'}</p>}
+            </div>
+
+            {customizations.length > 0 && (
+              <div className="mt-5 rounded-2xl border border-ink-100 p-4" data-testid="buybox-customization">
+                <p className="text-sm font-medium text-ink-700">Customization options</p>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {customizations.map((c) => (
+                    <li key={c.label} className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-ink-800">{c.label}{c.note ? <span className="text-ink-500"> — {c.note}</span> : null}</span>
+                      {c.moq != null && <span className="text-ink-500">Min. {c.moq} {p.unit || 'pcs'}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {m.samplePrice && (
+              <div className="mt-4 rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3 text-sm" data-testid="sample-price">
+                <p className="font-medium text-ink-800">Sample</p>
+                <p className="mt-1 text-ink-700">
+                  {m.samplePrice.currency} {Number(m.samplePrice.amount).toFixed(2)}
+                  {m.samplePrice.leadTime ? ` · ${m.samplePrice.leadTime}` : ''}
+                </p>
+                {p.samplePolicy && <p className="mt-1 text-ink-500">{p.samplePolicy}</p>}
+              </div>
+            )}
+
             <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
               {p.moq != null && <div className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3"><dt className="text-ink-500">Minimum order</dt><dd className="font-medium text-ink-800">{p.moq} {p.unit || 'pcs'}</dd></div>}
               {p.capacity && <div className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3"><dt className="text-ink-500">Supply capacity</dt><dd className="font-medium text-ink-800">{p.capacity}</dd></div>}
-              {p.leadTime && <div className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3"><dt className="text-ink-500">Lead time</dt><dd className="font-medium text-ink-800">{p.leadTime}</dd></div>}
+              {p.leadTime && !leadTimes.length && <div className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3"><dt className="text-ink-500">Lead time</dt><dd className="font-medium text-ink-800">{p.leadTime}</dd></div>}
             </dl>
 
-            {specs.length > 0 && (
+            {leadTimes.length > 0 && (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-ink-100" data-testid="lead-time-table">
+                <div className="flex items-center gap-2 bg-ink-50 px-4 py-2 text-sm font-medium text-ink-600"><Clock size={14} /> Lead time by quantity</div>
+                <table className="w-full text-sm">
+                  <thead className="text-left text-ink-500"><tr><th className="px-4 py-2">Quantity</th><th className="px-4 py-2">Estimated lead time</th></tr></thead>
+                  <tbody>
+                    {leadTimes.map((t, i) => (
+                      <tr key={i} className="border-t border-ink-100">
+                        <td className="px-4 py-2">{t.minQty}{t.maxQty ? `–${t.maxQty}` : '+'} {p.unit || 'pcs'}</td>
+                        <td className="px-4 py-2 font-medium text-ink-800">{t.time}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="mt-5 rounded-2xl border border-ink-100 p-4" data-testid="shipping-estimate">
+              <div className="flex items-center gap-2 text-sm font-medium text-ink-700"><Truck size={16} className="text-brand-700" /> Shipping and delivery</div>
+              <dl className="mt-2 space-y-1 text-sm">
+                {m.shipping?.origin && <div className="flex gap-2"><dt className="text-ink-500">Ships from</dt><dd className="font-medium text-ink-800">{m.shipping.origin}</dd></div>}
+                {m.shipping?.estimate && <div className="flex gap-2"><dt className="text-ink-500">Typical transit</dt><dd className="font-medium text-ink-800">{m.shipping.estimate}</dd></div>}
+              </dl>
+              <p className="mt-2 text-sm text-ink-500">{m.shipping?.note || 'Freight is quoted by the Source Easy team. This page does not calculate a live shipping rate.'}</p>
+              <button type="button" className="mt-3 text-sm font-medium text-brand-700 hover:underline" onClick={() => openEnquiry('SHIPPING')}>Request a shipping quote</button>
+            </div>
+
+            {protections.length > 0 && (
+              <div className="mt-5 rounded-2xl border border-ink-100 bg-warm-50/50 p-4" data-testid="protections-preview">
+                <div className="flex items-center gap-2 text-sm font-medium text-ink-700"><Shield size={16} className="text-brand-700" /> Source Easy protections</div>
+                <ul className="mt-2 space-y-1 text-sm text-ink-600">
+                  {protections.slice(0, 4).map((x) => <li key={x.title}>{x.title}</li>)}
+                </ul>
+                <button type="button" className="mt-2 text-sm font-medium text-brand-700 hover:underline" onClick={() => scrollTo('protections')}>See details</button>
+              </div>
+            )}
+
+            {(industry.length > 0 || other.length > 0) && (
               <div className="mt-5 overflow-hidden rounded-2xl border border-ink-100">
                 <div className="bg-ink-50 px-4 py-2 text-sm font-medium text-ink-600">Key attributes</div>
                 <table className="w-full text-sm">
                   <tbody>
-                    {specs.slice(0, 6).map(([k, v]) => (
-                      <tr key={k} className="border-t border-ink-100">
-                        <th className="w-40 px-4 py-2 text-left font-medium capitalize text-ink-500">{k}</th>
-                        <td className="px-4 py-2 text-ink-700">{String(v)}</td>
+                    {(industry.length ? industry : other).slice(0, 6).map((row) => (
+                      <tr key={row.key} className="border-t border-ink-100">
+                        <th className="w-40 px-4 py-2 text-left font-medium capitalize text-ink-500">{row.key}</th>
+                        <td className="px-4 py-2 text-ink-700">{row.value}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -274,8 +400,9 @@ export function ProductPage({ slug }: { slug: string }) {
             )}
 
             <div className="relative mt-6 flex flex-wrap gap-3">
-              <button type="button" onClick={scrollQuote} className="rounded-full bg-warm-500 px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-warm-600">
-                Request a quote
+              <button type="button" onClick={() => openEnquiry('SOURCING')} data-testid="send-enquiry"
+                className="rounded-full bg-warm-500 px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-warm-600">
+                Send enquiry
               </button>
               <button type="button" data-testid="product-chat" onClick={() => setChatOpen((v) => !v)}
                 className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-5 py-2.5 text-sm font-semibold text-ink-800 hover:border-brand-200 hover:text-brand-700">
@@ -284,8 +411,8 @@ export function ProductPage({ slug }: { slug: string }) {
               {chatOpen && (
                 <div data-testid="product-chat-panel" className="absolute left-0 top-full z-10 mt-2 w-80 rounded-2xl border border-ink-100 bg-white p-4 text-sm shadow-soft">
                   <p className="font-medium text-ink-800">Chat with Source Easy</p>
-                  <p className="mt-1 text-ink-500">Use the request-a-quote form on this product and the Source Easy team will reply.</p>
-                  <button type="button" className="mt-3 text-sm font-medium text-brand-700 hover:underline" onClick={scrollQuote}>Open enquiry form</button>
+                  <p className="mt-1 text-ink-500">Use the send-enquiry form on this product and the Source Easy team will reply.</p>
+                  <button type="button" className="mt-3 text-sm font-medium text-brand-700 hover:underline" onClick={() => openEnquiry('SOURCING')}>Open enquiry form</button>
                 </div>
               )}
             </div>
@@ -294,47 +421,110 @@ export function ProductPage({ slug }: { slug: string }) {
           </div>
         </div>
 
-        <div className="mt-12 border-t border-ink-100 pt-8">
-          <div className="flex flex-wrap gap-2 border-b border-ink-100" role="tablist">
-            {([
-              ['attributes', 'Attributes'],
-              ['description', 'Description'],
-              ['packaging', 'Packaging & delivery'],
-              ['customization', 'Customization'],
-              ['samples', 'Samples'],
-            ] as const).map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                className={`px-4 py-2 text-sm font-medium ${tab === id ? 'border-b-2 border-brand-600 text-brand-700' : 'text-ink-500 hover:text-ink-800'}`}>{label}</button>
+        <div className="mt-12 sticky top-16 z-20 -mx-4 overflow-x-auto border-y border-ink-100 bg-white px-4 sm:-mx-6 sm:px-6" role="tablist">
+          <div className="flex min-w-max gap-1">
+            {sections.map(([id, label]) => (
+              <button key={id} type="button" onClick={() => scrollTo(id)}
+                className="px-4 py-3 text-sm font-medium text-ink-600 hover:text-brand-700">{label}</button>
             ))}
           </div>
-          <div className="py-6 text-ink-700">
-            {tab === 'attributes' && (specs.length ? (
-              <table className="w-full max-w-3xl text-sm">
+        </div>
+
+        <section id="attributes" className="scroll-mt-36 border-b border-ink-100 py-8">
+          <h2 className="text-xl font-semibold text-ink-800">Key attributes</h2>
+          <div className="mt-4 grid gap-8 lg:grid-cols-2">
+            <AttributeTable title="Industry-specific attributes" rows={industry} empty="No industry-specific attributes have been added yet." />
+            <AttributeTable title="Other attributes" rows={other} empty="No other attributes have been added yet." />
+          </div>
+        </section>
+
+        <section id="lead-time" className="scroll-mt-36 border-b border-ink-100 py-8">
+          <h2 className="text-xl font-semibold text-ink-800">Lead time</h2>
+          {leadTimes.length ? (
+            <table className="mt-4 w-full max-w-xl text-sm">
+              <thead className="text-left text-ink-500"><tr><th className="py-2 pr-4">Quantity ({p.unit || 'pcs'})</th><th className="py-2">Estimated lead time</th></tr></thead>
+              <tbody>
+                {leadTimes.map((t, i) => (
+                  <tr key={i} className="border-t border-ink-100">
+                    <td className="py-2 pr-4">{t.minQty}{t.maxQty ? `–${t.maxQty}` : '+'}</td>
+                    <td className="py-2 font-medium text-ink-800">{t.time}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <p className="mt-3 text-ink-500">{p.leadTime ? `Typical lead time: ${p.leadTime}` : 'Lead time will be confirmed with your quote.'}</p>}
+        </section>
+
+        <section id="customization" className="scroll-mt-36 border-b border-ink-100 py-8">
+          <h2 className="text-xl font-semibold text-ink-800">Customization</h2>
+          {customizations.length ? (
+            <div className="mt-4 overflow-hidden rounded-2xl border border-ink-100">
+              <table className="w-full text-sm">
+                <thead className="bg-ink-50 text-left text-ink-500"><tr><th className="px-4 py-2">Option</th><th className="px-4 py-2">Minimum order</th><th className="px-4 py-2">Notes</th></tr></thead>
                 <tbody>
-                  {specs.map(([k, v]) => (
-                    <tr key={k} className="border-b border-ink-100">
-                      <th className="w-48 py-2 pr-4 text-left font-medium capitalize text-ink-500">{k}</th>
-                      <td className="py-2">{String(v)}</td>
+                  {customizations.map((c) => (
+                    <tr key={c.label} className="border-t border-ink-100">
+                      <td className="px-4 py-2 font-medium text-ink-800">{c.label}</td>
+                      <td className="px-4 py-2">{c.moq != null ? `${c.moq} ${p.unit || 'pcs'}` : 'On request'}</td>
+                      <td className="px-4 py-2 text-ink-600">{c.note || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            ) : <p className="text-ink-500">No key attributes have been added for this product yet.</p>)}
-            {tab === 'description' && <p className="max-w-3xl leading-relaxed">{p.summary || 'No description has been added for this product yet.'}</p>}
-            {tab === 'packaging' && <p className="max-w-3xl whitespace-pre-line leading-relaxed">{p.packaging || 'Packaging and delivery details will be confirmed with your quote.'}</p>}
-            {tab === 'customization' && <p className="max-w-3xl whitespace-pre-line leading-relaxed">{p.customization || 'Ask about logos, colours, packing and other custom options in your enquiry.'}</p>}
-            {tab === 'samples' && <p className="max-w-3xl whitespace-pre-line leading-relaxed">{p.samplePolicy || 'Sample availability can be confirmed when you request a quote.'}</p>}
-          </div>
-        </div>
+            </div>
+          ) : null}
+          <p className="mt-4 max-w-3xl whitespace-pre-line text-ink-600">{p.customization || (!customizations.length ? 'Ask about logos, colours, packing and other custom options in your enquiry.' : '')}</p>
+        </section>
 
-        <div id="quote" className="mt-4 scroll-mt-56 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
+        <section id="packaging" className="scroll-mt-36 border-b border-ink-100 py-8">
+          <h2 className="text-xl font-semibold text-ink-800">Packaging & delivery</h2>
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {packing?.sellingUnits && <PackFact label="Selling units" value={packing.sellingUnits} />}
+            {packing?.singlePackageSize && <PackFact label="Single package size" value={packing.singlePackageSize} />}
+            {packing?.grossWeight && <PackFact label="Single gross weight" value={packing.grossWeight} />}
+            {packing?.packageType && <PackFact label="Package type" value={packing.packageType} />}
+          </dl>
+          <p className="mt-4 max-w-3xl whitespace-pre-line leading-relaxed text-ink-700">{p.packaging || (!packing ? 'Packaging and delivery details will be confirmed with your quote.' : '')}</p>
+        </section>
+
+        <section id="description" className="scroll-mt-36 border-b border-ink-100 py-8" data-testid="product-description">
+          <h2 className="text-xl font-semibold text-ink-800">Product description</h2>
+          <div className="mt-4 max-w-3xl whitespace-pre-line leading-relaxed text-ink-700">{m.description || p.summary || 'No description has been added for this product yet.'}</div>
+          {p.images.length > 0 && (
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {p.images.map((im) => (
+                <img key={im.id} src={im.url} alt={im.altText || p.title} className="w-full rounded-2xl border border-ink-100 object-cover" />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section id="protections" className="scroll-mt-36 border-b border-ink-100 py-8" data-testid="protections">
+          <h2 className="text-xl font-semibold text-ink-800">Source Easy protections</h2>
+          <p className="mt-2 max-w-3xl text-sm text-ink-500">These are Source Easy’s own guarantees for catalog enquiries. They are not Alibaba Trade Assurance or any third-party escrow.</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {protections.map((x) => (
+              <div key={x.title} className="rounded-2xl border border-ink-100 bg-ink-50 p-4">
+                <div className="flex items-center gap-2 font-medium text-ink-800"><ShieldCheck size={16} className="text-brand-700" />{x.title}</div>
+                <p className="mt-2 text-sm text-ink-600">{x.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="reviews" className="scroll-mt-36 border-b border-ink-100 py-8" data-testid="reviews-placeholder">
+          <h2 className="text-xl font-semibold text-ink-800">Reviews</h2>
+          <p className="mt-3 max-w-3xl text-ink-600">{m.reviewsNote || 'Buyer reviews will appear here after Source Easy customers share feedback on this product. There are no reviews yet.'}</p>
+        </section>
+
+        <div id="quote" className="mt-8 scroll-mt-56 rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
           <h2 className="font-semibold text-ink-800">Send enquiry</h2>
           <p className="mt-1 text-sm text-ink-500">This enquiry is for {p.title}. We’ll come back with a Source Easy quote. This is not a checkout.</p>
-          <div className="mt-4"><EnquireForm product={p} /></div>
+          <div className="mt-4"><EnquireForm product={p} defaultQty={qty} inquiryNote={inquiryNote} defaultKind={quoteKind} /></div>
         </div>
 
         {related.length > 0 && (
-          <section className="mt-16">
+          <section className="mt-16" data-testid="related-products">
             <h2 className="text-2xl font-semibold tracking-tight text-ink-800">Related products</h2>
             <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
               {related.map((r) => <ProductCard key={r.id} product={r} />)}
@@ -342,6 +532,50 @@ export function ProductPage({ slug }: { slug: string }) {
           </section>
         )}
       </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-100 bg-white/95 px-4 py-3 shadow-soft backdrop-blur lg:hidden" data-testid="mobile-sticky-bar" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-brand-700">{priceLabel(p.price, currency)}</p>
+            {p.moq != null && <p className="text-xs text-ink-500">MOQ {p.moq} {p.unit || 'pcs'}</p>}
+          </div>
+          <button type="button" onClick={() => setChatOpen(true)} className="inline-flex items-center gap-1 rounded-full border border-ink-200 px-3 py-2 text-sm font-semibold text-ink-800">
+            <MessageCircle size={16} /> Chat
+          </button>
+          <button type="button" onClick={() => openEnquiry('SOURCING')} className="rounded-full bg-warm-500 px-4 py-2 text-sm font-semibold text-white">
+            Send enquiry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttributeTable({ title, rows, empty }: { title: string; rows: { key: string; value: string }[]; empty: string }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-ink-600">{title}</h3>
+      {rows.length ? (
+        <table className="mt-2 w-full text-sm">
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-b border-ink-100">
+                <th className="w-48 py-2 pr-4 text-left font-medium capitalize text-ink-500">{row.key}</th>
+                <td className="py-2 text-ink-700">{row.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p className="mt-2 text-sm text-ink-500">{empty}</p>}
+    </div>
+  );
+}
+
+function PackFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3 text-sm">
+      <dt className="text-ink-500">{label}</dt>
+      <dd className="font-medium text-ink-800">{value}</dd>
     </div>
   );
 }
@@ -374,4 +608,3 @@ function SupplierCard({ product }: { product: Product }) {
   }
   return null;
 }
-

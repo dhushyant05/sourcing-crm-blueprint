@@ -55,7 +55,7 @@ describe('shipping request reject placeholder', () => {
 describe('EnquireForm success reset', () => {
   it('clears fields and attachments after a successful send, and remounts the file inputs', () => {
     const src = read('web/src/catalog/EnquireForm.tsx');
-    expect(src).toMatch(/setF\(emptyQuoteFields\)/);
+    expect(src).toMatch(/setF\(\{ \.\.\.emptyQuoteFields/);
     expect(src).toMatch(/setFiles\(emptyQuoteFiles\(\)\)/);
     expect(src).toMatch(/setFileTick/);
     expect(src).toMatch(/key=\{`\$\{x\.key\}-\$\{fileTick\}`\}/);

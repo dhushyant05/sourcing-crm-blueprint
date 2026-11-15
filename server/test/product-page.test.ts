@@ -147,3 +147,71 @@ describe('supplier card privacy', () => {
     expect(raw?.supplier_id).toBeNull();
   });
 });
+
+
+describe('merchandising fields', () => {
+  it('saves variations, lead times, packing and sample price, and applies Source Easy protections on the public page', async () => {
+    const { app, mt, call } = await setupEnv();
+    const created = await mt('POST', '/api/products', {
+      title: 'TEST merchandising tumbler',
+      summary: 'Short summary',
+      moq: 200,
+      unit: 'pcs',
+      leadTime: '15 days',
+      priceMode: 'TIERS',
+      baseCurrency: 'USD',
+      tiers: [
+        { minQty: 200, maxQty: 499, unitPrice: 3.2 },
+        { minQty: 500, maxQty: null, unitPrice: 2.8 },
+      ],
+      merchandising: {
+        variations: [
+          { name: 'Colour', options: [{ label: 'Black', hex: '#111111' }, { label: 'White', hex: '#f5f5f5' }] },
+          { name: 'Capacity', options: [{ label: '500ml' }, { label: '750ml' }] },
+        ],
+        customizations: [
+          { label: 'Logo', moq: 200, note: 'Laser or print' },
+          { label: 'Packaging', moq: 500, note: 'Custom carton' },
+          { label: 'Graphic', moq: 300, note: 'Printed wrap' },
+        ],
+        samplePrice: { amount: 12.5, currency: 'USD', leadTime: '5–7 days' },
+        leadTimes: [
+          { minQty: 200, maxQty: 499, time: '15 days' },
+          { minQty: 500, maxQty: null, time: '20 days' },
+        ],
+        shipping: { origin: 'Ningbo, China', estimate: '18–25 days by sea to India', note: 'TEST freight is quoted by Source Easy.' },
+        industryAttributes: [{ key: 'Material', value: 'Stainless steel' }, { key: 'Capacity', value: '500ml' }],
+        otherAttributes: [{ key: 'Feature', value: 'TEST LED display' }],
+        packing: { sellingUnits: 'Single item', singlePackageSize: '8 × 8 × 25 cm', grossWeight: '0.35 kg', packageType: 'TEST colour box' },
+        description: 'TEST description for the Source Easy QA tumbler.',
+        reviewsNote: 'TEST: no buyer reviews yet.',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const saved = created.json().data;
+    expect(saved.merchandising.variations).toHaveLength(2);
+    expect(saved.merchandising.variations[0].options[0]).toMatchObject({ label: 'Black', hex: '#111111' });
+    expect(saved.merchandising.samplePrice).toMatchObject({ amount: 12.5, currency: 'USD', leadTime: '5–7 days' });
+    expect(saved.merchandising.protections).toEqual([]);
+    await mt('POST', `/api/products/${saved.id}/publish`);
+    await call('sa', 'PATCH', '/api/catalog/settings', { homepageEnabled: true });
+
+    const pub = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${saved.slug}` })).json().data;
+    expect(pub.merchandising.variations[1].options.map((o: any) => o.label)).toEqual(['500ml', '750ml']);
+    expect(pub.merchandising.customizations).toHaveLength(3);
+    expect(pub.merchandising.leadTimes[1]).toMatchObject({ minQty: 500, maxQty: null, time: '20 days' });
+    expect(pub.merchandising.packing.singlePackageSize).toMatch(/8/);
+    expect(pub.merchandising.description).toMatch(/TEST description/);
+    expect(pub.merchandising.protections.length).toBeGreaterThanOrEqual(3);
+    expect(JSON.stringify(pub.merchandising.protections)).toMatch(/Source Easy quote first/);
+    expect(JSON.stringify(pub)).not.toMatch(/Trade Assurance|alibaba\.com|factory cost/i);
+    expect(pub.supplier).toBeNull();
+
+    const patched = await mt('PATCH', `/api/products/${saved.id}`, {
+      merchandising: { ...saved.merchandising, samplePrice: { amount: 15, currency: 'USD', leadTime: '7 days' } },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().data.merchandising.samplePrice.amount).toBe(15);
+    expect(patched.json().data.merchandising.variations).toHaveLength(2);
+  });
+});
