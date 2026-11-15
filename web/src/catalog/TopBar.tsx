@@ -61,6 +61,8 @@ export function TopBar({ categories, products = [], onSearch, query = '' }: { ca
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <nav className="mb-3 flex gap-1 overflow-x-auto text-sm font-medium text-ink-600 md:overflow-visible">
             <button type="button" onClick={() => go('/products')} className="shrink-0 rounded-full px-3 py-1.5 hover:bg-white hover:text-brand-700">Products</button>
+            <button type="button" data-testid="nav-trending" onClick={() => go('/trending')} className="shrink-0 rounded-full px-3 py-1.5 hover:bg-white hover:text-brand-700">Trending</button>
+            <button type="button" data-testid="nav-clearance" onClick={() => go('/clearance')} className="shrink-0 rounded-full px-3 py-1.5 hover:bg-white hover:text-brand-700">Clearance</button>
             <MenuBtn label="Categories" open={menu === 'cat'} onToggle={() => setMenu(menu === 'cat' ? null : 'cat')}>
               <CategoryMegaMenu categories={categories} products={products} onGo={go} />
             </MenuBtn>
@@ -88,6 +90,8 @@ export function TopBar({ categories, products = [], onSearch, query = '' }: { ca
             <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Browse</p>
               <button className="block w-full rounded-lg px-2 py-2 text-left hover:bg-ink-50" onClick={() => go('/products')}>Products</button>
+              <button className="block w-full rounded-lg px-2 py-2 text-left hover:bg-ink-50" data-testid="nav-trending-mobile" onClick={() => go('/trending')}>Trending</button>
+              <button className="block w-full rounded-lg px-2 py-2 text-left hover:bg-ink-50" data-testid="nav-clearance-mobile" onClick={() => go('/clearance')}>Clearance</button>
               <button className="block w-full rounded-lg px-2 py-2 text-left hover:bg-ink-50" onClick={() => go('/#categories')}>Categories</button>
               <button className="block w-full rounded-lg px-2 py-2 text-left hover:bg-ink-50" onClick={() => go('/#how')}>How Source Easy works</button>
               {categories.map((c) => <button key={c.id} className="block w-full rounded-lg px-2 py-2 text-left text-ink-600 hover:bg-ink-50" onClick={() => go(`/c/${c.slug}`)}>{c.name}</button>)}
