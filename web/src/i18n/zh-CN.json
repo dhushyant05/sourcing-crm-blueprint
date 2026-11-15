@@ -1189,6 +1189,7 @@
     "save": "保存",
     "sourcedTrack": "此请求的跟踪随订单货运显示在运输页面。",
     "rejectTitle": "拒绝（原因仅内部可见）",
+    "rejectPlaceholder": "原因（仅内部可见，不对客户展示）",
     "reason": {
       "PRICE": "价格太高",
       "QUALITY": "质量 / 规格",

@@ -2,10 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { publicCatalog } from './api';
 import type { Product } from './types';
 import { EXT, MAX_FILES, fmtSize, tooBig } from '../components/EnquiryForm';
+import { emptyQuoteFields, emptyQuoteFiles, filesAfterTypeChange, type FileKind, type QuoteType } from './quoteForm';
 const DOC_ACCEPT = '.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/webp,application/pdf';
 
-type QuoteType = 'SOURCING' | 'SHIPPING';
-type FileKind = 'photos' | 'invoices' | 'packingLists';
 const FILE_FIELDS: { key: FileKind; label: string }[] = [
   { key: 'photos', label: 'Photos' },
   { key: 'invoices', label: 'Invoice' },
@@ -13,16 +12,11 @@ const FILE_FIELDS: { key: FileKind; label: string }[] = [
 ];
 const MODES: [string, string][] = [['', 'Not sure'], ['SEA', 'Sea'], ['AIR', 'Air'], ['EXPRESS', 'Courier / express'], ['ROAD', 'Road']];
 
-const empty = {
-  name: '', phone: '', phoneCode: '+91', email: '', company: '', quantity: '', unit: 'pcs', message: '', requirement: '', requestLogin: false,
-  goods: '', packages: '', weightKg: '', cbm: '', shipperName: '', shipperPhone: '', pickupCity: '', pickupAddress: '',
-  destCity: '', destAddress: '', destPincode: '', mode: '', readyDate: '',
-};
-
 export function EnquireForm({ product, onDone }: { product?: Product; onDone?: () => void }) {
   const [kind, setKind] = useState<QuoteType>('SOURCING');
-  const [f, setF] = useState(empty);
-  const [files, setFiles] = useState<Record<FileKind, File[]>>({ photos: [], invoices: [], packingLists: [] });
+  const [f, setF] = useState(emptyQuoteFields);
+  const [files, setFiles] = useState<Record<FileKind, File[]>>(emptyQuoteFiles);
+  const [fileTick, setFileTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
@@ -69,6 +63,9 @@ export function EnquireForm({ product, onDone }: { product?: Product; onDone?: (
       const attachments = FILE_FIELDS.flatMap((x) => files[x.key].map((file) => ({ field: x.key, file })));
       const r = await publicCatalog.enquire(product?.id, body, attachments);
       const where = r.kind === 'SHIPPING' ? 'shipping request' : 'lead';
+      setF(emptyQuoteFields);
+      setFiles(emptyQuoteFiles());
+      setFileTick((n) => n + 1);
       setMsg({ ok: true, text: `Request sent as a ${where}. Your reference is ${r.reference}.` });
       onDone?.();
     } catch (err) { setMsg({ ok: false, text: (err as Error).message }); }
@@ -79,7 +76,7 @@ export function EnquireForm({ product, onDone }: { product?: Product; onDone?: (
       <div role="radiogroup" aria-label="What do you need?" className="grid grid-cols-2 gap-2">
         {([['SOURCING', 'Product sourcing'], ['SHIPPING', 'Shipping']] as const).map(([k, label]) => (
           <button key={k} type="button" role="radio" aria-checked={kind === k} data-testid={`quote-type-${k}`}
-            onClick={() => { setKind(k); setMsg(null); }}
+            onClick={() => { setKind(k); setMsg(null); setFiles((cur) => filesAfterTypeChange(cur)); }}
             className={`min-h-[44px] rounded-xl border px-3 text-sm font-medium ${kind === k ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-ink-200 text-ink-600'}`}>{label}</button>
         ))}
       </div>
@@ -134,7 +131,7 @@ export function EnquireForm({ product, onDone }: { product?: Product; onDone?: (
         {FILE_FIELDS.map((x) => (
           <div key={x.key}>
             <label className="mb-1 block text-xs font-medium text-ink-600">{x.label}</label>
-            <input type="file" multiple accept={DOC_ACCEPT} data-testid={`enquire-files-${x.key}`} className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-lg file:border file:border-ink-200 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium"
+            <input key={`${x.key}-${fileTick}`} type="file" multiple accept={DOC_ACCEPT} data-testid={`enquire-files-${x.key}`} className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-lg file:border file:border-ink-200 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium"
               onChange={(e) => { addFiles(x.key, e.target.files); e.target.value = ''; }} />
             {files[x.key].length > 0 && (
               <ul className="mt-1 space-y-1 text-sm">{files[x.key].map((file, i) => (
