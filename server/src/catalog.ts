@@ -361,6 +361,76 @@ export class CatalogStore {
     return { id: nid, slug, name: trimmed, parentId: parent ?? null, active: true };
   }
 
+
+  async auditCategory(categoryId: string | null, by: string | null, action: string, before?: unknown, after?: unknown) {
+    await this.db.run(
+      'INSERT INTO category_audit (category_id, by_user, action, before, after) VALUES (?,?,?,?,?)',
+      categoryId, by, action, before != null ? JSON.stringify(before) : null, after != null ? JSON.stringify(after) : null,
+    );
+  }
+  async categoryAuditList(id: string) {
+    return this.db.all(
+      'SELECT id, at, by_user AS "by", action, before, after FROM category_audit WHERE category_id = ? ORDER BY id DESC LIMIT 100',
+      id,
+    );
+  }
+  async categoryUsage(id: string) {
+    const cur = await this.categoryById(id);
+    if (!cur) return null;
+    const descendants = (await this.descendantIds(id)).filter((x) => x !== id);
+    const children = (await this.db.get<{ n: number }>('SELECT count(*)::int AS n FROM categories WHERE parent_id = ?', id))?.n ?? 0;
+    const primaryLive = (await this.db.get<{ n: number }>("SELECT count(*)::int AS n FROM products WHERE category_id = ? AND deleted_at IS NULL", id))?.n ?? 0;
+    const primaryAll = (await this.db.get<{ n: number }>('SELECT count(*)::int AS n FROM products WHERE category_id = ?', id))?.n ?? 0;
+    const extraProducts = (await this.db.get<{ n: number }>('SELECT count(DISTINCT product_id)::int AS n FROM product_categories WHERE category_id = ?', id))?.n ?? 0;
+    const banners = (await this.db.get<{ n: number }>('SELECT count(*)::int AS n FROM banner_slides WHERE category_id = ?', id))?.n ?? 0;
+    const empty = primaryAll === 0 && extraProducts === 0 && children === 0 && banners === 0;
+    return {
+      id: cur.id, name: cur.name, slug: cur.slug, active: !!cur.active, parentId: cur.parentId ?? null,
+      children, descendants: descendants.length, primaryProducts: primaryLive,
+      primaryProductsIncludingDeleted: primaryAll, extraProducts, banners, empty,
+    };
+  }
+  async setCategoryActive(id: string, active: boolean, by: string | null) {
+    const cur = await this.categoryById(id);
+    if (!cur) bad('Category not found', 404);
+    if (!!cur.active === !!active) return cur;
+    await this.db.run('UPDATE categories SET active = ? WHERE id = ?', !!active, id);
+    const next = await this.categoryById(id);
+    await this.auditCategory(id, by, active ? 'ACTIVATE' : 'DEACTIVATE', cur, next);
+    return next;
+  }
+  async reassignCategoryProducts(fromId: string, toId: string, by: string | null) {
+    const from = await this.categoryById(fromId);
+    const to = await this.categoryById(toId);
+    if (!from || !to) bad('Category not found', 404);
+    if (fromId === toId) bad('Choose a different category to move products to');
+    const rows = await this.db.all<{ id: string }>('SELECT id FROM products WHERE category_id = ?', fromId);
+    await this.db.run('UPDATE products SET category_id = ?, updated_at = now() WHERE category_id = ?', toId, fromId);
+    if (rows.length) {
+      const ph = rows.map(() => '?').join(',');
+      await this.db.run(`DELETE FROM product_categories WHERE category_id = ? AND product_id IN (${ph})`, toId, ...rows.map((r) => r.id));
+    }
+    await this.auditCategory(fromId, by, 'REASSIGN', { primaryProducts: rows.length }, { moveTo: toId, productIds: rows.map((r) => r.id) });
+    return { moved: rows.length, usage: await this.categoryUsage(fromId) };
+  }
+  async clearCategoryExtras(id: string, by: string | null) {
+    const cur = await this.categoryById(id);
+    if (!cur) bad('Category not found', 404);
+    const rows = await this.db.all<{ product_id: string }>('SELECT product_id FROM product_categories WHERE category_id = ?', id);
+    await this.db.run('DELETE FROM product_categories WHERE category_id = ?', id);
+    await this.auditCategory(id, by, 'REMOVE_EXTRAS', { productIds: rows.map((r) => r.product_id) }, { cleared: rows.length });
+    return { cleared: rows.length, usage: await this.categoryUsage(id) };
+  }
+  async deleteCategory(id: string, by: string | null) {
+    const cur = await this.categoryById(id);
+    if (!cur) bad('Category not found', 404);
+    const usage = await this.categoryUsage(id);
+    if (!usage || !usage.empty) bad('This category still has products, subcategories or banners. Deactivate it, or move the products first.', 409, 'not_empty');
+    await this.db.run('DELETE FROM categories WHERE id = ?', id);
+    await this.auditCategory(id, by, 'DELETE', cur, null);
+    return { ok: true, deleted: cur };
+  }
+
   async extraCategories(productId: string) {
     return this.db.all<{ id: string; slug: string; name: string; parentId: string | null }>(
       `SELECT c.id, c.slug, c.name, c.parent_id AS "parentId"
@@ -446,19 +516,13 @@ export class CatalogStore {
     const where = ["p.status = 'PUBLISHED'", 'p.deleted_at IS NULL'];
     const params: unknown[] = [];
     if (q.category) {
-      const ids = await this.descendantIds(q.category);
-      if (!ids.length) {
-        const cat = await this.categoryBySlugOrId(q.category);
-        if (cat) {
-          const m = categoryMatchSql([cat.id]);
-          where.push(m.sql); params.push(...m.params);
-        } else {
-          where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category);
-        }
-      } else {
-        const m = categoryMatchSql(ids);
-        where.push(m.sql); params.push(...m.params);
+      const cat = await this.categoryBySlugOrId(q.category);
+      if (!cat || cat.active === false) {
+        return { rows: [], total: 0, limit, offset };
       }
+      const ids = await this.descendantIds(cat.id);
+      const m = categoryMatchSql(ids.length ? ids : [cat.id]);
+      where.push(m.sql); params.push(...m.params);
     }
     if (q.moqMax != null && Number.isFinite(q.moqMax)) { where.push('(p.moq IS NULL OR p.moq <= ?)'); params.push(q.moqMax); }
     if (q.hasPrice) where.push("p.price_mode <> 'GET_QUOTE'");
@@ -585,7 +649,19 @@ export class CatalogStore {
       await this.db.run(`UPDATE products SET ${assign.join(', ')}, updated_at = now() WHERE id = ?`, ...cols.map((c) => next[c]), id);
     }
     const primary = next.category_id !== undefined ? (next.category_id as string | null) : (cur.category_id as string | null);
+    const prevExtras = patch.extraCategoryIds !== undefined || patch.categoryId !== undefined
+      ? (await this.extraCategories(id)).map((c) => c.id)
+      : [];
     await this.setExtraCategories(id, primary, patch.extraCategoryIds);
+    if (patch.extraCategoryIds !== undefined || patch.categoryId !== undefined) {
+      const newExtras = (await this.extraCategories(id)).map((c) => c.id);
+      const removed = prevExtras.filter((x) => !newExtras.includes(x));
+      const added = newExtras.filter((x) => !prevExtras.includes(x));
+      const primaryChanged = patch.categoryId !== undefined && emptyToNull(patch.categoryId) !== (cur.category_id as string | null);
+      if (removed.length || added.length || primaryChanged) {
+        await this.audit(id, by, 'CATEGORIES', { categoryId: cur.category_id, extraCategoryIds: prevExtras }, { categoryId: primary, extraCategoryIds: newExtras, removed, added });
+      }
+    }
     if (opts.prices && Array.isArray(patch.tiers)) {
       await this.db.run('DELETE FROM product_price_tiers WHERE product_id = ?', id);
       for (const t of patch.tiers as any[]) {
@@ -1257,7 +1333,44 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const b = req.body ?? {};
     const cur = await store.categoryById(req.params.id);
     if (!cur) bad('Category not found', 404);
-    return { data: await store.upsertCategory(String(b.name ?? cur.name), req.params.id, b.parentId === undefined ? undefined : (b.parentId ? String(b.parentId) : null), b.active) };
+    const data = await store.upsertCategory(String(b.name ?? cur.name), req.params.id, b.parentId === undefined ? undefined : (b.parentId ? String(b.parentId) : null), b.active);
+    if (b.active !== undefined && !!cur.active !== !!data?.active) {
+      await store.auditCategory(req.params.id, u.id, b.active ? 'ACTIVATE' : 'DEACTIVATE', cur, data);
+    }
+    return { data };
+  });
+  api.get<{ Params: { id: string } }>('/api/catalog/categories/:id/usage', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can manage categories');
+    const usage = await store.categoryUsage(req.params.id);
+    if (!usage) bad('Category not found', 404);
+    return { data: usage };
+  });
+  api.get<{ Params: { id: string } }>('/api/catalog/categories/:id/audit', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can manage categories');
+    if (!(await store.categoryById(req.params.id))) bad('Category not found', 404);
+    return { data: await store.categoryAuditList(req.params.id) };
+  });
+  api.post<{ Params: { id: string }; Body: { categoryId?: string } }>('/api/catalog/categories/:id/reassign', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can manage categories');
+    const to = String(req.body?.categoryId ?? '').trim();
+    if (!to) bad('Choose a category to move products to');
+    return await store.reassignCategoryProducts(req.params.id, to, u.id);
+  });
+  api.post<{ Params: { id: string } }>('/api/catalog/categories/:id/clear-extras', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can manage categories');
+    return await store.clearCategoryExtras(req.params.id, u.id);
+  });
+  api.delete<{ Params: { id: string } }>('/api/catalog/categories/:id', async (req, reply) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can manage categories');
+    const usage = await store.categoryUsage(req.params.id);
+    if (!usage) return reply.code(404).send({ error: 'Category not found' });
+    if (!usage.empty) return reply.code(409).send({ error: 'This category still has products, subcategories or banners. Deactivate it, or move the products first.', code: 'not_empty', usage });
+    return await store.deleteCategory(req.params.id, u.id);
   });
 
   api.get<{ Querystring: { q?: string } }>('/api/catalog/suppliers', async (req) => {
