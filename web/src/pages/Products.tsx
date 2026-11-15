@@ -235,7 +235,17 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
   useEffect(() => {
     void staffReq<{ data: Category[] }>('GET', '/api/catalog/categories').then((r) => setCategories(r.data)).catch(() => setCategories([]));
     if (canLink) void staffReq<{ data: typeof suppliers }>('GET', '/api/catalog/suppliers').then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
-  }, [canLink]);
+    if (product?.id) {
+      void staffReq<{ data: StaffProduct }>('GET', `/api/products/${product.id}`).then((r) => {
+        const p = r.data;
+        setF((s) => ({
+          ...s,
+          categoryId: p.categoryId ?? p.category?.id ?? s.categoryId,
+          extraCategoryIds: (p.extraCategories ?? []).map((c: { id: string }) => c.id),
+        }));
+      }).catch(() => { /* keep values from the list row */ });
+    }
+  }, [canLink, product?.id]); // eslint-disable-line
   const addSupplier = async () => {
     if (!newSup.name.trim()) return;
     const r = await staffReq<{ data: (typeof suppliers)[number] }>('POST', '/api/catalog/suppliers', {

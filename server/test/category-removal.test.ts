@@ -90,6 +90,23 @@ describe('category removal', () => {
     expect(reassignAudit.map((r) => r.action)).toEqual(expect.arrayContaining(['REASSIGN', 'DELETE']));
   });
 
+  it('includes extra categories on the product list so the editor can remove them', async () => {
+    const e = await setup();
+    const mt = await mtClient(e);
+    const main = (await mt('POST', '/api/catalog/categories', { name: 'TEST QA List Main' })).json().data;
+    const also = (await mt('POST', '/api/catalog/categories', { name: 'TEST QA List Also' })).json().data;
+    const product = (await mt('POST', '/api/products', {
+      title: 'TEST QA list-extras mug',
+      categoryId: main.id,
+      extraCategoryIds: [also.id],
+    })).json().data;
+    const list = await mt('GET', '/api/products?q=TEST QA list-extras mug');
+    expect(list.statusCode).toBe(200);
+    const row = (list.json().data as any[]).find((x) => x.id === product.id);
+    expect(row).toBeTruthy();
+    expect((row.extraCategories as { id: string }[]).map((c) => c.id)).toEqual([also.id]);
+  });
+
   it('audits removing an extra category from a product and lets Marketplace Team do it', async () => {
     const e = await setup();
     const mt = await mtClient(e);

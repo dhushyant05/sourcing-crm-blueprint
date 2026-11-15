@@ -1434,7 +1434,8 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const data = [];
     for (const r of rows) {
       const images = await store.images(r.id);
-      data.push(staffView(r, u.role, rates, { images: staffPhotos(images as any, r.id) }));
+      const extraCategories = await store.extraCategories(r.id);
+      data.push(staffView(r, u.role, rates, { images: staffPhotos(images as any, r.id), extraCategories }));
     }
     return { data, total, limit, offset };
   });
