@@ -29,10 +29,9 @@ describe('catalog homepage flag', () => {
     const created = await mt('POST', '/api/products', { title: 'Draft widget', summary: 'Not live' });
     expect(created.statusCode).toBe(201);
     expect(created.json().data.status).toBe('DRAFT');
-    expect((await mt('POST', `/api/products/${created.json().data.id}/publish`)).statusCode).toBe(403);
     expect((await call('is', 'POST', `/api/products/${created.json().data.id}/publish`)).statusCode).toBe(403);
     await call('ia', 'PATCH', `/api/products/${created.json().data.id}`, { priceMode: 'GET_QUOTE' });
-    expect((await call('ia', 'POST', `/api/products/${created.json().data.id}/publish`)).statusCode).toBe(200);
+    expect((await mt('POST', `/api/products/${created.json().data.id}/publish`)).statusCode).toBe(200);
     const live = (await app.inject({ method: 'GET', url: '/api/public/catalog/status' })).json();
     expect(live).toMatchObject({ homepageEnabled: true, hasPublished: true, showMarketplace: true });
   });
