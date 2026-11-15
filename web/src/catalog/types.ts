@@ -37,6 +37,8 @@ export type Product = {
   capacity?: string | null; packaging?: string | null; customization?: string | null; samplePolicy?: string | null;
   price: Price; tiers?: PriceTier[];
   images: ProductImage[]; isSample?: boolean; pinned?: boolean; trending?: boolean; trendingScore?: number; viewCount?: number; enquiryCount?: number; tags?: string[];
+  clearance?: boolean; clearancePrice?: Price | number | null; clearanceDiscountPct?: number | null; clearanceEndsAt?: string | null; clearanceStockLeft?: number | null;
+  pinStartsAt?: string | null; pinEndsAt?: string | null;
   status?: string; categoryId?: string | null; categoryName?: string | null; categorySlug?: string | null; extraCategories?: { id: string; slug: string; name: string }[];
   priceMode?: string; baseCurrency?: string; priceMin?: number | null; priceMax?: number | null;
   deletedAt?: string | null; publishedAt?: string | null;

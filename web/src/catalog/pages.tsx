@@ -1,6 +1,6 @@
 import { FavoriteButton } from './FavoriteButton';
 import { useEffect, useState } from 'react';
-import { Clock, Factory, FileText, GitCompare, Home, Lamp, MessageCircle, Package, Search, Share2, Shield, ShieldCheck, Shirt, Sparkles, TrendingUp, Truck, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
+import { Clock, Factory, FileText, GitCompare, Home, Lamp, MessageCircle, Package, Search, Share2, Shield, ShieldCheck, Shirt, Sparkles, Tag, TrendingUp, Truck, UtensilsCrossed, Warehouse, Wrench } from 'lucide-react';
 import { publicCatalog } from './api';
 import { CategoryExplorer } from './CategoryExplorer';
 import { MarketplaceGreeting } from './GreetingStrip';
@@ -19,8 +19,8 @@ const CAT_ICON: Record<string, typeof Factory> = {
 
 function go(path: string) { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); }
 
-export function HomePage({ products, banners, settings, categories, trust }: {
-  products: Product[]; banners: Banner[]; settings: BannerSettings; categories: Category[]; trust?: TrustItem[];
+export function HomePage({ products, clearanceProducts = [], banners, settings, categories, trust }: {
+  products: Product[]; clearanceProducts?: Product[]; banners: Banner[]; settings: BannerSettings; categories: Category[]; trust?: TrustItem[];
 }) {
   const items = (trust && trust.length ? trust : DEFAULT_TRUST);
   const recommended = products.filter((p) => p.pinned).concat(products).filter((p, i, a) => a.findIndex((x) => x.id === p.id) === i).slice(0, 10);
@@ -33,6 +33,7 @@ export function HomePage({ products, banners, settings, categories, trust }: {
           <div className="flex flex-wrap gap-2 text-sm">
             <QuickLink icon={FileText} label="Request for quotation" onClick={() => go('/#quote')} />
             <QuickLink icon={TrendingUp} label="Trending" onClick={() => go('/#recommended')} />
+            {clearanceProducts.length > 0 && <QuickLink icon={Tag} label="Clearance" onClick={() => go('/#clearance')} />}
             <QuickLink icon={Sparkles} label="Custom sourcing" onClick={() => go('/#quote')} />
           </div>
         </div>
@@ -51,6 +52,20 @@ export function HomePage({ products, banners, settings, categories, trust }: {
           ))}
         </div>
       </section>
+
+      {clearanceProducts.length > 0 && (
+        <section id="clearance" className="mx-auto max-w-7xl px-4 py-6 sm:px-6" data-testid="clearance-section">
+          <div className="flex items-end justify-between">
+            <h2 className="text-lg font-semibold text-ink-800">Clearance</h2>
+            <button type="button" onClick={() => go('/clearance')} className="text-sm font-medium text-brand-700 hover:underline">View all</button>
+          </div>
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+            {clearanceProducts.slice(0, 10).map((p) => (
+              <div key={p.id} className="w-36 shrink-0 sm:w-40"><ProductCard product={p} variant="compact" /></div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <h2 className="text-lg font-semibold text-ink-800">Products</h2>
@@ -101,7 +116,7 @@ function QuickLink({ icon: Icon, label, onClick }: { icon: typeof Search; label:
 }
 
 
-export function ListingPage({ title, category, query, categories = [] }: { title: string; category?: string; query?: string; categories?: Category[] }) {
+export function ListingPage({ title, category, query, clearance = false, categories = [] }: { title: string; category?: string; query?: string; clearance?: boolean; categories?: Category[] }) {
   const [q, setQ] = useState(query ?? '');
   const [data, setData] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -109,12 +124,17 @@ export function ListingPage({ title, category, query, categories = [] }: { title
   useEffect(() => { setQ(query ?? ''); }, [query]);
   useEffect(() => {
     let on = true; setBusy(true);
-    publicCatalog.products({ q: q || undefined, category, limit: 48, sort: 'trending' }).then((r) => { if (on) { setData(r.data); setTotal(r.total); } })
+    publicCatalog.products({ q: q || undefined, category, limit: 48, sort: clearance ? undefined : 'trending', clearance: clearance ? 1 : undefined }).then((r) => { if (on) { setData(r.data); setTotal(r.total); } })
       .catch(() => { if (on) { setData([]); setTotal(0); } })
       .finally(() => { if (on) setBusy(false); });
     return () => { on = false; };
-  }, [q, category]);
-  const search = (e: React.FormEvent) => { e.preventDefault(); history.replaceState({}, '', `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`); dispatchEvent(new PopStateEvent('popstate')); };
+  }, [q, category, clearance]);
+  const search = (e: React.FormEvent) => {
+    e.preventDefault();
+    const path = clearance ? `/clearance${q ? `?q=${encodeURIComponent(q)}` : ''}` : `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`;
+    history.replaceState({}, '', path);
+    dispatchEvent(new PopStateEvent('popstate'));
+  };
   const current = categoryBySlug(categories, category);
   const crumbs = current ? breadcrumbOf(categories, current) : [];
   const siblingParent = current?.parentId ?? null;
@@ -245,6 +265,7 @@ export function ProductPage({ slug }: { slug: string }) {
           <Gallery product={p} />
           <div>
             {p.isSample && <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Sample</span>}
+            {p.clearance && <span data-testid="clearance-badge" className="ml-2 inline-flex rounded-full bg-rose-600 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">Clearance</span>}
             {(p.pinned || p.trending) && <span className="ml-2 inline-flex rounded-full bg-warm-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warm-600">Trending</span>}
             <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
               <h1 className="text-2xl font-semibold tracking-tight text-ink-800 sm:text-3xl">{p.title}</h1>
@@ -258,7 +279,20 @@ export function ProductPage({ slug }: { slug: string }) {
               </div>
             </div>
 
-            <p className="mt-4 text-2xl font-semibold text-brand-700" data-testid="product-price">{priceLabel(p.price, currency)}</p>
+            {p.clearance && p.clearancePrice && typeof p.clearancePrice === 'object' && p.clearancePrice.amounts ? (
+              <div className="mt-4" data-testid="product-price">
+                <p className="text-2xl font-semibold text-rose-700">
+                  {priceLabel(p.clearancePrice, currency)}
+                  {p.price?.amounts?.[currency]?.min != null && <span className="ml-3 text-lg font-normal text-ink-400 line-through">{priceLabel(p.price, currency)}</span>}
+                </p>
+                <p className="mt-1 text-sm text-rose-600">
+                  {p.clearanceDiscountPct != null && <span className="font-semibold">{Math.round(p.clearanceDiscountPct)}% off</span>}
+                  {p.clearanceStockLeft != null && <span>{p.clearanceDiscountPct != null ? ' · ' : ''}Only {p.clearanceStockLeft} left</span>}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-4 text-2xl font-semibold text-brand-700" data-testid="product-price">{priceLabel(p.price, currency)}</p>
+            )}
             <p className="mt-1 text-sm text-ink-400">Sourced in China · Prices in USD, RMB and INR</p>
 
             {tiers.length > 0 && (
