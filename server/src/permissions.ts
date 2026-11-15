@@ -46,7 +46,7 @@ const DEF = new Map(PERMISSIONS.map((p) => [p.key, p]));
 const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all'];
 const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all'];
 const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
-const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish'];
+const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish', 'catalog.price'];
 const INDIA_CATALOG = ['catalog.edit', 'catalog.price', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
   INDIA_STAFF: [...INDIA_STAFF, ...INDIA_CATALOG],
@@ -62,6 +62,8 @@ export function allowedFor(role: Role, key: string): boolean {
   const d = DEF.get(key); if (!d) return false;
   const s = sides(role);
   if (s.superAdmin || d.side === 'ANY') return true;
+  // Marketplace Team is catalog-only (not India staff) but may hold India-side catalog permissions such as selling prices.
+  if (role === 'MARKETPLACE_TEAM') return d.group === 'catalog' && d.side !== 'CHINA';
   return d.side === 'INDIA' ? s.india : s.china;
 }
 

@@ -3,14 +3,11 @@ import { ChevronRight, Warehouse } from 'lucide-react';
 import { BannerCarousel } from './Banner';
 import { ProductCard } from './ProductCard';
 import type { Banner, BannerSettings, Category, Product } from './types';
+import { childrenOf, inCategoryTree, topLevel } from './tree';
 
 const CAT_ICON: Record<string, typeof Warehouse> = {};
 
 function go(path: string) { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate')); }
-
-function inCategory(p: Product, cat: Category) {
-  return p.category?.slug === cat.slug || p.category?.id === cat.id || p.categoryId === cat.id || p.categorySlug === cat.slug;
-}
 
 function uniqueByCategory(products: Product[]) {
   const seen = new Set<string>();
@@ -30,9 +27,10 @@ export function CategoryExplorer({ categories, products, banners, settings, icon
   icons?: Record<string, typeof Warehouse>;
 }) {
   const [active, setActive] = useState<string | null>(null);
+  const roots = topLevel(categories);
   const cat = categories.find((c) => c.slug === active) ?? null;
-  const children = cat ? categories.filter((c) => c.parentId && (c.parentId === cat.id || c.parentId === cat.slug)) : [];
-  const shown = cat ? products.filter((p) => inCategory(p, cat)) : uniqueByCategory(products);
+  const children = cat ? childrenOf(categories, cat.id) : [];
+  const shown = cat ? products.filter((p) => inCategoryTree(p, cat, categories)) : uniqueByCategory(products);
   const Icons = icons ?? CAT_ICON;
 
   return (
@@ -44,7 +42,7 @@ export function CategoryExplorer({ categories, products, banners, settings, icon
         <aside className="bg-white">
           <div className="border-b border-ink-100 px-4 py-3 text-sm font-semibold text-ink-800">Categories for you</div>
           <ul className="flex gap-1 overflow-x-auto px-2 py-2 md:block md:divide-y md:divide-ink-50 md:overflow-visible md:px-0 md:py-0">
-            {categories.map((c) => {
+            {roots.map((c) => {
               const Icon = Icons[c.name] ?? Warehouse;
               const on = active === c.slug;
               return (
@@ -102,15 +100,16 @@ export function CategoryExplorer({ categories, products, banners, settings, icon
 export function CategoryMegaMenu({ categories, products, onGo }: {
   categories: Category[]; products: Product[]; onGo: (path: string) => void;
 }) {
-  const [active, setActive] = useState<string | null>(categories[0]?.slug ?? null);
+  const roots = topLevel(categories);
+  const [active, setActive] = useState<string | null>(roots[0]?.slug ?? categories[0]?.slug ?? null);
   const cat = categories.find((c) => c.slug === active) ?? null;
-  const shown = cat ? products.filter((p) => inCategory(p, cat)) : products;
-  const children = cat ? categories.filter((c) => c.parentId && (c.parentId === cat.id || c.parentId === cat.slug)) : [];
+  const shown = cat ? products.filter((p) => inCategoryTree(p, cat, categories)) : products;
+  const children = cat ? childrenOf(categories, cat.id) : [];
   return (
     <div className="flex w-[min(90vw,52rem)] flex-col md:min-h-[22rem] md:flex-row" data-testid="categories-mega">
       <div className="max-h-64 overflow-y-auto border-b border-ink-100 md:max-h-none md:w-56 md:shrink-0 md:border-b-0 md:border-r">
         <button type="button" className="block w-full px-4 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-warm-50" onClick={() => onGo('/products')}>All products</button>
-        {categories.map((c) => (
+        {roots.map((c) => (
           <button key={c.id} type="button"
             onMouseEnter={() => setActive(c.slug)}
             onFocus={() => setActive(c.slug)}

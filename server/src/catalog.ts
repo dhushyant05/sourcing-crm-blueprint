@@ -80,6 +80,8 @@ export interface CatalogDeps {
     customerId?: string;
   }) => Promise<{ leadId: string; leadRef: string; loginRequested?: boolean }>;
   readMultipart?: (req: FastifyRequest, maxFiles: number) => Promise<{ fields: Record<string, string>; files: Staged[]; err: { status: number; error: string; code: string } | null }>;
+  /** True when the request carries a customer-portal token for an active paid membership. Staff tokens never count. */
+  isPaidMember?: (req: FastifyRequest) => Promise<boolean>;
   reservePublicEnquiry?: (req: FastifyRequest, honeypot: string) => Promise<{ skip?: true; limited?: true; ok?: true }>;
   createPublicShipping?: (input: {
     name: string; phone: string; phoneCode: string; email?: string; company?: string;
@@ -103,6 +105,10 @@ function canDelete(perms: PermStore, u: User) { return perms.can(u, 'catalog.del
 function canBanners(perms: PermStore, u: User) { return perms.can(u, 'catalog.banners'); }
 function isSa(u: User) { return u.role === 'SUPER_ADMIN'; }
 function hidePrices(role: Role) { return sides(role).china && role !== 'SUPER_ADMIN'; }
+/** Super admin, China staff, and Marketplace Team may link a supplier to a product. India staff cannot. */
+export function canLinkSupplier(u: User) {
+  return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM' || u.role.startsWith('CHINA');
+}
 
 export class CatalogStore {
   constructor(readonly db: Db) {}
@@ -190,6 +196,9 @@ export class CatalogStore {
     }
   }
 
+  categoryRow(r: any) {
+    return r ? { id: r.id, slug: r.slug, name: r.name, parentId: r.parentId ?? r.parent_id ?? null, active: r.active !== false } : null;
+  }
   async categories(activeOnly = true) {
     const sql = activeOnly
       ? 'SELECT id, slug, name, parent_id AS "parentId", active FROM categories WHERE active = true ORDER BY lower(name)'
@@ -199,18 +208,81 @@ export class CatalogStore {
   async categoryBySlug(slug: string) {
     return this.db.get('SELECT id, slug, name, parent_id AS "parentId", active FROM categories WHERE slug = ?', slug);
   }
-  async upsertCategory(name: string, id?: string) {
-    const slug = slugify(name);
+  async categoryById(id: string) {
+    return this.db.get('SELECT id, slug, name, parent_id AS "parentId", active FROM categories WHERE id = ?', id);
+  }
+  async uniqueCategorySlug(base: string, except?: string) {
+    let n = 2;
+    let slug = slugify(base);
     if (!slug) bad('Category name is required');
-    if (id) {
-      await this.db.run('UPDATE categories SET name = ?, slug = ? WHERE id = ?', name.trim().slice(0, 80), slug, id);
-      return this.db.get('SELECT id, slug, name FROM categories WHERE id = ?', id);
+    for (;;) {
+      const row = await this.db.get<{ id: string }>('SELECT id FROM categories WHERE slug = ?', slug);
+      if (!row || row.id === except) return slug;
+      slug = `${slugify(base).slice(0, 70)}-${n++}`;
     }
-    const existing = await this.db.get('SELECT id, slug, name FROM categories WHERE slug = ?', slug);
-    if (existing) return existing;
+  }
+  async categoryPath(idOrSlug: string) {
+    const start = await this.db.get('SELECT id, slug, name, parent_id AS "parentId" FROM categories WHERE id = ? OR slug = ?', idOrSlug, idOrSlug);
+    if (!start) return [];
+    const path = [{ id: start.id, slug: start.slug, name: start.name }];
+    const seen = new Set<string>([start.id]);
+    let parentId = start.parentId as string | null;
+    for (let i = 0; i < 20 && parentId; i++) {
+      const row = await this.db.get('SELECT id, slug, name, parent_id AS "parentId" FROM categories WHERE id = ?', parentId);
+      if (!row || seen.has(row.id)) break;
+      seen.add(row.id);
+      path.unshift({ id: row.id, slug: row.slug, name: row.name });
+      parentId = row.parentId;
+    }
+    return path;
+  }
+  async descendantIds(idOrSlug: string) {
+    const rows = await this.db.all<{ id: string }>(`WITH RECURSIVE tree AS (
+      SELECT id, 1 AS depth FROM categories WHERE id = ? OR slug = ?
+      UNION ALL
+      SELECT c.id, t.depth + 1 FROM categories c JOIN tree t ON c.parent_id = t.id WHERE t.depth < 20
+    ) SELECT id FROM tree`, idOrSlug, idOrSlug);
+    return rows.map((r) => r.id);
+  }
+  async wouldCycle(id: string, parentId: string | null) {
+    if (!parentId) return false;
+    if (parentId === id) return true;
+    let cur: string | null = parentId;
+    const seen = new Set<string>();
+    for (let i = 0; i < 20 && cur; i++) {
+      if (cur === id) return true;
+      if (seen.has(cur)) return true;
+      seen.add(cur);
+      const parentRow: { parentId: string | null } | undefined = await this.db.get('SELECT parent_id AS "parentId" FROM categories WHERE id = ?', cur);
+      cur = parentRow?.parentId ?? null;
+    }
+    return false;
+  }
+  async upsertCategory(name: string, id?: string, parentId?: string | null, active?: boolean) {
+    const trimmed = name.trim().slice(0, 80);
+    if (!trimmed) bad('Category name is required');
+    const parent = parentId === undefined ? undefined : (parentId ? String(parentId) : null);
+    if (parent) {
+      const p = await this.categoryById(parent);
+      if (!p) bad('Parent category not found', 400);
+    }
+    if (id) {
+      if (parent !== undefined && await this.wouldCycle(id, parent ?? null)) bad('A category cannot be nested under itself');
+      const slug = await this.uniqueCategorySlug(trimmed, id);
+      const sets = ['name = ?', 'slug = ?'];
+      const args: unknown[] = [trimmed, slug];
+      if (parent !== undefined) { sets.push('parent_id = ?'); args.push(parent); }
+      if (active !== undefined) { sets.push('active = ?'); args.push(!!active); }
+      await this.db.run(`UPDATE categories SET ${sets.join(', ')} WHERE id = ?`, ...args, id);
+      return this.categoryById(id);
+    }
+    const slug = await this.uniqueCategorySlug(trimmed);
+    const existing = await this.db.get('SELECT id, slug, name, parent_id AS "parentId", active FROM categories WHERE slug = ?', slug);
+    // Reuse only a same-name top-level category when creating another top-level row (seed-safe).
+    if (existing && !parent && !existing.parentId) return existing;
     const nid = randomUUID();
-    await this.db.run('INSERT INTO categories (id, slug, name) VALUES (?,?,?)', nid, slug, name.trim().slice(0, 80));
-    return { id: nid, slug, name: name.trim().slice(0, 80) };
+    await this.db.run('INSERT INTO categories (id, slug, name, parent_id) VALUES (?,?,?,?)', nid, slug, trimmed, parent ?? null);
+    return { id: nid, slug, name: trimmed, parentId: parent ?? null, active: true };
   }
 
   async get(idOrSlug: string, opts: { includeDeleted?: boolean } = {}) {
@@ -223,6 +295,50 @@ export class CatalogStore {
   async tiers(productId: string) {
     return this.db.all('SELECT id, min_qty AS "minQty", max_qty AS "maxQty", unit_price AS "unitPrice", price_usd AS "priceUsd", price_cny AS "priceCny", price_inr AS "priceInr" FROM product_price_tiers WHERE product_id = ? ORDER BY min_qty', productId);
   }
+  async catalogSupplier(id: string) {
+    return this.db.get(`SELECT ${CATALOG_SUPPLIER_COLS} FROM suppliers WHERE id = ?`, id);
+  }
+  async listCatalogSuppliers(q?: string) {
+    const query = (q ?? '').trim();
+    if (query) {
+      return this.db.all(`SELECT ${CATALOG_SUPPLIER_COLS} FROM suppliers WHERE name ILIKE ? ORDER BY lower(name) LIMIT 200`, `%${query}%`);
+    }
+    return this.db.all(`SELECT ${CATALOG_SUPPLIER_COLS} FROM suppliers ORDER BY lower(name) LIMIT 200`);
+  }
+  async upsertCatalogSupplier(input: Record<string, unknown>, id?: string) {
+    const name = String(input.name ?? '').trim().slice(0, 120);
+    if (!id && !name) bad('Supplier name is required');
+    const consent = input.catalogConsent == null ? undefined : !!(input.catalogConsent === true || input.catalogConsent === 'true');
+    const region = input.publicRegion === undefined ? undefined : emptyToNull(input.publicRegion, 80);
+    const about = input.publicAbout === undefined ? undefined : emptyToNull(input.publicAbout, 2000);
+    const years = input.publicYears === undefined ? undefined : numOrNull(input.publicYears);
+    const verified = input.publicVerified == null ? undefined : !!(input.publicVerified === true || input.publicVerified === 'true');
+    if (id) {
+      const cur = await this.catalogSupplier(id);
+      if (!cur) bad('Supplier not found', 404);
+      const sets: string[] = [];
+      const args: unknown[] = [];
+      if (name) { sets.push('name = ?'); args.push(name); }
+      if (region !== undefined) { sets.push('public_region = ?'); args.push(region); }
+      if (about !== undefined) { sets.push('public_about = ?'); args.push(about); }
+      if (years !== undefined) { sets.push('public_years = ?'); args.push(years); }
+      if (verified !== undefined) { sets.push('public_verified = ?'); args.push(verified); }
+      if (consent !== undefined) {
+        sets.push('catalog_consent = ?'); args.push(consent);
+        if (consent) { sets.push('consent_at = coalesce(consent_at, now())'); }
+        else { sets.push('consent_at = null'); }
+      }
+      if (sets.length) await this.db.run(`UPDATE suppliers SET ${sets.join(', ')} WHERE id = ?`, ...args, id);
+      return this.catalogSupplier(id);
+    }
+    const nid = randomUUID();
+    await this.db.run(
+      `INSERT INTO suppliers (id, name, catalog_consent, consent_at, public_region, public_about, public_years, public_verified, created_at)
+       VALUES (?,?,?,?,?,?,?,?,now())`,
+      nid, name, consent === true, consent === true ? new Date().toISOString() : null, region ?? null, about ?? null, years ?? null, verified === true,
+    );
+    return this.catalogSupplier(nid);
+  }
 
   async searchPublic(q: {
     q?: string; category?: string; sort?: string; window?: number; moqMax?: number; hasPrice?: boolean; limit?: number; offset?: number;
@@ -232,7 +348,14 @@ export class CatalogStore {
     const days = windowDays(q.window);
     const where = ["p.status = 'PUBLISHED'", 'p.deleted_at IS NULL'];
     const params: unknown[] = [];
-    if (q.category) { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
+    if (q.category) {
+      const ids = await this.descendantIds(q.category);
+      if (!ids.length) { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
+      else {
+        where.push(`p.category_id IN (${ids.map(() => '?').join(',')})`);
+        params.push(...ids);
+      }
+    }
     if (q.moqMax != null && Number.isFinite(q.moqMax)) { where.push('(p.moq IS NULL OR p.moq <= ?)'); params.push(q.moqMax); }
     if (q.hasPrice) where.push("p.price_mode <> 'GET_QUOTE'");
     const query = (q.q ?? '').trim();
@@ -282,10 +405,11 @@ export class CatalogStore {
     const id = randomUUID();
     const slug = await this.uniqueSlug(String(input.slug ?? title));
     const base = CURRENCIES.includes(input.baseCurrency as Currency) ? input.baseCurrency : 'USD';
-    await this.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, price_mode, base_currency, created_by, is_sample)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,false)`,
-      id, slug, title, emptyToNull(input.summary, 4000), input.specs ? JSON.stringify(input.specs) : null,
+    await this.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, capacity, packaging, customization, sample_policy, price_mode, base_currency, created_by, is_sample)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,false)`,
+      id, slug, title, emptyToNull(input.summary, 4000), input.specs ? JSON.stringify(normalizeSpecs(input.specs)) : null,
       emptyToNull(input.categoryId), 'DRAFT', numOrNull(input.moq), emptyToNull(input.unit, 24), emptyToNull(input.leadTime, 80),
+      emptyToNull(input.capacity, 400), emptyToNull(input.packaging, 4000), emptyToNull(input.customization, 4000), emptyToNull(input.samplePolicy, 2000),
       'GET_QUOTE', base, by);
     const tags = parseTags(input.tags);
     if (tags.length) await this.db.run('UPDATE products SET tags = ?::jsonb WHERE id = ?', JSON.stringify(tags), id);
@@ -293,17 +417,26 @@ export class CatalogStore {
     return this.get(id);
   }
 
-  async update(id: string, patch: Record<string, unknown>, by: string, opts: { prices: boolean }) {
+  async update(id: string, patch: Record<string, unknown>, by: string, opts: { prices: boolean; linkSupplier?: boolean }) {
     const cur = await this.get(id); if (!cur) bad('Product not found', 404);
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
     const next: Record<string, unknown> = {};
     if (patch.title != null) next.title = String(patch.title).trim().slice(0, 200);
     if (patch.summary !== undefined) next.summary = emptyToNull(patch.summary, 4000);
-    if (patch.specs !== undefined) next.specs = patch.specs == null ? null : JSON.stringify(patch.specs);
+    if (patch.specs !== undefined) next.specs = patch.specs == null ? null : JSON.stringify(normalizeSpecs(patch.specs));
     if (patch.categoryId !== undefined) next.category_id = emptyToNull(patch.categoryId);
     if (patch.moq !== undefined) next.moq = numOrNull(patch.moq);
     if (patch.unit !== undefined) next.unit = emptyToNull(patch.unit, 24);
     if (patch.leadTime !== undefined) next.lead_time = emptyToNull(patch.leadTime, 80);
+    if (patch.capacity !== undefined) next.capacity = emptyToNull(patch.capacity, 400);
+    if (patch.packaging !== undefined) next.packaging = emptyToNull(patch.packaging, 4000);
+    if (patch.customization !== undefined) next.customization = emptyToNull(patch.customization, 4000);
+    if (patch.samplePolicy !== undefined) next.sample_policy = emptyToNull(patch.samplePolicy, 2000);
+    if (opts.linkSupplier && patch.supplierId !== undefined) {
+      const sid = emptyToNull(patch.supplierId);
+      if (sid && !(await this.catalogSupplier(String(sid)))) bad('Supplier not found', 400);
+      next.supplier_id = sid;
+    }
     if (patch.slug) next.slug = await this.uniqueSlug(String(patch.slug), id);
     if (patch.tags !== undefined) next.tags = JSON.stringify(parseTags(patch.tags));
     if (patch.status === 'READY_FOR_PRICE' && cur.status === 'DRAFT') next.status = 'READY_FOR_PRICE';
@@ -326,8 +459,10 @@ export class CatalogStore {
     if (opts.prices && Array.isArray(patch.tiers)) {
       await this.db.run('DELETE FROM product_price_tiers WHERE product_id = ?', id);
       for (const t of patch.tiers as any[]) {
+        const unitPrice = Number(t.unitPrice);
+        if (!Number.isFinite(unitPrice)) continue;
         await this.db.run('INSERT INTO product_price_tiers (id, product_id, min_qty, max_qty, unit_price, price_usd, price_cny, price_inr) VALUES (?,?,?,?,?,?,?,?)',
-          randomUUID(), id, numOrNull(t.minQty) ?? 1, numOrNull(t.maxQty), Number(t.unitPrice), numOrNull(t.priceUsd), numOrNull(t.priceCny), numOrNull(t.priceInr));
+          randomUUID(), id, numOrNull(t.minQty) ?? 1, numOrNull(t.maxQty), unitPrice, numOrNull(t.priceUsd), numOrNull(t.priceCny), numOrNull(t.priceInr));
       }
     }
     await this.audit(id, by, 'UPDATE', pickPublic(cur), next);
@@ -475,10 +610,68 @@ function stripSupplier(row: any) {
   return rest;
 }
 
-export async function publicView(store: CatalogStore, row: any, rates: RateMap) {
+/** Key attributes: a plain object, or a list of {key,value} rows from the staff form. */
+export function normalizeSpecs(raw: unknown): Record<string, string> | null {
+  if (raw == null || raw === '') return null;
+  if (Array.isArray(raw)) {
+    const out: Record<string, string> = {};
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue;
+      const key = String((row as any).key ?? (row as any).name ?? '').trim().slice(0, 80);
+      const value = String((row as any).value ?? '').trim().slice(0, 400);
+      if (key && value) out[key] = value;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  if (typeof raw === 'object') {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (v == null || String(v).trim() === '') continue;
+      out[String(k).trim().slice(0, 80)] = String(v).trim().slice(0, 400);
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  return null;
+}
+
+const CATALOG_SUPPLIER_COLS = 'id, name, catalog_consent AS "catalogConsent", public_region AS "publicRegion", public_about AS "publicAbout", public_years AS "publicYears", public_verified AS "publicVerified", show_contacts_to_members AS "showContactsToMembers"';
+
+export function catalogSupplierCard(row: any, paidMember: boolean): { supplier: Record<string, unknown> | null; supplierAvailable: boolean } {
+  if (!row || !row.catalogConsent) return { supplier: null, supplierAvailable: false };
+  if (!paidMember) return { supplier: null, supplierAvailable: true };
+  return {
+    supplierAvailable: true,
+    supplier: {
+      company: row.name,
+      region: row.publicRegion || null,
+      years: row.publicYears == null ? null : Number(row.publicYears),
+      verified: !!row.publicVerified,
+      about: row.publicAbout || null,
+    },
+  };
+}
+
+export function catalogSupplierStaffView(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    catalogConsent: !!row.catalogConsent,
+    publicRegion: row.publicRegion || null,
+    publicAbout: row.publicAbout || null,
+    publicYears: row.publicYears == null ? null : Number(row.publicYears),
+    publicVerified: !!row.publicVerified,
+  };
+}
+
+export async function publicView(store: CatalogStore, row: any, rates: RateMap, opts: { paidMember?: boolean } = {}) {
   const images = await store.images(row.id);
   const tiers = await store.tiers(row.id);
-  const cat = { id: row.category_id, slug: row.category_slug ?? null, name: row.category_name ?? null };
+  let cat = { id: row.category_id, slug: row.category_slug ?? null, name: row.category_name ?? null };
+  if (row.category_id && !cat.slug) {
+    const c = await store.categoryById(row.category_id);
+    if (c) cat = { id: c.id, slug: c.slug, name: c.name };
+  }
+  const breadcrumbs = row.category_id ? await store.categoryPath(row.category_id) : [];
   const price = priced(row, rates);
   const pubTiers = await Promise.all(tiers.map(async (t: any) => {
     const amounts: Record<string, number | null> = {};
@@ -488,10 +681,15 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap) 
     }
     return { minQty: t.minQty, maxQty: t.maxQty, amounts };
   }));
+  const supplierRow = row.supplier_id ? await store.catalogSupplier(row.supplier_id) : null;
+  const supplierCard = catalogSupplierCard(supplierRow, !!opts.paidMember);
   return {
-    id: row.id, slug: row.slug, title: row.title, summary: row.summary, specs: row.specs,
+    id: row.id, slug: row.slug, title: row.title, summary: row.summary, specs: parseSpecs(row.specs),
     category: cat.slug ? cat : null,
+    breadcrumbs,
     moq: row.moq, unit: row.unit, leadTime: row.lead_time,
+    capacity: row.capacity ?? null, packaging: row.packaging ?? null,
+    customization: row.customization ?? null, samplePolicy: row.sample_policy ?? null,
     price, tiers: pubTiers,
     images: publicPhotos(images as any, row.id),
     isSample: !!row.is_sample,
@@ -502,17 +700,29 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap) 
     viewCount: Number(row.view_count ?? 0),
     enquiryCount: Number(row.enquiry_count ?? 0),
     trending: !!row.pinned || Number(row.trending_score ?? 0) > 0,
+    supplier: supplierCard.supplier,
+    supplierAvailable: supplierCard.supplierAvailable,
   };
 }
 
-export function staffView(row: any, role: Role, rates: RateMap, extra: { images?: any[]; tiers?: any[] } = {}) {
+function parseSpecs(raw: unknown): Record<string, string> | null {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'string') {
+    try { return normalizeSpecs(JSON.parse(raw)); } catch { return null; }
+  }
+  return normalizeSpecs(raw);
+}
+
+export function staffView(row: any, role: Role, rates: RateMap, extra: { images?: any[]; tiers?: any[]; catalogSupplier?: any } = {}) {
   const hide = hidePrices(role);
   const price = hide ? { mode: row.price_mode, base: row.base_currency, amounts: null } : priced(row, rates);
   const out: Record<string, unknown> = {
-    id: row.id, slug: row.slug, title: row.title, summary: row.summary, specs: row.specs,
+    id: row.id, slug: row.slug, title: row.title, summary: row.summary, specs: parseSpecs(row.specs),
     categoryId: row.category_id, categorySlug: row.category_slug ?? null, categoryName: row.category_name ?? null,
     tags: tagsOf(row),
     status: row.status, moq: row.moq, unit: row.unit, leadTime: row.lead_time,
+    capacity: row.capacity ?? null, packaging: row.packaging ?? null,
+    customization: row.customization ?? null, samplePolicy: row.sample_policy ?? null,
     priceMode: row.price_mode, baseCurrency: row.base_currency,
     pinned: !!row.pinned, pinStartsAt: row.pin_starts_at, pinEndsAt: row.pin_ends_at,
     isSample: !!row.is_sample, deletedAt: row.deleted_at, publishedAt: row.published_at,
@@ -523,8 +733,11 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
     out.priceMin = row.price_min; out.priceMax = row.price_max;
     out.priceUsd = row.price_usd; out.priceCny = row.price_cny; out.priceInr = row.price_inr;
   }
-  // Phase 1: supplier identity is not returned to India or Marketplace Team (or public). Super admin and China may see the id only.
-  if (role === 'SUPER_ADMIN' || role.startsWith('CHINA')) out.supplierId = row.supplier_id ?? null;
+  // India staff never see supplier identity. Super admin, China, and Marketplace Team may see the catalog card (never contacts or factory cost).
+  if (role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role.startsWith('CHINA')) {
+    out.supplierId = row.supplier_id ?? null;
+    if (extra.catalogSupplier) out.catalogSupplier = extra.catalogSupplier;
+  }
   return out;
 }
 
@@ -668,6 +881,12 @@ async function sendUpload(reply: FastifyReply, uploads: UploadStore, key: string
   return reply.header('content-type', f.meta.mime).header('cache-control', cache).header('content-length', f.size).send(await (await import('node:fs/promises')).readFile(f.path));
 }
 
+export async function isActiveMember(db: Db, customerId: string | null | undefined) {
+  if (!customerId) return false;
+  const row = await db.get(`SELECT 1 FROM memberships WHERE customer_id = ? AND status = 'ACTIVE' AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now())`, customerId);
+  return !!row;
+}
+
 export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
   const store = new CatalogStore(deps.db);
   const pubCache = 'public, max-age=60';
@@ -707,7 +926,8 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     await recordView(store.db, row.id, req);
     const rates = await store.rates();
     const sc = (await scoresFor(store.db, [row.id], 7)).get(row.id);
-    const data = await publicView(store, { ...row, trending_score: sc?.score ?? 0, view_count: sc?.views ?? 0, enquiry_count: sc?.enquiries ?? 0 }, rates);
+    const paidMember = deps.isPaidMember ? await deps.isPaidMember(req) : false;
+    const data = await publicView(store, { ...row, trending_score: sc?.score ?? 0, view_count: sc?.views ?? 0, enquiry_count: sc?.enquiries ?? 0 }, rates, { paidMember });
     return { data };
   });
 
@@ -843,9 +1063,34 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
 
   api.get('/api/catalog/status', async (req) => store.status());
   api.get('/api/catalog/categories', async () => ({ data: await store.categories(false) }));
-  api.post<{ Body: { name?: string } }>('/api/catalog/categories', async (req) => {
+  api.post<{ Body: { name?: string; parentId?: string | null } }>('/api/catalog/categories', async (req) => {
     const u = req.user!; need(u, 'catalog.edit');
-    return { data: await store.upsertCategory(String(req.body?.name ?? '')) };
+    const b = req.body ?? {};
+    return { data: await store.upsertCategory(String(b.name ?? ''), undefined, b.parentId === undefined ? undefined : (b.parentId ? String(b.parentId) : null)) };
+  });
+  api.patch<{ Params: { id: string }; Body: { name?: string; parentId?: string | null; active?: boolean } }>('/api/catalog/categories/:id', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    const b = req.body ?? {};
+    const cur = await store.categoryById(req.params.id);
+    if (!cur) bad('Category not found', 404);
+    return { data: await store.upsertCategory(String(b.name ?? cur.name), req.params.id, b.parentId === undefined ? undefined : (b.parentId ? String(b.parentId) : null), b.active) };
+  });
+
+  api.get<{ Querystring: { q?: string } }>('/api/catalog/suppliers', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canLinkSupplier(u)) forbid();
+    const rows = await store.listCatalogSuppliers(req.query?.q);
+    return { data: rows.map(catalogSupplierStaffView) };
+  });
+  api.post<{ Body: Record<string, unknown> }>('/api/catalog/suppliers', async (req, reply) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canLinkSupplier(u)) forbid();
+    return reply.code(201).send({ data: catalogSupplierStaffView(await store.upsertCatalogSupplier(req.body ?? {})) });
+  });
+  api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/catalog/suppliers/:id', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canLinkSupplier(u)) forbid();
+    return { data: catalogSupplierStaffView(await store.upsertCatalogSupplier(req.body ?? {}, req.params.id)) };
   });
 
   api.get('/api/catalog/settings', async (req) => {
@@ -895,25 +1140,33 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     return { data, total, limit, offset };
   });
 
+  const staffProductView = async (row: any, role: Role) => {
+    const images = await store.images(row.id);
+    const tiers = await store.tiers(row.id);
+    const link = role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role.startsWith('CHINA');
+    const linked = link && row.supplier_id ? await store.catalogSupplier(row.supplier_id) : null;
+    const catalogSupplier = linked ? catalogSupplierStaffView(linked) : undefined;
+    return staffView(row, role, await store.rates(), { images: staffPhotos(images as any, row.id), tiers, catalogSupplier });
+  };
+
   api.post<{ Body: Record<string, unknown> }>('/api/products', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.create(req.body ?? {}, u.id);
-    return reply.code(201).send({ data: staffView(row, u.role, await store.rates()) });
+    let row = await store.create(req.body ?? {}, u.id);
+    row = await store.update(row.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u) });
+    return reply.code(201).send({ data: await staffProductView(row, u.role) });
   });
 
   api.get<{ Params: { id: string } }>('/api/products/:id', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
     const row = await store.get(req.params.id, { includeDeleted: isSa(u) });
     if (!row) return reply.code(404).send({ error: 'Not found' });
-    const images = await store.images(row.id);
-    const tiers = await store.tiers(row.id);
-    return { data: staffView(row, u.role, await store.rates(), { images: staffPhotos(images as any, row.id), tiers }) };
+    return { data: await staffProductView(row, u.role) };
   });
 
   api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/products/:id', async (req) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.update(req.params.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u) });
-    return { data: staffView(row, u.role, await store.rates()) };
+    const row = await store.update(req.params.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u) });
+    return { data: await staffProductView(row, u.role) };
   });
 
   api.post<{ Params: { id: string } }>('/api/products/:id/publish', async (req) => {
@@ -1099,7 +1352,8 @@ export function registerPortalCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const rates = await store.rates();
     const rows = await listFavorites(deps.db, req.customer!.customerId);
     const data = [];
-    for (const r of rows) data.push(await publicView(store, r, rates));
+    const paidMember = await isActiveMember(deps.db, req.customer!.customerId);
+    for (const r of rows) data.push(await publicView(store, r, rates, { paidMember }));
     return { data };
   });
   api.put<{ Params: { productId: string } }>('/api/portal/catalog/favorites/:productId', async (req, reply) => {
