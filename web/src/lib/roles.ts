@@ -8,7 +8,7 @@ export type PermKey = (typeof PERM_KEYS)[number];
 const INDIA_STAFF: PermKey[] = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all', 'catalog.edit', 'catalog.price', 'catalog.delete'];
 const CHINA_STAFF: PermKey[] = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all', 'catalog.edit'];
 const ADMIN: PermKey[] = ['reports.view', 'staff.manage', 'data.export'];
-const MARKETPLACE_TEAM: PermKey[] = ['catalog.edit', 'catalog.delete'];
+const MARKETPLACE_TEAM: PermKey[] = ['catalog.edit', 'catalog.delete', 'catalog.publish'];
 export const ROLE_DEFAULTS: Record<Role, readonly PermKey[]> = {
   INDIA_STAFF, CHINA_STAFF, INDIA_ADMIN: [...INDIA_STAFF, ...ADMIN, 'catalog.publish', 'customers.view', 'customers.edit', 'portal.logins.manage', 'greetings.manage'], CHINA_ADMIN: [...CHINA_STAFF, ...ADMIN], SUPER_ADMIN: PERM_KEYS, MARKETPLACE_TEAM,
 };

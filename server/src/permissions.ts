@@ -46,7 +46,7 @@ const DEF = new Map(PERMISSIONS.map((p) => [p.key, p]));
 const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all'];
 const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all'];
 const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
-const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete'];
+const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish'];
 const INDIA_CATALOG = ['catalog.edit', 'catalog.price', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
   INDIA_STAFF: [...INDIA_STAFF, ...INDIA_CATALOG],
