@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { NotificationBell } from './NotificationBell';
-import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Contact, Factory, UserCog, Package, PartyPopper, ShoppingBag, Images } from 'lucide-react';
+import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Contact, Factory, UserCog, Package, PartyPopper, ShoppingBag, Images, ClipboardList } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../lib/store';
 import { ROLES, type Role } from '../lib/roles';
@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { LanguageSwitch } from './LanguageSwitch';
 import { Avatar } from './ui';
 
-export type Route = 'dashboard' | 'leads' | 'quotations' | 'orders' | 'shipping' | 'customers' | 'suppliers' | 'greetings' | 'products' | 'banners' | 'users' | 'settings';
+export type Route = 'dashboard' | 'leads' | 'quotations' | 'orders' | 'shipping' | 'customers' | 'suppliers' | 'greetings' | 'products' | 'banners' | 'applications' | 'users' | 'settings';
 
 export function Layout({ route, go, search, setSearch, children, openLeadId }: {
   route: Route; go: (r: Route) => void; search: string; setSearch: (s: string) => void; children: ReactNode; openLeadId: (id: string) => void;
@@ -25,7 +25,8 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
     addEventListener('keydown', k); return () => removeEventListener('keydown', k);
   }, []);
 
-  const catalogOnly = session?.role === 'MARKETPLACE_TEAM';
+  const catalogOnly = session?.role === 'MARKETPLACE_TEAM' || session?.role === 'SUPPLIER';
+  const canReviewSuppliers = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
   const nav: { id: Route; icon: typeof Users; show: boolean }[] = [
     { id: 'dashboard', icon: LayoutDashboard, show: !catalogOnly },
     { id: 'leads', icon: Users, show: !catalogOnly },
@@ -36,6 +37,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
     { id: 'suppliers', icon: Factory, show: !catalogOnly && perms.suppliers && perms.can('suppliers.view') },
     { id: 'products', icon: ShoppingBag, show: perms.can('catalog.edit') },
     { id: 'banners', icon: Images, show: perms.can('catalog.banners') },
+    { id: 'applications', icon: ClipboardList, show: canReviewSuppliers },
     { id: 'greetings', icon: PartyPopper, show: !catalogOnly && perms.can('greetings.manage') },
     { id: 'users', icon: UserCog, show: !catalogOnly && perms.manageUsers },
     { id: 'settings', icon: Settings, show: true },
@@ -43,7 +45,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
 
   const shown = nav.filter((n) => n.show);
   const goto = (r: Route) => { setDrawer(false); go(r); };
-  const bottom = shown.filter((n) => (catalogOnly ? ['products', 'banners', 'settings'] : ['dashboard', 'leads', 'quotations', 'orders']).includes(n.id));
+  const bottom = shown.filter((n) => (catalogOnly ? ['products', 'banners', 'applications', 'settings'] : ['dashboard', 'leads', 'quotations', 'orders']).includes(n.id));
 
   return (
     <div className="flex h-[100dvh] overflow-hidden">

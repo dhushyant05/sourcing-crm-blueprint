@@ -14,7 +14,7 @@ export function Team() {
   const { t } = useTranslation();
   const { data, error, reload } = useLoad(() => api.users(), [api]);
   const role = session!.role, isSuper = role === 'SUPER_ADMIN';
-  const allowed: Role[] = isSuper ? ROLES : role === 'INDIA_ADMIN' ? ['INDIA_STAFF', 'INDIA_ADMIN'] : ['CHINA_STAFF', 'CHINA_ADMIN'];
+  const allowed: Role[] = isSuper ? ROLES.filter((r) => r !== 'SUPPLIER') : role === 'INDIA_ADMIN' ? ['INDIA_STAFF', 'INDIA_ADMIN'] : ['CHINA_STAFF', 'CHINA_ADMIN'];
   const [form, setForm] = useState({ email: '', name: '', role: allowed[0], password: '' });
   const [open, setOpen] = useState(false), [msg, setMsg] = useState<string | null>(null);
   const [editing, setEditing] = useState<User | null>(null), [removing, setRemoving] = useState<User | null>(null);

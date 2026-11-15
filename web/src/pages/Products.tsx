@@ -16,6 +16,7 @@ export function Products() {
   const canDelete = perms.can('catalog.delete') || session?.role === 'SUPER_ADMIN';
   const isSa = session?.role === 'SUPER_ADMIN';
   const canLink = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM' || !!session?.role?.startsWith('CHINA');
+  const isSupplier = session?.role === 'SUPPLIER';
   const [rows, setRows] = useState<StaffProduct[]>(demo ? FIXTURE_PRODUCTS.map((p) => ({ ...p, status: 'PUBLISHED' })) : []);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -41,6 +42,11 @@ export function Products() {
     await staffReq('POST', `/api/products/${p.id}/restore`, {});
     await load();
   };
+  const submitReview = async (p: StaffProduct, on: boolean) => {
+    if (demo) { setRows((xs) => xs.map((x) => x.id === p.id ? { ...x, status: on ? 'PENDING_REVIEW' : 'DRAFT' } : x)); return; }
+    await staffReq('POST', `/api/products/${p.id}/${on ? 'submit-review' : 'withdraw-review'}`, {});
+    await load();
+  };
   const publish = async (p: StaffProduct, on: boolean) => {
     if (demo) { setRows((xs) => xs.map((x) => x.id === p.id ? { ...x, status: on ? 'PUBLISHED' : 'UNPUBLISHED' } : x)); return; }
     await staffReq('POST', `/api/products/${p.id}/${on ? 'publish' : 'unpublish'}`, {});
@@ -54,11 +60,11 @@ export function Products() {
         <input className="input max-w-xs" placeholder="Search products" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="input w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
-          {['DRAFT', 'READY_FOR_PRICE', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'].map((s) => <option key={s} value={s}>{s}</option>)}
+          {['DRAFT', 'READY_FOR_PRICE', 'PENDING_REVIEW', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <button className="btn-primary ml-auto" onClick={() => setEdit('new')}>Add product</button>
       </div>
-      {!demo && <CategoryManager />}
+      {!demo && !isSupplier && <CategoryManager />}
       {err && <p className="mb-3 text-sm text-red-600">{err}</p>}
       <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
         <table className="w-full text-sm">
@@ -76,7 +82,9 @@ export function Products() {
                 <td>{p.moq ?? '—'} {p.unit || ''}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex flex-wrap justify-end gap-2">
-                    <button className="btn-outline !py-1 text-xs" onClick={() => setEdit(p)}>Edit</button>
+                    {!(isSupplier && p.status === 'PUBLISHED') && <button className="btn-outline !py-1 text-xs" onClick={() => setEdit(p)}>Edit</button>}
+                    {isSupplier && (p.status === 'DRAFT' || p.status === 'UNPUBLISHED' || p.status === 'READY_FOR_PRICE') && <button className="btn-outline !py-1 text-xs" data-testid="submit-review" onClick={() => void submitReview(p, true)}>Submit for review</button>}
+                    {isSupplier && p.status === 'PENDING_REVIEW' && <button className="btn-outline !py-1 text-xs" data-testid="withdraw-review" onClick={() => void submitReview(p, false)}>Withdraw review</button>}
                     {canPublish && p.status !== 'PUBLISHED' && p.status !== 'DELETED' && <button className="btn-outline !py-1 text-xs" onClick={() => void publish(p, true)}>Publish</button>}
                     {canPublish && p.status === 'PUBLISHED' && <button className="btn-outline !py-1 text-xs" onClick={() => void publish(p, false)}>Unpublish</button>}
                     {canDelete && p.status !== 'DELETED' && <button className="btn-outline !py-1 text-xs text-red-600" onClick={() => void remove(p)}>Delete</button>}

@@ -19,7 +19,7 @@ import {
 } from './catalog-engagement.js';
 import { normalizeMerchandising, parseMerchandising, publicMerchandising } from './merchandising.js';
 
-export const PRODUCT_STATUSES = ['DRAFT', 'READY_FOR_PRICE', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'] as const;
+export const PRODUCT_STATUSES = ['DRAFT', 'READY_FOR_PRICE', 'PENDING_REVIEW', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'] as const;
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 export const CURRENCIES = ['USD', 'CNY', 'INR'] as const;
 export type Currency = (typeof CURRENCIES)[number];
@@ -92,6 +92,8 @@ export interface CatalogDeps {
     readyDate?: string; customerNote?: string; files: Staged[];
   }) => Promise<{ id: string; ref: string }>;
   livePublicGreetings?: () => Promise<PublicBanner[]>;
+  /** Linked catalog supplier for a SUPPLIER login, if any. */
+  supplierOf?: (userId: string) => Promise<{ supplierId: string; status: string } | null>;
 }
 
 export interface PublicBanner {
@@ -375,7 +377,7 @@ export class CatalogStore {
     return { rows, total, limit, offset };
   }
 
-  async listStaff(q: { q?: string; status?: string; category?: string; includeDeleted?: boolean; limit?: number; offset?: number }) {
+  async listStaff(q: { q?: string; status?: string; category?: string; includeDeleted?: boolean; supplierId?: string; limit?: number; offset?: number }) {
     const limit = Math.min(100, Math.max(1, q.limit ?? 40));
     const offset = Math.max(0, q.offset ?? 0);
     const where: string[] = [];
@@ -383,6 +385,7 @@ export class CatalogStore {
     if (!q.includeDeleted) where.push('p.deleted_at IS NULL');
     if (q.status) { where.push('p.status = ?'); params.push(q.status); }
     if (q.category) { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
+    if (q.supplierId) { where.push('p.supplier_id = ?'); params.push(q.supplierId); }
     const query = (q.q ?? '').trim();
     if (query) { where.push('(p.title ILIKE ? OR coalesce(p.summary,\'\') ILIKE ?)'); params.push(`%${query}%`, `%${query}%`); }
     const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -400,19 +403,20 @@ export class CatalogStore {
     return this.db.all('SELECT id, at, by_user AS "by", action, before, after FROM product_audit WHERE product_id = ? ORDER BY id DESC LIMIT 100', productId);
   }
 
-  async create(input: Record<string, unknown>, by: string) {
+  async create(input: Record<string, unknown>, by: string, opts: { ownerSupplierId?: string | null } = {}) {
     const title = String(input.title ?? '').trim().slice(0, 200);
     if (!title) bad('Title is required');
     const id = randomUUID();
     const slug = await this.uniqueSlug(String(input.slug ?? title));
     const base = CURRENCIES.includes(input.baseCurrency as Currency) ? input.baseCurrency : 'USD';
-    await this.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, capacity, packaging, customization, sample_policy, merchandising, price_mode, base_currency, created_by, is_sample)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,false)`,
+    const supplierId = emptyToNull(opts.ownerSupplierId);
+    await this.db.run(`INSERT INTO products (id, slug, title, summary, specs, category_id, status, moq, unit, lead_time, capacity, packaging, customization, sample_policy, merchandising, price_mode, base_currency, created_by, supplier_id, is_sample)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,false)`,
       id, slug, title, emptyToNull(input.summary, 4000), input.specs ? JSON.stringify(normalizeSpecs(input.specs)) : null,
       emptyToNull(input.categoryId), 'DRAFT', numOrNull(input.moq), emptyToNull(input.unit, 24), emptyToNull(input.leadTime, 80),
       emptyToNull(input.capacity, 400), emptyToNull(input.packaging, 4000), emptyToNull(input.customization, 4000), emptyToNull(input.samplePolicy, 2000),
       JSON.stringify(normalizeMerchandising(input.merchandising)),
-      'GET_QUOTE', base, by);
+      'GET_QUOTE', base, by, supplierId);
     const tags = parseTags(input.tags);
     if (tags.length) await this.db.run('UPDATE products SET tags = ?::jsonb WHERE id = ?', JSON.stringify(tags), id);
     await this.audit(id, by, 'CREATE', null, { title, slug });
@@ -472,6 +476,24 @@ export class CatalogStore {
     return this.get(id);
   }
 
+  async submitReview(id: string, by: string) {
+    const cur = await this.get(id); if (!cur) bad('Product not found', 404);
+    if (cur.status === 'DELETED') bad('This product has been deleted', 409);
+    if (cur.status === 'PUBLISHED') bad('This product is already published');
+    if (cur.status !== 'DRAFT' && cur.status !== 'UNPUBLISHED' && cur.status !== 'READY_FOR_PRICE') {
+      bad('Only a draft can be sent for review');
+    }
+    await this.db.run(`UPDATE products SET status = 'PENDING_REVIEW', updated_at = now() WHERE id = ?`, id);
+    await this.audit(id, by, 'SUBMIT_REVIEW', { status: cur.status }, { status: 'PENDING_REVIEW' });
+    return this.get(id);
+  }
+  async withdrawReview(id: string, by: string) {
+    const cur = await this.get(id); if (!cur) bad('Product not found', 404);
+    if (cur.status !== 'PENDING_REVIEW') bad('This product is not waiting for review');
+    await this.db.run(`UPDATE products SET status = 'DRAFT', updated_at = now() WHERE id = ?`, id);
+    await this.audit(id, by, 'WITHDRAW_REVIEW', { status: cur.status }, { status: 'DRAFT' });
+    return this.get(id);
+  }
   async publish(id: string, by: string) {
     const cur = await this.get(id); if (!cur) bad('Product not found', 404);
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
@@ -739,7 +761,7 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
     out.priceUsd = row.price_usd; out.priceCny = row.price_cny; out.priceInr = row.price_inr;
   }
   // India staff never see supplier identity. Super admin, China, and Marketplace Team may see the catalog card (never contacts or factory cost).
-  if (role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role.startsWith('CHINA')) {
+  if (role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA')) {
     out.supplierId = row.supplier_id ?? null;
     if (extra.catalogSupplier) out.catalogSupplier = extra.catalogSupplier;
   }
@@ -1063,6 +1085,20 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
 
 export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   const store = new CatalogStore(deps.db);
+  const supplierScope = async (u: User) => (u.role === 'SUPPLIER' ? (await deps.supplierOf?.(u.id)) ?? null : null);
+  const requireVerified = async (u: User) => {
+    if (u.role !== 'SUPPLIER') return null;
+    const s = await supplierScope(u);
+    if (!s || s.status !== 'VERIFIED') bad('Your supplier account must be verified before you can manage products', 403, 'unverified');
+    return s;
+  };
+  const owned = async (u: User, id: string, opts: { includeDeleted?: boolean } = {}) => {
+    const row = await store.get(id, { includeDeleted: !!opts.includeDeleted && isSa(u) });
+    if (!row) bad('Product not found', 404);
+    const s = await supplierScope(u);
+    if (s && row.supplier_id !== s.supplierId) bad('Product not found', 404);
+    return row;
+  };
   const need = (u: User, k: string) => { if (!deps.perms.can(u, k) && u.role !== 'SUPER_ADMIN') forbid(`You do not have permission: ${k}`); };
   // SUPER_ADMIN always passes perms.can, but keep explicit.
 
@@ -1133,8 +1169,10 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const u = req.user!; need(u, 'catalog.edit');
     const q = req.query ?? {};
     const rates = await store.rates();
+    const scope = await supplierScope(u);
     const { rows, total, limit, offset } = await store.listStaff({
       q: q.q, status: q.status, category: q.category, includeDeleted: isSa(u) && (q.deleted === '1' || q.deleted === 'true'),
+      supplierId: scope?.supplierId,
       limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined,
     });
     const data = [];
@@ -1148,7 +1186,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   const staffProductView = async (row: any, role: Role) => {
     const images = await store.images(row.id);
     const tiers = await store.tiers(row.id);
-    const link = role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role.startsWith('CHINA');
+    const link = role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA');
     const linked = link && row.supplier_id ? await store.catalogSupplier(row.supplier_id) : null;
     const catalogSupplier = linked ? catalogSupplierStaffView(linked) : undefined;
     return staffView(row, role, await store.rates(), { images: staffPhotos(images as any, row.id), tiers, catalogSupplier });
@@ -1156,24 +1194,41 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
 
   api.post<{ Body: Record<string, unknown> }>('/api/products', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    let row = await store.create(req.body ?? {}, u.id);
+    const scope = await requireVerified(u);
+    let row = await store.create(req.body ?? {}, u.id, { ownerSupplierId: scope?.supplierId ?? null });
     row = await store.update(row.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u) });
     return reply.code(201).send({ data: await staffProductView(row, u.role) });
   });
 
   api.get<{ Params: { id: string } }>('/api/products/:id', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.get(req.params.id, { includeDeleted: isSa(u) });
-    if (!row) return reply.code(404).send({ error: 'Not found' });
+    const row = await owned(u, req.params.id, { includeDeleted: isSa(u) });
     return { data: await staffProductView(row, u.role) };
   });
 
   api.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/products/:id', async (req) => {
     const u = req.user!; need(u, 'catalog.edit');
+    const cur = await owned(u, req.params.id);
+    if (u.role === 'SUPPLIER') {
+      await requireVerified(u);
+      if (cur.status === 'PUBLISHED') bad('Ask the Marketplace Team to unpublish this product before you edit it', 409);
+    }
     const row = await store.update(req.params.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u) });
     return { data: await staffProductView(row, u.role) };
   });
 
+  api.post<{ Params: { id: string } }>('/api/products/:id/submit-review', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    await requireVerified(u);
+    await owned(u, req.params.id);
+    return { data: await staffProductView(await store.submitReview(req.params.id, u.id), u.role) };
+  });
+  api.post<{ Params: { id: string } }>('/api/products/:id/withdraw-review', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    await requireVerified(u);
+    await owned(u, req.params.id);
+    return { data: await staffProductView(await store.withdrawReview(req.params.id, u.id), u.role) };
+  });
   api.post<{ Params: { id: string } }>('/api/products/:id/publish', async (req) => {
     const u = req.user!; need(u, 'catalog.publish');
     return { data: staffView(await store.publish(req.params.id, u.id), u.role, await store.rates()) };
@@ -1185,6 +1240,8 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   api.post<{ Params: { id: string }; Body: { confirm?: unknown } }>('/api/products/:id/delete', async (req) => {
     const u = req.user!; need(u, 'catalog.delete');
     if (req.body?.confirm !== true && req.body?.confirm !== 'true') bad('Confirm deletion');
+    await owned(u, req.params.id);
+    if (u.role === 'SUPPLIER') await requireVerified(u);
     return { data: staffView(await store.softDelete(req.params.id, u.id), u.role, await store.rates()) };
   });
   api.post<{ Params: { id: string } }>('/api/products/:id/restore', async (req) => {
@@ -1193,12 +1250,14 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   });
   api.get<{ Params: { id: string } }>('/api/products/:id/audit', async (req) => {
     const u = req.user!; need(u, 'catalog.edit');
+    await owned(u, req.params.id, { includeDeleted: isSa(u) });
     return { data: await store.auditList(req.params.id) };
   });
 
   api.post<{ Params: { id: string } }>('/api/products/:id/images', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.get(req.params.id); if (!row) return reply.code(404).send({ error: 'Not found' });
+    if (u.role === 'SUPPLIER') await requireVerified(u);
+    const row = await owned(u, req.params.id);
     if (!req.isMultipart()) bad('multipart/form-data expected');
     const f = await req.file({ limits: { fileSize: MAX_FILE_BYTES, files: 1 } });
     if (!f) return reply.code(400).send({ error: 'No file' });
@@ -1217,14 +1276,14 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
 
   api.get<{ Params: { id: string; fid: string } }>('/api/products/:id/images/:fid', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.get(req.params.id, { includeDeleted: isSa(u) });
-    if (!row) return reply.code(404).send({ error: 'Not found' });
+    const row = await owned(u, req.params.id, { includeDeleted: isSa(u) });
     return sendUpload(reply, deps.uploads, ownerKey('p', row.id), req.params.fid, 'private, max-age=60');
   });
 
   api.delete<{ Params: { id: string; fid: string } }>('/api/products/:id/images/:fid', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.get(req.params.id); if (!row) return reply.code(404).send({ error: 'Not found' });
+    if (u.role === 'SUPPLIER') await requireVerified(u);
+    const row = await owned(u, req.params.id);
     const all = await store.images(row.id);
     const group = photoGroups(all as any).find((g) => g.id === req.params.fid || g.fileIds.includes(req.params.fid));
     const ids = group ? group.fileIds : [req.params.fid];
@@ -1238,7 +1297,8 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   });
   api.patch<{ Params: { id: string }; Body: { order?: string[]; cover?: string } }>('/api/products/:id/images', async (req, reply) => {
     const u = req.user!; need(u, 'catalog.edit');
-    const row = await store.get(req.params.id); if (!row) return reply.code(404).send({ error: 'Not found' });
+    if (u.role === 'SUPPLIER') await requireVerified(u);
+    const row = await owned(u, req.params.id);
     const groups = photoGroups((await store.images(row.id)) as any);
     const order = Array.isArray(req.body?.order) ? req.body!.order : groups.map((g) => g.id);
     for (let i = 0; i < order.length; i++) {
@@ -1345,7 +1405,16 @@ function bannerDto(r: any) {
 
 /** Routes a Marketplace Team login may call. Everything else is 403. */
 export function marketplaceTeamAllowed(url: string) {
-  return /^\/api\/me(\/|$)/.test(url) || /^\/api\/products(\/|$)/.test(url) || /^\/api\/catalog(\/|$)/.test(url) || /^\/api\/banners(\/|$)/.test(url);
+  return /^\/api\/me(\/|$)/.test(url) || /^\/api\/products(\/|$)/.test(url) || /^\/api\/catalog(\/|$)/.test(url) || /^\/api\/banners(\/|$)/.test(url) || /^\/api\/supplier(\/|$)/.test(url);
+}
+
+/** Suppliers may only use their own catalog and profile routes. */
+export function supplierAllowed(url: string, method: string) {
+  if (/^\/api\/me(\/|$)/.test(url)) return true;
+  if (/^\/api\/products(\/|$)/.test(url)) return true;
+  if (/^\/api\/catalog\/categories$/.test(url) && method === 'GET') return true;
+  if (/^\/api\/supplier(\/|$)/.test(url)) return true;
+  return false;
 }
 
 export { stripSupplier };

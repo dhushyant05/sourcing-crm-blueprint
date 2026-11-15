@@ -50,6 +50,7 @@ export function TopBar({ categories, products = [], onSearch, query = '' }: { ca
             <CurrencySwitch className="hidden md:inline-flex" />
             <LanguageSwitch className="hidden shrink-0 lg:flex" />
             <a href={PORTAL} data-testid="nav-customer-portal" className="hidden min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 sm:inline-flex"><UserRound size={16} />Customer Portal</a>
+            <a href="/supplier" data-testid="supplier-login" className="hidden min-h-[36px] shrink-0 items-center rounded-lg border border-ink-200 bg-white px-3 text-sm font-medium text-ink-700 hover:bg-ink-50 sm:inline-flex">Supplier login</a>
             <a href="/app" data-testid="staff-login" className="hidden min-h-[36px] shrink-0 items-center rounded-lg border border-brand-200 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 sm:inline-flex">Staff login</a>
             <button type="button" onClick={openQuote} className="hidden min-h-[36px] shrink-0 items-center rounded-lg bg-warm-500 px-3 text-sm font-semibold text-white shadow-sm hover:bg-warm-600 sm:inline-flex">Request quote</button>
             <button type="button" className="rounded-lg p-2 text-ink-700 lg:hidden" aria-label="Open menu" onClick={() => setOpen(true)}><Menu size={22} /></button>
@@ -104,6 +105,7 @@ export function TopBar({ categories, products = [], onSearch, query = '' }: { ca
             <div className="space-y-2 border-t border-ink-100 p-4">
               <button type="button" onClick={openQuote} className="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-warm-500 font-semibold text-white">Request quote</button>
               <a href={PORTAL} className="flex min-h-[44px] items-center justify-center rounded-lg border border-brand-200 font-semibold text-brand-700">Customer Portal</a>
+              <a href="/supplier" className="flex min-h-[44px] items-center justify-center rounded-lg border border-ink-200 font-medium text-ink-700">Supplier login</a>
               <a href="/app" className="flex min-h-[44px] items-center justify-center rounded-lg border border-brand-200 font-semibold text-brand-700">Staff login</a>
             </div>
           </aside>

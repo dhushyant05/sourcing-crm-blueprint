@@ -30,8 +30,9 @@ export function Settings() {
             <div><dt className="text-ink-500">{t('lang.label')}</dt><dd className="mt-1"><LanguageSwitch className="w-fit" /><p className="mt-1 text-xs text-ink-400">{t('settings.languageHint')}</p></dd></div>
           </dl>
         </section>
+        {session?.role === 'SUPPLIER' && !session.demo && <SupplierProfileCard />}
         {!session?.demo && <PasswordCard />}
-        {!session?.demo && <SlaSettingsCard />}
+        {!session?.demo && session?.role !== 'SUPPLIER' && <SlaSettingsCard />}
         {!session?.demo && perms.can('data.export') && api.exportCsv && <div className="card p-5" data-testid="export-card">
           <h2 className="font-semibold text-ink-900 dark:text-white">{t('perm.export')}</h2><p className="mt-1 text-sm text-ink-500">{t('perm.exportHint')}</p>
           <div className="mt-3 flex flex-wrap gap-2">{(['leads', 'quotes', 'orders', 'shipments'] as const).map((k) => <button key={k} data-testid={`export-${k}`} className="btn-outline !py-1 text-sm" onClick={() => void api.exportCsv!(k).catch((e) => alert((e as Error).message))}>{t(`nav.${k === 'shipments' ? 'shipping' : k === 'quotes' ? 'quotations' : k}`)} CSV</button>)}</div>
@@ -62,6 +63,56 @@ export function Settings() {
       {session?.role === 'SUPER_ADMIN' && <CatalogSettingsCard />}
       {session?.role === 'SUPER_ADMIN' && api.storage && <StorageCard />}
     </>
+  );
+}
+
+
+function SupplierProfileCard() {
+  const { session } = useApp();
+  const [f, setF] = useState({ company: '', contactName: '', phone: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    void staffReq<{ data: typeof f & { company: string } }>('GET', '/api/supplier/me').then((r) => {
+      const d = r.data;
+      setF({
+        company: d.company ?? '', contactName: (d as any).contactName ?? '', phone: (d as any).phone ?? '',
+        publicRegion: (d as any).publicRegion ?? '', publicYears: (d as any).publicYears != null ? String((d as any).publicYears) : '',
+        publicAbout: (d as any).publicAbout ?? '', catalogConsent: !!(d as any).catalogConsent,
+      });
+    }).catch(() => undefined);
+  }, []);
+  const save = async (e: FormEvent) => {
+    e.preventDefault(); setBusy(true); setMsg(null);
+    try {
+      await staffReq('PATCH', '/api/supplier/me', {
+        company: f.company, contactName: f.contactName, phone: f.phone,
+        publicRegion: f.publicRegion, publicYears: f.publicYears || null, publicAbout: f.publicAbout, catalogConsent: f.catalogConsent,
+      });
+      setMsg({ ok: true, text: 'Profile saved' });
+    } catch (err) { setMsg({ ok: false, text: (err as Error).message }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <section className="card p-6 lg:col-span-2" data-testid="supplier-profile">
+      <h2 className="font-semibold text-ink-900">Supplier profile</h2>
+      <p className="mt-1 text-sm text-ink-500">Company, location, years and verified status are shown on product pages only to paid members, and only if you have consented. Factory cost is never shown.</p>
+      <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(e) => void save(e)}>
+        <input className="input" required placeholder="Company name" value={f.company} onChange={(e) => setF((s) => ({ ...s, company: e.target.value }))} />
+        <input className="input" required placeholder="Contact name" value={f.contactName} onChange={(e) => setF((s) => ({ ...s, contactName: e.target.value }))} />
+        <input className="input" placeholder="Phone" value={f.phone} onChange={(e) => setF((s) => ({ ...s, phone: e.target.value }))} />
+        <input className="input" placeholder="Public location" value={f.publicRegion} onChange={(e) => setF((s) => ({ ...s, publicRegion: e.target.value }))} />
+        <input className="input" placeholder="Years in business" value={f.publicYears} onChange={(e) => setF((s) => ({ ...s, publicYears: e.target.value }))} />
+        <textarea className="input min-h-[80px] sm:col-span-2" placeholder="Public about" value={f.publicAbout} onChange={(e) => setF((s) => ({ ...s, publicAbout: e.target.value }))} />
+        <label className="flex items-start gap-2 text-sm text-ink-600 sm:col-span-2">
+          <input type="checkbox" className="mt-1" checked={f.catalogConsent} onChange={(e) => setF((s) => ({ ...s, catalogConsent: e.target.checked }))} />
+          I agree that Source Easy may show a public catalog card for my company to paying members
+        </label>
+        {msg && <p className={`sm:col-span-2 text-sm ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
+        <button className="btn-primary sm:col-span-2 w-fit" disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button>
+      </form>
+      {session?.supplierStatus && <p className="mt-3 text-xs text-ink-500">Account status: {session.supplierStatus}</p>}
+    </section>
   );
 }
 

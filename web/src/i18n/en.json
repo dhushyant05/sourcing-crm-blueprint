@@ -23,7 +23,8 @@
     "customers": "Customers",
     "greetings": "Greetings",
     "products": "Products",
-    "banners": "Banners"
+    "banners": "Banners",
+    "applications": "Supplier applications"
   },
   "header": {
     "search": "Search by reference, lead, product…",
@@ -39,7 +40,8 @@
     "INDIA_ADMIN": "India admin",
     "CHINA_ADMIN": "China admin",
     "SUPER_ADMIN": "Super admin",
-    "MARKETPLACE_TEAM": "Marketplace team"
+    "MARKETPLACE_TEAM": "Marketplace team",
+    "SUPPLIER": "Supplier"
   },
   "office": {
     "INDIA_STAFF": "India office users",
@@ -47,7 +49,8 @@
     "CHINA_STAFF": "China office users",
     "CHINA_ADMIN": "China office users",
     "SUPER_ADMIN": "All offices",
-    "MARKETPLACE_TEAM": "Catalog only"
+    "MARKETPLACE_TEAM": "Catalog only",
+    "SUPPLIER": "Supplier catalog"
   },
   "status": {
     "NEW": "New",
@@ -159,7 +162,11 @@
     "clientName": "Client name",
     "create": "Create lead",
     "attachments": "Photos, videos & documents",
-    "fileKind": { "PHOTO": "Photo", "INVOICE": "Invoice", "PACKING_LIST": "Packing list" },
+    "fileKind": {
+      "PHOTO": "Photo",
+      "INVOICE": "Invoice",
+      "PACKING_LIST": "Packing list"
+    },
     "noAttachments": "No files attached",
     "open": "Open",
     "download": "Download",
@@ -1204,7 +1211,11 @@
     "saveNote": "Save note",
     "files": "Files",
     "fromCustomer": "from customer",
-    "fileKind": { "PHOTO": "Photo", "INVOICE": "Invoice", "PACKING_LIST": "Packing list" },
+    "fileKind": {
+      "PHOTO": "Photo",
+      "INVOICE": "Invoice",
+      "PACKING_LIST": "Packing list"
+    },
     "timeline": "Timeline",
     "customerSees": "customer sees: {{text}}",
     "internal": "internal",
@@ -1483,5 +1494,38 @@
     "ageNote": "Showing files uploaded more than {{n}} days ago (before {{cutoff}}, server time): {{files}} files, {{size}}. {{unknown}} files with an unknown upload date are never included. Nothing is deleted until you select files and confirm.",
     "ageDays": "{{n}} days old",
     "ageUnknown": "Unknown date"
+  },
+  "supplier": {
+    "loginTitle": "Supplier login",
+    "signupTitle": "Supplier signup",
+    "signupHint": "Create a supplier account. The Marketplace Team will review it before you can add products.",
+    "company": "Company name",
+    "contactName": "Contact name",
+    "already": "Already have an account? Sign in",
+    "create": "Create supplier account",
+    "pendingTitle": "Your application is being reviewed",
+    "pendingBody": "The Marketplace Team will verify your supplier account. You can sign in again later to check the status.",
+    "rejectedTitle": "Your application was not approved",
+    "rejectedBody": "Update your details if needed, then send it back for review.",
+    "resubmit": "Send for review again",
+    "verifiedHint": "Your account is verified. You can add products; the Marketplace Team publishes them.",
+    "consent": "I agree that Source Easy may show a public catalog card for my company to paying members",
+    "region": "Public location",
+    "about": "Public about",
+    "years": "Years in business",
+    "staffLogin": "Staff login",
+    "link": "Supplier login",
+    "applications": "Supplier applications",
+    "verify": "Verify",
+    "reject": "Reject",
+    "reason": "Reason for rejection",
+    "submitReview": "Submit for review",
+    "withdrawReview": "Withdraw review",
+    "noApplications": "No supplier applications yet.",
+    "statusPending": "Pending",
+    "statusVerified": "Verified",
+    "statusRejected": "Rejected",
+    "signedUp": "Account created. Sign in after the Marketplace Team verifies you, or to check your status.",
+    "profile": "Supplier profile"
   }
 }

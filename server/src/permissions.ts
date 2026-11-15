@@ -47,6 +47,7 @@ const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.cre
 const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all'];
 const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
 const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish', 'catalog.price'];
+const SUPPLIER = ['catalog.edit', 'catalog.delete'];
 const INDIA_CATALOG = ['catalog.edit', 'catalog.price', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
   INDIA_STAFF: [...INDIA_STAFF, ...INDIA_CATALOG],
@@ -55,6 +56,7 @@ export const ROLE_DEFAULTS: Record<Role, string[]> = {
   CHINA_ADMIN: [...CHINA_STAFF, 'catalog.edit', ...ADMIN_EXTRA],
   SUPER_ADMIN: [...PERM_KEYS],
   MARKETPLACE_TEAM,
+  SUPPLIER,
 };
 
 /** Hard rule: may this role hold this permission at all? (China never gets customer-side, India never supplier-side.) */
@@ -64,6 +66,8 @@ export function allowedFor(role: Role, key: string): boolean {
   if (s.superAdmin || d.side === 'ANY') return true;
   // Marketplace Team is catalog-only (not India staff) but may hold India-side catalog permissions such as selling prices.
   if (role === 'MARKETPLACE_TEAM') return d.group === 'catalog' && d.side !== 'CHINA';
+  // Suppliers may only edit/delete their own catalog entries. Selling prices and publish stay with Source Easy.
+  if (role === 'SUPPLIER') return d.group === 'catalog' && (d.key === 'catalog.edit' || d.key === 'catalog.delete');
   return d.side === 'INDIA' ? s.india : s.china;
 }
 

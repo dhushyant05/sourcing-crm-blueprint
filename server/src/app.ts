@@ -31,7 +31,9 @@ import { AssignStore, type Assignment, type Office, type NotifKind } from './ass
 import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 import { PortalStore, PortalError, loginView, tempPassword, customerStage, sourcingFlow, freightFlow, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
-import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, marketplaceTeamAllowed, CatalogStore, isActiveMember } from './catalog.js';
+import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, marketplaceTeamAllowed, supplierAllowed, CatalogStore, isActiveMember } from './catalog.js';
+import { SupplierAccountStore } from './supplier-accounts.js';
+import { registerPublicSupplier, registerStaffSupplier } from './supplier-routes.js';
 import { registerCatalogSeo } from './catalog-seo.js';
 import { recordEnquiryEvent } from './catalog-engagement.js';
 
@@ -342,7 +344,17 @@ export async function buildApp(o: AppOptions) {
   const ctxOf = async (role: Role): Promise<Ctx> => ({ role });
   const avatars = await new AvatarStore(o.db).load();
   const avatarOf = (id: string) => avatars.urls().get(id) ?? null;
-  const me = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, language: u.language ?? null, avatarUrl: avatarOf(u.id), capabilities: capabilities(u.role), permissions: perms.effective(u) });
+  const supplierAccounts = new SupplierAccountStore(o.db, o.users);
+  const me = async (u: User) => {
+    const base = { id: u.id, email: u.email, name: u.name, role: u.role, language: u.language ?? null, avatarUrl: avatarOf(u.id), capabilities: capabilities(u.role), permissions: perms.effective(u) };
+    if (u.role !== 'SUPPLIER') return base;
+    const profile = await supplierAccounts.byUser(u.id);
+    return {
+      ...base,
+      supplierStatus: profile?.status ?? null,
+      supplierRejectReason: profile?.status === 'REJECTED' ? profile.rejectReason : null,
+    };
+  };
   // Public by design (an <img> cannot send a bearer token); ids are random UUIDs and pictures are low-sensitivity.
   app.get<{ Params: { id: string } }>('/api/avatars/:id', async (req, reply) => {
     const a = await avatars.get(req.params.id); if (!a) return reply.code(404).send({ error: 'Not found' });
@@ -370,7 +382,7 @@ export async function buildApp(o: AppOptions) {
     if (!u) { await o.bus.incr(key, 600); return reply.code(401).send({ error: 'Invalid email or password' }); }
     await o.bus.del(key);
     const body = (req.body ?? {}) as { refresh?: boolean; device?: string };
-    return { token: sign(u), user: me(u), ...(body.refresh ? { refreshToken: await issueRefresh(u, body.device) } : {}) };
+    return { token: sign(u), user: await me(u), ...(body.refresh ? { refreshToken: await issueRefresh(u, body.device) } : {}) };
   });
 
   // ---- Customer portal sign-in (phone + password). Separate counters from staff; 5 failures per phone+IP → 10 min lock, 30 per IP per 10 min. ----
@@ -413,7 +425,7 @@ export async function buildApp(o: AppOptions) {
     }
     const secret = randomBytes(32).toString('base64url');
     await o.db.run(`UPDATE refresh_tokens SET prev_hash = token_hash, token_hash = ?, rotated_at = now(), expires_at = now() + interval '${RT_DAYS} days' WHERE id = ?`, sha(secret), p.id);
-    return { token: sign(u), refreshToken: `${p.id}.${secret}`, user: me(u) };
+    return { token: sign(u), refreshToken: `${p.id}.${secret}`, user: await me(u) };
   });
   app.post<{ Body: { refreshToken?: string } }>('/api/auth/logout', async (req) => {
     const p = parseRt(req.body?.refreshToken);
@@ -613,6 +625,10 @@ export async function buildApp(o: AppOptions) {
       const u = await portal.verifyToken(token);
       return u ? isActiveMember(o.db, u.customerId) : false;
     },
+    supplierOf: async (userId: string) => {
+      const p = await supplierAccounts.byUser(userId);
+      return p ? { supplierId: p.supplierId, status: p.status } : null;
+    },
     livePublicGreetings: async () => {
       const live = await greetings.live('PUBLIC');
       return live.filter((g) => g.imageDesktop).map((g, i) => ({
@@ -624,6 +640,7 @@ export async function buildApp(o: AppOptions) {
     },
   };
   registerPublicCatalog(app, catalogDeps);
+  registerPublicSupplier(app, supplierAccounts);
 
   app.register(async (api) => {
     api.addHook('preHandler', auth);
@@ -632,7 +649,13 @@ export async function buildApp(o: AppOptions) {
       const path = req.routeOptions.url ?? '';
       if (!marketplaceTeamAllowed(path)) return reply.code(403).send({ error: 'This login can only manage the catalog' });
     });
+    api.addHook('preHandler', async (req, reply) => {
+      const u = req.user; if (!u || u.role !== 'SUPPLIER') return;
+      const path = req.routeOptions.url ?? '';
+      if (!supplierAllowed(path, req.method)) return reply.code(403).send({ error: 'This login can only manage your own catalog' });
+    });
     registerStaffCatalog(api, catalogDeps);
+    registerStaffSupplier(api, supplierAccounts);
     // Feature permissions: one 403 gate per endpoint (route pattern + method), after authentication.
     const PAY = ['qty', 'agreedPrice', 'advance', 'paymentStatus'], INR = ['agreedPrice', 'advance'];
     const GATES: Record<string, (u: User, b: Rec) => string[]> = {
