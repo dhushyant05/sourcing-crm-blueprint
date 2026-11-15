@@ -225,7 +225,7 @@ export function ProductPage({ slug }: { slug: string }) {
     }).catch((e) => { if (on) setErr((e as Error).message); });
     return () => { on = false; };
   }, [slug]);
-  if (err) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-500">This product is not available.</div>;
+  if (err) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-500" data-testid="product-gone">This product is no longer available.</div>;
   if (!p) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-400">Loading…</div>;
   const m: Merchandising = p.merchandising ?? {};
   const specs = p.specs && typeof p.specs === 'object' ? Object.entries(p.specs).filter(([, v]) => v != null && String(v).trim()) : [];
