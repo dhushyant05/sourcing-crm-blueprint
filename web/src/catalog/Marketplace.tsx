@@ -12,8 +12,9 @@ function pathOf() {
   const params = new URLSearchParams(location.search);
   const q = params.get('q') || '';
   const clearance = p === '/clearance' || params.get('clearance') === '1' || params.get('clearance') === 'true';
+  const sort = params.get('sort') || '';
   const hash = location.hash;
-  return { p, q, hash, clearance };
+  return { p, q, hash, clearance, sort };
 }
 
 const WA = 'https://wa.me/917299541489';
@@ -42,7 +43,8 @@ export function Marketplace() {
   }, []);
   useEffect(() => { document.title = 'Source Easy — Marketplace'; document.documentElement.classList.remove('dark'); }, []);
   useEffect(() => {
-    const id = loc.hash.replace(/^#/, '');
+    const raw = loc.hash.replace(/^#/, '');
+    const id = raw === 'recommended' ? 'trending' : raw;
     if (!id) { window.scrollTo(0, 0); return; }
     let n = 0;
     const tryScroll = () => {
@@ -61,10 +63,11 @@ export function Marketplace() {
     const slug = decodeURIComponent(c[1]);
     const cat = categories.find((x) => x.slug === slug);
     page = <ListingPage title={cat?.name || 'Category'} category={slug} categories={categories} />;
-  } else if (loc.p === '/products' && loc.clearance) page = <ListingPage title="Clearance" query={loc.q} clearance categories={categories} />;
-  else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} categories={categories} />;
+  } else if (loc.p === '/products' && loc.clearance) page = <ListingPage title="Clearance" query={loc.q} kind="clearance" categories={categories} />;
+  else if (loc.p === '/trending' || (loc.p === '/products' && loc.sort === 'trending')) page = <ListingPage title="Trending" query={loc.q} kind="trending" categories={categories} />;
+  else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} kind="all" categories={categories} />;
   else if (loc.p === '/favorites') page = <FavoritesPage />;
-  else if (loc.p === '/clearance') page = <ListingPage title="Clearance" query={loc.q} clearance categories={categories} />;
+  else if (loc.p === '/clearance') page = <ListingPage title="Clearance" query={loc.q} kind="clearance" categories={categories} />;
   else page = <HomePage products={homeProducts} clearanceProducts={clearanceProducts} banners={banners} settings={settings} categories={categories} trust={trust} />;
 
   return (
@@ -82,6 +85,8 @@ export function Marketplace() {
               <h3 className="text-sm font-semibold text-ink-800">Catalog</h3>
               <div className="mt-3 space-y-2 text-sm">
                 <button type="button" className="block text-ink-600 hover:text-brand-700" onClick={() => { history.pushState({}, '', '/products'); setLoc(pathOf()); }}>All products</button>
+                <button type="button" className="block text-ink-600 hover:text-brand-700" onClick={() => { history.pushState({}, '', '/trending'); setLoc(pathOf()); }}>Trending</button>
+                <button type="button" className="block text-ink-600 hover:text-brand-700" onClick={() => { history.pushState({}, '', '/clearance'); setLoc(pathOf()); }}>Clearance</button>
                 {topLevel(categories).map((cat) => (
                   <button key={cat.id} type="button" className="block text-ink-600 hover:text-brand-700" onClick={() => { history.pushState({}, '', `/c/${cat.slug}`); setLoc(pathOf()); }}>{cat.name}</button>
                 ))}

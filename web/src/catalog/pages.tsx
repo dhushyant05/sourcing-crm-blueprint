@@ -32,8 +32,8 @@ export function HomePage({ products, clearanceProducts = [], banners, settings, 
           <h1 className="text-base font-semibold text-ink-800 sm:text-lg">Welcome to Source Easy</h1>
           <div className="flex flex-wrap gap-2 text-sm">
             <QuickLink icon={FileText} label="Request for quotation" onClick={() => go('/#quote')} />
-            <QuickLink icon={TrendingUp} label="Trending" onClick={() => go('/#recommended')} />
-            {clearanceProducts.length > 0 && <QuickLink icon={Tag} label="Clearance" onClick={() => go('/#clearance')} />}
+            <QuickLink icon={TrendingUp} label="Trending" onClick={() => go('/trending')} />
+            <QuickLink icon={Tag} label="Clearance" onClick={() => go('/clearance')} />
             <QuickLink icon={Sparkles} label="Custom sourcing" onClick={() => go('/#quote')} />
           </div>
         </div>
@@ -41,10 +41,10 @@ export function HomePage({ products, clearanceProducts = [], banners, settings, 
 
       <CategoryExplorer categories={categories} products={products} banners={banners} settings={settings} icons={CAT_ICON} />
 
-      <section id="recommended" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <section id="trending" className="mx-auto max-w-7xl scroll-mt-56 px-4 py-6 sm:px-6" data-testid="trending-section">
         <div className="flex items-end justify-between">
-          <h2 className="text-lg font-semibold text-ink-800">Recommended for your business</h2>
-          <button type="button" onClick={() => go('/products')} className="text-sm font-medium text-brand-700 hover:underline">View all</button>
+          <h2 className="text-lg font-semibold text-ink-800">Trending</h2>
+          <button type="button" onClick={() => go('/trending')} className="text-sm font-medium text-brand-700 hover:underline">View all</button>
         </div>
         <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
           {recommended.map((p) => (
@@ -54,7 +54,7 @@ export function HomePage({ products, clearanceProducts = [], banners, settings, 
       </section>
 
       {clearanceProducts.length > 0 && (
-        <section id="clearance" className="mx-auto max-w-7xl px-4 py-6 sm:px-6" data-testid="clearance-section">
+        <section id="clearance" className="mx-auto max-w-7xl scroll-mt-56 px-4 py-6 sm:px-6" data-testid="clearance-section">
           <div className="flex items-end justify-between">
             <h2 className="text-lg font-semibold text-ink-800">Clearance</h2>
             <button type="button" onClick={() => go('/clearance')} className="text-sm font-medium text-brand-700 hover:underline">View all</button>
@@ -108,19 +108,21 @@ export function HomePage({ products, clearanceProducts = [], banners, settings, 
 }
 
 function QuickLink({ icon: Icon, label, onClick }: { icon: typeof Search; label: string; onClick: () => void }) {
+  const id = label === 'Trending' ? 'quick-trending' : label === 'Clearance' ? 'quick-clearance' : undefined;
   return (
-    <button type="button" onClick={onClick} className="inline-flex items-center gap-1.5 rounded-full border border-ink-100 bg-white px-3 py-1.5 text-ink-700 hover:border-warm-300 hover:text-warm-600">
+    <button type="button" onClick={onClick} data-testid={id} className="inline-flex items-center gap-1.5 rounded-full border border-ink-100 bg-white px-3 py-1.5 text-ink-700 hover:border-warm-300 hover:text-warm-600">
       <Icon size={14} className="text-warm-500" />{label}
     </button>
   );
 }
 
 
-export function ListingPage({ title, category, query, clearance = false, categories = [] }: { title: string; category?: string; query?: string; clearance?: boolean; categories?: Category[] }) {
+export function ListingPage({ title, category, query, kind = 'all', categories = [] }: { title: string; category?: string; query?: string; kind?: 'all' | 'trending' | 'clearance'; categories?: Category[] }) {
   const [q, setQ] = useState(query ?? '');
   const [data, setData] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(true);
+  const clearance = kind === 'clearance';
   useEffect(() => { setQ(query ?? ''); }, [query]);
   useEffect(() => {
     let on = true; setBusy(true);
@@ -129,19 +131,33 @@ export function ListingPage({ title, category, query, clearance = false, categor
       .finally(() => { if (on) setBusy(false); });
     return () => { on = false; };
   }, [q, category, clearance]);
+  const listPath = (term: string) => {
+    const qs = term ? `?q=${encodeURIComponent(term)}` : '';
+    if (kind === 'clearance') return `/clearance${qs}`;
+    if (kind === 'trending') return `/trending${qs}`;
+    return `/products${qs}`;
+  };
   const search = (e: React.FormEvent) => {
     e.preventDefault();
-    const path = clearance ? `/clearance${q ? `?q=${encodeURIComponent(q)}` : ''}` : `/products${q ? `?q=${encodeURIComponent(q)}` : ''}`;
-    history.replaceState({}, '', path);
+    history.replaceState({}, '', listPath(q));
     dispatchEvent(new PopStateEvent('popstate'));
   };
+  const empty = kind === 'clearance'
+    ? 'No clearance products are available right now.'
+    : kind === 'trending'
+      ? 'No trending products yet.'
+      : 'No products match that search yet.';
   const current = categoryBySlug(categories, category);
   const crumbs = current ? breadcrumbOf(categories, current) : [];
   const siblingParent = current?.parentId ?? null;
   const sidebarRoots = siblingParent ? childrenOf(categories, siblingParent) : topLevel(categories);
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <CatalogBreadcrumbs items={[{ href: '/', label: 'Home' }, { href: '/products', label: 'Products' }, ...crumbs.map((c) => ({ href: `/c/${c.slug}`, label: c.name }))]} />
+      <CatalogBreadcrumbs items={kind === 'clearance'
+        ? [{ href: '/', label: 'Home' }, { label: 'Clearance' }]
+        : kind === 'trending'
+          ? [{ href: '/', label: 'Home' }, { label: 'Trending' }]
+          : [{ href: '/', label: 'Home' }, { href: '/products', label: 'Products' }, ...crumbs.map((c) => ({ href: `/c/${c.slug}`, label: c.name }))]} />
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-800">{title}</h1>
       <form onSubmit={search} className="mt-6 max-w-xl">
         <input className="input rounded-full px-4" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search in this catalog" />
@@ -152,7 +168,11 @@ export function ListingPage({ title, category, query, clearance = false, categor
           <aside className="rounded-2xl border border-ink-100 bg-white" aria-label="Categories">
             <div className="border-b border-ink-100 px-4 py-3 text-sm font-semibold text-ink-800">Categories</div>
             <button type="button" onClick={() => go('/products')}
-              className={`block w-full px-4 py-2.5 text-left text-sm ${!category ? 'bg-warm-50 font-medium text-brand-700' : 'text-ink-700 hover:bg-warm-50'}`}>All products</button>
+              className={`block w-full px-4 py-2.5 text-left text-sm ${kind === 'all' && !category ? 'bg-warm-50 font-medium text-brand-700' : 'text-ink-700 hover:bg-warm-50'}`}>All products</button>
+            <button type="button" onClick={() => go('/trending')}
+              className={`block w-full px-4 py-2.5 text-left text-sm ${kind === 'trending' ? 'bg-warm-50 font-medium text-brand-700' : 'text-ink-700 hover:bg-warm-50'}`}>Trending</button>
+            <button type="button" onClick={() => go('/clearance')}
+              className={`block w-full px-4 py-2.5 text-left text-sm ${kind === 'clearance' ? 'bg-warm-50 font-medium text-brand-700' : 'text-ink-700 hover:bg-warm-50'}`}>Clearance</button>
             <CategoryTree items={sidebarRoots} all={categories} current={category} />
           </aside>
         )}
@@ -160,7 +180,7 @@ export function ListingPage({ title, category, query, clearance = false, categor
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {data.map((p) => <ProductCard key={p.id} product={p} />)}
           </div>
-          {!busy && !data.length && <p className="mt-10 text-ink-500">No products match that search yet.</p>}
+          {!busy && !data.length && <p className="mt-10 text-ink-500" data-testid="listing-empty">{empty}</p>}
         </div>
       </div>
     </div>

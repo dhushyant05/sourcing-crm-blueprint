@@ -151,6 +151,8 @@ export function registerCatalogSeo(app: FastifyInstance, deps: CatalogDeps, webD
     const urls = [
       { loc: `${origin}/`, pri: '1.0', freq: 'daily' },
       { loc: `${origin}/products`, pri: '0.9', freq: 'daily' },
+      { loc: `${origin}/trending`, pri: '0.8', freq: 'daily' },
+      { loc: `${origin}/clearance`, pri: '0.8', freq: 'daily' },
       ...cats.map((c: any) => ({ loc: `${origin}/c/${encodeURIComponent(c.slug)}`, pri: '0.8', freq: 'weekly' })),
       ...rows.map((p: any) => ({ loc: `${origin}/p/${encodeURIComponent(p.slug)}`, pri: '0.8', freq: 'weekly', last: p.updated_at || p.published_at })),
     ];
