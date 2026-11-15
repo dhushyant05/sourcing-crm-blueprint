@@ -8,6 +8,18 @@ import { optionLabel, topLevel, childrenOf } from '../catalog/tree';
 import { CategoryPicker } from '../catalog/CategoryPicker';
 
 type StaffProduct = Product & { status?: string; deletedAt?: string | null };
+function ymdIST(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Calcutta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+function staffAmount(v: Product['clearancePrice']) {
+  if (v == null) return '';
+  if (typeof v === 'number') return String(v);
+  return v.amounts?.USD?.min != null ? String(v.amounts.USD.min) : '';
+}
+
 const PHOTO_MAX = 15;
 const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -28,6 +40,7 @@ export function Products() {
   const canDelete = perms.can('catalog.delete') || session?.role === 'SUPER_ADMIN';
   const isSa = session?.role === 'SUPER_ADMIN';
   const canLink = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM' || !!session?.role?.startsWith('CHINA');
+  const canPromote = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
   const isSupplier = session?.role === 'SUPPLIER';
   const [rows, setRows] = useState<StaffProduct[]>(demo ? FIXTURE_PRODUCTS.map((p) => ({ ...p, status: 'PUBLISHED' })) : []);
   const [q, setQ] = useState('');
@@ -88,7 +101,7 @@ export function Products() {
               <tr key={p.id} className="border-t border-ink-100 dark:border-ink-800">
                 <td className="px-4 py-3">
                   <div className="font-medium text-ink-900 dark:text-white">{p.title}</div>
-                  <div className="text-xs text-ink-500">{p.category?.name || p.categoryName}{p.isSample ? ' · Sample' : ''}</div>
+                  <div className="text-xs text-ink-500">{p.category?.name || p.categoryName}{p.isSample ? ' · Sample' : ''}{p.pinned ? ' · Trending' : ''}{p.clearance ? ' · Clearance' : ''}</div>
                 </td>
                 <td className="text-ink-600">{p.status}{p.deletedAt ? ' (deleted)' : ''}</td>
                 <td>{p.moq ?? '—'} {p.unit || ''}</td>
@@ -109,7 +122,7 @@ export function Products() {
           </tbody>
         </table>
       </div>
-      {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} canLink={canLink} busy={busy}
+      {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} canLink={canLink} canPromote={canPromote} busy={busy}
         onClose={() => setEdit(null)}
         onSave={async (body, photos) => {
           setBusy(true); setErr(null);
@@ -149,8 +162,8 @@ export function Products() {
   );
 }
 
-function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
-  product: StaffProduct | null; canPrice: boolean; canLink: boolean; busy: boolean; onClose: () => void;
+function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, onSave }: {
+  product: StaffProduct | null; canPrice: boolean; canLink: boolean; canPromote: boolean; busy: boolean; onClose: () => void;
   onSave: (body: any, photos: PhotoDraft[]) => Promise<void>;
 }) {
   const { session } = useApp();
@@ -168,6 +181,12 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
 
     supplierId: product?.supplierId ?? product?.catalogSupplier?.id ?? '',
     tags: Array.isArray(product?.tags) ? product!.tags.join(', ') : '',
+    pinned: !!product?.pinned,
+    clearance: !!product?.clearance,
+    clearancePrice: staffAmount(product?.clearancePrice),
+    clearanceDiscountPct: product?.clearanceDiscountPct != null ? String(product.clearanceDiscountPct) : '',
+    clearanceEndsAt: ymdIST(product?.clearanceEndsAt),
+    clearanceStockLeft: product?.clearanceStockLeft != null ? String(product.clearanceStockLeft) : '',
   });
   const [attrs, setAttrs] = useState<{ key: string; value: string }[]>(
     Object.entries(specsObj).map(([key, value]) => ({ key, value: String(value ?? '') })).concat([{ key: '', value: '' }]),
@@ -212,7 +231,7 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicYears?: number | null; publicVerified?: boolean }[]>([]);
   const [newSup, setNewSup] = useState({ name: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false, publicVerified: false });
-  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
   useEffect(() => {
     void staffReq<{ data: Category[] }>('GET', '/api/catalog/categories').then((r) => setCategories(r.data)).catch(() => setCategories([]));
     if (canLink) void staffReq<{ data: typeof suppliers }>('GET', '/api/catalog/suppliers').then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
@@ -263,6 +282,14 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
       ...(canPrice ? {
         priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null,
         baseCurrency: f.baseCurrency, tiers: f.priceMode === 'TIERS' ? pricedTiers : [],
+      } : {}),
+      ...(canPromote ? {
+        pinned: !!f.pinned,
+        clearance: !!f.clearance,
+        clearancePrice: f.clearancePrice === '' ? null : Number(f.clearancePrice),
+        clearanceDiscountPct: f.clearanceDiscountPct === '' ? null : Number(f.clearanceDiscountPct),
+        clearanceEndsAt: f.clearanceEndsAt || null,
+        clearanceStockLeft: f.clearanceStockLeft === '' ? null : Number(f.clearanceStockLeft),
       } : {}),
       ...(canLink ? { supplierId: f.supplierId || null } : {}),
     }, photos);
@@ -332,6 +359,43 @@ function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
                       })} />
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+          )}
+
+
+          {canPromote && (
+            <section data-testid="product-placement">
+              <h3 className="mb-2 text-sm font-semibold text-ink-700">Marketplace placement</h3>
+              <label className="flex items-start gap-2 text-sm text-ink-800">
+                <input type="checkbox" className="mt-1" checked={!!f.pinned} onChange={(e) => set('pinned', e.target.checked)} data-testid="product-mark-trending" />
+                <span>
+                  <span className="font-medium">Mark as Trending</span>
+                  <span className="block text-xs text-ink-500">Pins this product to the top of the Trending list. Automatic ranking by views and enquiries still applies to the products after it.</span>
+                </span>
+              </label>
+              <label className="mt-3 flex items-start gap-2 text-sm text-ink-800">
+                <input type="checkbox" className="mt-1" checked={!!f.clearance} onChange={(e) => set('clearance', e.target.checked)} data-testid="product-mark-clearance" />
+                <span>
+                  <span className="font-medium">Mark as Clearance</span>
+                  <span className="block text-xs text-ink-500">Shows a Clearance badge and lists the product in the homepage Clearance section until the end date or stock left runs out.</span>
+                </span>
+              </label>
+              {!!f.clearance && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="text-xs text-ink-600">Clearance price ({f.baseCurrency})
+                    <input className="input mt-1" inputMode="decimal" placeholder="Optional sale price" value={f.clearancePrice} onChange={(e) => set('clearancePrice', e.target.value)} data-testid="product-clearance-price" />
+                  </label>
+                  <label className="text-xs text-ink-600">Discount %
+                    <input className="input mt-1" inputMode="decimal" placeholder="Optional, e.g. 20" value={f.clearanceDiscountPct} onChange={(e) => set('clearanceDiscountPct', e.target.value)} data-testid="product-clearance-discount" />
+                  </label>
+                  <label className="text-xs text-ink-600">End date
+                    <input className="input mt-1" type="date" value={f.clearanceEndsAt} onChange={(e) => set('clearanceEndsAt', e.target.value)} data-testid="product-clearance-ends" />
+                  </label>
+                  <label className="text-xs text-ink-600">Stock left
+                    <input className="input mt-1" inputMode="numeric" placeholder="Optional quantity" value={f.clearanceStockLeft} onChange={(e) => set('clearanceStockLeft', e.target.value)} data-testid="product-clearance-stock" />
+                  </label>
                 </div>
               )}
             </section>

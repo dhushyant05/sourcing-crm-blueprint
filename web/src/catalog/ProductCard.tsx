@@ -24,7 +24,10 @@ export function ProductCard({ product, variant = 'grid' }: { product: Product; v
         onMouseEnter={() => { if (photos.length > 1) setI((x) => (x + 1) % photos.length); }}
         onMouseLeave={() => setI(start < 0 ? 0 : start)}>
         {img ? <img src={photoSrc(img, true)} alt={img.altText || product.title} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-ink-100" />}
-        {product.isSample && <span className="absolute left-2 top-2 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">Sample</span>}
+        <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+          {product.isSample && <span className="rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">Sample</span>}
+          {product.clearance && <span data-testid="clearance-badge" className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Clearance</span>}
+        </div>
         {(product.pinned || product.trending) && <span className="absolute right-2 top-2 rounded bg-warm-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">Trending</span>}
         {photos.length > 1 && (
           <div className="absolute inset-x-0 bottom-1.5 flex justify-center gap-1">
@@ -36,7 +39,16 @@ export function ProductCard({ product, variant = 'grid' }: { product: Product; v
       </div>
       <div className={`flex flex-1 flex-col ${variant === 'compact' ? 'p-2.5' : 'p-3'}`}>
         <h3 className="line-clamp-2 text-[13px] font-medium leading-snug text-ink-800">{product.title}</h3>
-        <p className="mt-1 text-sm font-semibold text-brand-700">{priceLabel(product.price, currency)}</p>
+        {product.clearance && product.clearancePrice && typeof product.clearancePrice === 'object' && product.clearancePrice.amounts ? (
+          <p className="mt-1 text-sm font-semibold text-rose-700">
+            {priceLabel(product.clearancePrice, currency)}
+            {product.price?.amounts?.[currency]?.min != null && <span className="ml-1.5 text-xs font-normal text-ink-400 line-through">{priceLabel(product.price, currency)}</span>}
+            {product.clearanceDiscountPct != null && <span className="ml-1 text-[11px] font-semibold text-rose-600">{Math.round(product.clearanceDiscountPct)}% off</span>}
+          </p>
+        ) : (
+          <p className="mt-1 text-sm font-semibold text-brand-700">{priceLabel(product.price, currency)}</p>
+        )}
+        {product.clearance && product.clearanceStockLeft != null && <p className="text-[11px] font-medium text-rose-600">Only {product.clearanceStockLeft} left</p>}
         {product.moq != null && <p className="mt-0.5 text-[11px] text-ink-500">MOQ {product.moq} {product.unit || 'pcs'}</p>}
         <p className="mt-1 text-[11px] text-ink-400">Sourced in China</p>
       </div>

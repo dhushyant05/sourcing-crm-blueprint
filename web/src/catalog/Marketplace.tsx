@@ -9,9 +9,11 @@ import { topLevel } from './tree';
 
 function pathOf() {
   const p = location.pathname.replace(/\/$/, '') || '/';
-  const q = new URLSearchParams(location.search).get('q') || '';
+  const params = new URLSearchParams(location.search);
+  const q = params.get('q') || '';
+  const clearance = p === '/clearance' || params.get('clearance') === '1' || params.get('clearance') === 'true';
   const hash = location.hash;
-  return { p, q, hash };
+  return { p, q, hash, clearance };
 }
 
 const WA = 'https://wa.me/917299541489';
@@ -23,6 +25,7 @@ export function Marketplace() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [settings, setSettings] = useState<BannerSettings>({ direction: 'LTR', intervalSeconds: 5 });
   const [homeProducts, setHomeProducts] = useState<Product[]>([]);
+  const [clearanceProducts, setClearanceProducts] = useState<Product[]>([]);
   const [trust, setTrust] = useState<TrustItem[] | undefined>();
   useEffect(() => {
     const h = () => setLoc(pathOf());
@@ -34,6 +37,7 @@ export function Marketplace() {
     void publicCatalog.categories().then(setCategories).catch(() => setCategories([]));
     void publicCatalog.banners().then((r) => { setBanners(r.data); setSettings({ direction: r.direction, intervalSeconds: r.intervalSeconds }); }).catch(() => undefined);
     void publicCatalog.products({ limit: 48, sort: 'trending', window: 7 }).then((r) => setHomeProducts(r.data)).catch(() => setHomeProducts([]));
+    void publicCatalog.products({ limit: 48, clearance: 1 }).then((r) => setClearanceProducts(r.data)).catch(() => setClearanceProducts([]));
     void publicCatalog.status().then((s) => { setTrust(s.trust); }).catch(() => undefined);
   }, []);
   useEffect(() => { document.title = 'Source Easy — Marketplace'; document.documentElement.classList.remove('dark'); }, []);
@@ -57,9 +61,11 @@ export function Marketplace() {
     const slug = decodeURIComponent(c[1]);
     const cat = categories.find((x) => x.slug === slug);
     page = <ListingPage title={cat?.name || 'Category'} category={slug} categories={categories} />;
-  } else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} categories={categories} />;
+  } else if (loc.p === '/products' && loc.clearance) page = <ListingPage title="Clearance" query={loc.q} clearance categories={categories} />;
+  else if (loc.p === '/products') page = <ListingPage title="All products" query={loc.q} categories={categories} />;
   else if (loc.p === '/favorites') page = <FavoritesPage />;
-  else page = <HomePage products={homeProducts} banners={banners} settings={settings} categories={categories} trust={trust} />;
+  else if (loc.p === '/clearance') page = <ListingPage title="Clearance" query={loc.q} clearance categories={categories} />;
+  else page = <HomePage products={homeProducts} clearanceProducts={clearanceProducts} banners={banners} settings={settings} categories={categories} trust={trust} />;
 
   return (
     <CurrencyProvider>

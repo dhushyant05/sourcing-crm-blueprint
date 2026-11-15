@@ -90,6 +90,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late final _newSupRegion = TextEditingController();
   late final _newSupYears = TextEditingController();
   late final _newSupAbout = TextEditingController();
+  late final _clearancePrice = TextEditingController();
+  late final _clearanceDiscount = TextEditingController();
+  late final _clearanceEnds = TextEditingController();
+  late final _clearanceStock = TextEditingController();
 
   String _priceMode = 'GET_QUOTE';
   String _baseCurrency = 'USD';
@@ -99,6 +103,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   String? _supplierId;
   bool _newSupConsent = false;
   bool _newSupVerified = false;
+  bool _pinned = false;
+  bool _clearance = false;
 
   List<_Kv> _industry = [_Kv()];
   List<_Kv> _other = [_Kv()];
@@ -172,6 +178,20 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     if (_baseCurrency.isEmpty) _baseCurrency = 'USD';
     _priceMin.text = p?['priceMin'] == null ? '' : _s(p?['priceMin']);
     _priceMax.text = p?['priceMax'] == null ? '' : _s(p?['priceMax']);
+    _pinned = p?['pinned'] == true;
+    _clearance = p?['clearance'] == true;
+    final sale = p?['clearancePrice'];
+    if (sale is Map) {
+      final amounts = sale['amounts'];
+      final min = amounts is Map ? (amounts['USD'] is Map ? amounts['USD']['min'] : amounts['USD']) : null;
+      _clearancePrice.text = min == null ? '' : _s(min);
+    } else {
+      _clearancePrice.text = sale == null ? '' : _s(sale);
+    }
+    _clearanceDiscount.text = p?['clearanceDiscountPct'] == null ? '' : _s(p?['clearanceDiscountPct']);
+    final ends = _s(p?['clearanceEndsAt']);
+    _clearanceEnds.text = ends.length >= 10 ? ends.substring(0, 10) : ends;
+    _clearanceStock.text = p?['clearanceStockLeft'] == null ? '' : _s(p?['clearanceStockLeft']);
     _categoryId = _s(p?['categoryId'] ?? p?['category']?['id']);
     if (_categoryId!.isEmpty) _categoryId = null;
     _extraIds = ((p?['extraCategories'] as List?) ?? [])
@@ -272,7 +292,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   void dispose() {
     for (final c in [
       _title, _summary, _tags, _moq, _unit, _lead, _capacity, _packaging, _customization, _samplePolicy,
-      _priceMin, _priceMax, _sampleAmount, _sampleLead, _shipOrigin, _shipEstimate, _shipNote,
+      _priceMin, _priceMax, _clearancePrice, _clearanceDiscount, _clearanceEnds, _clearanceStock,
+      _sampleAmount, _sampleLead, _shipOrigin, _shipEstimate, _shipNote,
       _sellingUnits, _packageSize, _grossWeight, _packageType, _longDescription, _reviewsNote,
       _newSupName, _newSupRegion, _newSupYears, _newSupAbout,
     ]) {
@@ -372,6 +393,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 'unitPrice': num.tryParse(t.unitPrice.trim()),
               }).toList()
             : [];
+      }
+      if (perms.canPromoteCatalog) {
+        body['pinned'] = _pinned;
+        body['clearance'] = _clearance;
+        body['clearancePrice'] = num.tryParse(_clearancePrice.text.trim());
+        body['clearanceDiscountPct'] = num.tryParse(_clearanceDiscount.text.trim());
+        body['clearanceEndsAt'] = _clearanceEnds.text.trim().isEmpty ? null : _clearanceEnds.text.trim();
+        body['clearanceStockLeft'] = int.tryParse(_clearanceStock.text.trim());
       }
       if (perms.canLinkCatalogSupplier) {
         body['supplierId'] = _supplierId;
@@ -511,7 +540,31 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         })),
                       ]),
                 ]),
-              _section(title: 'Variations (colour, size, capacity)', children: [
+              if (perms.canPromoteCatalog)
+                _section(title: 'Marketplace placement', initiallyExpanded: true, children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Mark as Trending'),
+                    subtitle: const Text('Pins this product to the top of Trending. Automatic ranking by views and enquiries still applies after it.'),
+                    value: _pinned,
+                    onChanged: (v) => setState(() => _pinned = v),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Mark as Clearance'),
+                    subtitle: const Text('Shows a Clearance badge and lists the product in the homepage Clearance section until the end date or stock left runs out.'),
+                    value: _clearance,
+                    onChanged: (v) => setState(() => _clearance = v),
+                  ),
+                  if (_clearance) ...[
+                    TextField(controller: _clearancePrice, decoration: InputDecoration(labelText: 'Clearance price ($_baseCurrency)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                    TextField(controller: _clearanceDiscount, decoration: const InputDecoration(labelText: 'Discount % (optional)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                    TextField(controller: _clearanceEnds, decoration: const InputDecoration(labelText: 'End date (YYYY-MM-DD, optional)', hintText: '2099-12-31')),
+                    TextField(controller: _clearanceStock, decoration: const InputDecoration(labelText: 'Stock left (optional)'), keyboardType: TextInputType.number),
+                  ],
+                ]),
+              _section(title: 'Variations (colour, size, capacity)'
+, children: [
                 const Text('Each variation has options. Add a hex colour (e.g. #1f3a5f) to show a swatch.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
                 for (var i = 0; i < _variations.length; i++) _variationCard(i),
               ]),

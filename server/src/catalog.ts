@@ -107,6 +107,61 @@ function canPublish(perms: PermStore, u: User) { return perms.can(u, 'catalog.pu
 function canDelete(perms: PermStore, u: User) { return perms.can(u, 'catalog.delete'); }
 function canBanners(perms: PermStore, u: User) { return perms.can(u, 'catalog.banners'); }
 export function canManageCategories(u: User) { return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM'; }
+/** Manual Trending pin and Clearance flags: Marketplace Team and super admin only (not India staff or suppliers). */
+export function canPromote(u: User) { return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM'; }
+
+/** Live clearance rows: flagged, not expired, and not sold out. Used by the public Clearance section. */
+export const ACTIVE_CLEARANCE_SQL = `(p.clearance = true AND (p.clearance_ends_at IS NULL OR p.clearance_ends_at >= now()) AND (p.clearance_stock_left IS NULL OR p.clearance_stock_left > 0))`;
+
+export function isActiveClearance(row: { clearance?: unknown; clearance_ends_at?: string | null; clearanceEndsAt?: string | null; clearance_stock_left?: number | null; clearanceStockLeft?: number | null }, at = Date.now()) {
+  if (!row?.clearance) return false;
+  const ends = row.clearance_ends_at ?? row.clearanceEndsAt;
+  if (ends && new Date(ends).getTime() < at) return false;
+  const left = row.clearance_stock_left ?? row.clearanceStockLeft;
+  if (left != null && Number(left) <= 0) return false;
+  return true;
+}
+
+function parseClearanceEnd(v: unknown): string | null {
+  if (v == null || v === '') return null;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(`${s}T23:59:59.999+05:30`).toISOString();
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) bad('Clearance end date is not valid', 400);
+  return d.toISOString();
+}
+
+function parseDiscountPct(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 100) bad('Clearance discount must be between 0 and 100', 400);
+  return Math.round(n * 100) / 100;
+}
+
+function parseStockLeft(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) bad('Stock left must be a whole number of 0 or more', 400);
+  return n;
+}
+
+function clearanceSalePrice(row: any, rates: RateMap, regular: ReturnType<typeof priced>) {
+  const base = (CURRENCIES.includes(row.base_currency) ? row.base_currency : 'USD') as Currency;
+  const direct = numOrNull(row.clearance_price);
+  const pct = numOrNull(row.clearance_discount_pct);
+  let baseSale: number | null = direct;
+  if (baseSale == null && pct != null) {
+    const orig = regular.amounts?.[base]?.min ?? numOrNull(row.price_min);
+    if (orig != null) baseSale = roundMoney(orig * (1 - pct / 100), base);
+  }
+  if (baseSale == null) return null;
+  const amounts: Record<Currency, { min: number | null; max: number | null }> = { USD: { min: null, max: null }, CNY: { min: null, max: null }, INR: { min: null, max: null } };
+  for (const cur of CURRENCIES) {
+    const v = convertAmount(baseSale, base, cur, rates);
+    amounts[cur] = { min: v, max: v };
+  }
+  return { mode: 'RANGE' as const, base, amounts };
+}
 function categoryMatchSql(ids: string[]) {
   const ph = ids.map(() => '?').join(',');
   return { sql: `(p.category_id IN (${ph}) OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${ph})))`, params: [...ids, ...ids] };
@@ -383,7 +438,7 @@ export class CatalogStore {
   }
 
   async searchPublic(q: {
-    q?: string; category?: string; sort?: string; window?: number; moqMax?: number; hasPrice?: boolean; limit?: number; offset?: number;
+    q?: string; category?: string; sort?: string; window?: number; moqMax?: number; hasPrice?: boolean; clearance?: boolean; limit?: number; offset?: number;
   }) {
     const limit = Math.min(48, Math.max(1, q.limit ?? 24));
     const offset = Math.max(0, q.offset ?? 0);
@@ -407,6 +462,7 @@ export class CatalogStore {
     }
     if (q.moqMax != null && Number.isFinite(q.moqMax)) { where.push('(p.moq IS NULL OR p.moq <= ?)'); params.push(q.moqMax); }
     if (q.hasPrice) where.push("p.price_mode <> 'GET_QUOTE'");
+    if (q.clearance) where.push(ACTIVE_CLEARANCE_SQL);
     const query = (q.q ?? '').trim();
     if (query) {
       params.push(query, `%${query}%`);
@@ -416,6 +472,7 @@ export class CatalogStore {
     const now = new Date().toISOString();
     const order = q.sort === 'newest' ? 'p.published_at DESC NULLS LAST, p.created_at DESC'
       : q.sort === 'moq' ? 'p.moq ASC NULLS LAST, p.title'
+      : q.clearance ? 'p.clearance_ends_at ASC NULLS LAST, p.published_at DESC NULLS LAST, p.title'
       : pinOrder(now);
     const from = `FROM products p LEFT JOIN categories c ON c.id = p.category_id ${scoreJoin(days)} WHERE ${where.join(' AND ')}`;
     const total = (await this.db.get<{ n: number }>(`SELECT count(*)::int AS n ${from}`, ...params))?.n ?? 0;
@@ -475,7 +532,7 @@ export class CatalogStore {
     return this.get(id);
   }
 
-  async update(id: string, patch: Record<string, unknown>, by: string, opts: { prices: boolean; linkSupplier?: boolean }) {
+  async update(id: string, patch: Record<string, unknown>, by: string, opts: { prices: boolean; linkSupplier?: boolean; promote?: boolean }) {
     const cur = await this.get(id); if (!cur) bad('Product not found', 404);
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
     const next: Record<string, unknown> = {};
@@ -507,9 +564,20 @@ export class CatalogStore {
       if (patch.priceUsd !== undefined) next.price_usd = numOrNull(patch.priceUsd);
       if (patch.priceCny !== undefined) next.price_cny = numOrNull(patch.priceCny);
       if (patch.priceInr !== undefined) next.price_inr = numOrNull(patch.priceInr);
+    }
+    if (opts.promote) {
       if (patch.pinned !== undefined) next.pinned = !!patch.pinned;
       if (patch.pinStartsAt !== undefined) next.pin_starts_at = patch.pinStartsAt || null;
       if (patch.pinEndsAt !== undefined) next.pin_ends_at = patch.pinEndsAt || null;
+      if (patch.clearance !== undefined) next.clearance = !!patch.clearance;
+      if (patch.clearancePrice !== undefined) {
+        const n = numOrNull(patch.clearancePrice);
+        if (n != null && n < 0) bad('Clearance price must be 0 or more', 400);
+        next.clearance_price = n;
+      }
+      if (patch.clearanceDiscountPct !== undefined) next.clearance_discount_pct = parseDiscountPct(patch.clearanceDiscountPct);
+      if (patch.clearanceEndsAt !== undefined) next.clearance_ends_at = parseClearanceEnd(patch.clearanceEndsAt);
+      if (patch.clearanceStockLeft !== undefined) next.clearance_stock_left = parseStockLeft(patch.clearanceStockLeft);
     }
     const cols = Object.keys(next);
     if (cols.length) {
@@ -781,6 +849,11 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap, 
     viewCount: Number(row.view_count ?? 0),
     enquiryCount: Number(row.enquiry_count ?? 0),
     trending: !!row.pinned || Number(row.trending_score ?? 0) > 0,
+    clearance: isActiveClearance(row),
+    clearancePrice: isActiveClearance(row) ? clearanceSalePrice(row, rates, price) : null,
+    clearanceDiscountPct: isActiveClearance(row) ? numOrNull(row.clearance_discount_pct) : null,
+    clearanceEndsAt: isActiveClearance(row) ? (row.clearance_ends_at ?? null) : null,
+    clearanceStockLeft: isActiveClearance(row) ? (row.clearance_stock_left ?? null) : null,
     supplier: supplierCard.supplier,
     supplierAvailable: supplierCard.supplierAvailable,
   };
@@ -808,6 +881,9 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
     merchandising: parseMerchandising(row.merchandising),
     priceMode: row.price_mode, baseCurrency: row.base_currency,
     pinned: !!row.pinned, pinStartsAt: row.pin_starts_at, pinEndsAt: row.pin_ends_at,
+    clearance: !!row.clearance, clearancePrice: numOrNull(row.clearance_price),
+    clearanceDiscountPct: numOrNull(row.clearance_discount_pct),
+    clearanceEndsAt: row.clearance_ends_at ?? null, clearanceStockLeft: row.clearance_stock_left ?? null,
     isSample: !!row.is_sample, deletedAt: row.deleted_at, publishedAt: row.published_at,
     updatedAt: row.updated_at, createdAt: row.created_at,
     price, images: extra.images ?? [], tiers: hide ? [] : (extra.tiers ?? []),
@@ -993,7 +1069,9 @@ export function registerPublicCatalog(app: FastifyInstance, deps: CatalogDeps) {
     const rates = await store.rates();
     const { rows, total, limit, offset } = await store.searchPublic({
       q: q.q, category: q.category, sort: q.sort, window: windowDays(q.window), moqMax: q.moq ? Number(q.moq) : undefined,
-      hasPrice: q.hasPrice === '1' || q.hasPrice === 'true', limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined,
+      hasPrice: q.hasPrice === '1' || q.hasPrice === 'true',
+      clearance: q.clearance === '1' || q.clearance === 'true',
+      limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined,
     });
     const data = [];
     for (const r of rows) data.push(await publicView(store, r, rates));
@@ -1262,7 +1340,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const u = req.user!; need(u, 'catalog.edit');
     const scope = await requireVerified(u);
     let row = await store.create(req.body ?? {}, u.id, { ownerSupplierId: scope?.supplierId ?? null });
-    row = await store.update(row.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u) });
+    row = await store.update(row.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u), promote: canPromote(u) });
     return reply.code(201).send({ data: await staffProductView(row, u.role) });
   });
 
@@ -1279,7 +1357,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
       await requireVerified(u);
       if (cur.status === 'PUBLISHED') bad('Ask the Marketplace Team to unpublish this product before you edit it', 409);
     }
-    const row = await store.update(req.params.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u) });
+    const row = await store.update(req.params.id, req.body ?? {}, u.id, { prices: canPrice(deps.perms, u), linkSupplier: canLinkSupplier(u), promote: canPromote(u) });
     return { data: await staffProductView(row, u.role) };
   });
 

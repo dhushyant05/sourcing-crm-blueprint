@@ -471,3 +471,89 @@ describe('staff banner previews', () => {
     expect(preview.statusCode).toBe(200);
   }, 60_000);
 });
+
+describe('trending pin and clearance merchandising', () => {
+  it('lets only Marketplace Team and super admin pin trending and set clearance, and hides expired clearance from the public list', async () => {
+    const { app, call, mt } = await setupCatalog();
+    await call('sa', 'PATCH', '/api/catalog/settings', { homepageEnabled: true });
+
+    const made = await mt('POST', '/api/products', {
+      title: 'TEST clearance tumbler',
+      summary: 'QA clearance',
+      priceMode: 'RANGE',
+      priceMin: 10,
+      priceMax: 12,
+      baseCurrency: 'USD',
+      pinned: true,
+      clearance: true,
+      clearancePrice: 7.5,
+      clearanceDiscountPct: 25,
+      clearanceEndsAt: '2099-12-31',
+      clearanceStockLeft: 40,
+    });
+    expect(made.statusCode).toBe(201);
+    const id = made.json().data.id as string;
+    expect(made.json().data).toMatchObject({
+      pinned: true, clearance: true, clearancePrice: 7.5, clearanceDiscountPct: 25, clearanceStockLeft: 40,
+    });
+    expect(made.json().data.clearanceEndsAt).toBeTruthy();
+    expect((await mt('POST', `/api/products/${id}/publish`)).statusCode).toBe(200);
+
+    const live = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${made.json().data.slug}` })).json().data;
+    expect(live.clearance).toBe(true);
+    expect(live.pinned).toBe(true);
+    expect(live.trending).toBe(true);
+    expect(live.clearanceDiscountPct).toBe(25);
+    expect(live.clearanceStockLeft).toBe(40);
+    expect(live.clearancePrice?.amounts?.USD?.min).toBe(7.5);
+
+    const listed = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?clearance=1' })).json();
+    expect(listed.total).toBe(1);
+    expect(listed.data[0].id).toBe(id);
+    expect(listed.data[0].clearance).toBe(true);
+
+    // India staff have catalog.price but must not be able to change pin or clearance.
+    const sneak = await call('is', 'PATCH', `/api/products/${id}`, { pinned: false, clearance: false, clearancePrice: 1 });
+    expect(sneak.statusCode).toBe(200);
+    expect(sneak.json().data.pinned).toBe(true);
+    expect(sneak.json().data.clearance).toBe(true);
+    expect(sneak.json().data.clearancePrice).toBe(7.5);
+
+    // Expired clearance drops out of the public clearance list but stays in the catalog.
+    const expired = await mt('PATCH', `/api/products/${id}`, { clearanceEndsAt: '2020-01-01' });
+    expect(expired.statusCode).toBe(200);
+    const gone = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?clearance=1' })).json();
+    expect(gone.total).toBe(0);
+    const still = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${made.json().data.slug}` })).json().data;
+    expect(still.clearance).toBe(false);
+    expect(still.clearancePrice).toBeNull();
+    expect(still.title).toBe('TEST clearance tumbler');
+
+    // Sold-out also drops out. Discount-only still computes a sale price.
+    const other = await mt('POST', '/api/products', {
+      title: 'TEST trending pin only',
+      priceMode: 'RANGE',
+      priceMin: 20,
+      baseCurrency: 'USD',
+      pinned: true,
+      clearance: true,
+      clearanceDiscountPct: 10,
+      clearanceStockLeft: 0,
+    });
+    expect(other.statusCode).toBe(201);
+    expect((await mt('POST', `/api/products/${other.json().data.id}/publish`)).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/public/catalog/products?clearance=1' })).json().total).toBe(0);
+    await mt('PATCH', `/api/products/${other.json().data.id}`, { clearanceStockLeft: 5 });
+    const sale = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?clearance=1' })).json().data[0];
+    expect(sale.id).toBe(other.json().data.id);
+    expect(sale.clearancePrice.amounts.USD.min).toBe(18);
+
+    // India admin cannot pin a product either.
+    const plain = await mt('POST', '/api/products', { title: 'TEST no pin from india', priceMode: 'GET_QUOTE' });
+    const id2 = plain.json().data.id;
+    expect((await call('ia', 'PATCH', `/api/products/${id2}`, { pinned: true, clearance: true })).json().data.pinned).toBe(false);
+    expect((await call('ia', 'PATCH', `/api/products/${id2}`, { pinned: true, clearance: true })).json().data.clearance).toBe(false);
+    const bySa = await call('sa', 'PATCH', `/api/products/${id2}`, { pinned: true });
+    expect(bySa.json().data.pinned).toBe(true);
+  }, 60_000);
+});
