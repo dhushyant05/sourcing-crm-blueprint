@@ -352,7 +352,8 @@ export async function buildApp(o: AppOptions) {
     return {
       ...base,
       supplierStatus: profile?.status ?? null,
-      supplierRejectReason: profile?.status === 'REJECTED' ? profile.rejectReason : null,
+      supplierVerified: !!profile?.publicVerified,
+      supplierRejectReason: profile?.status === 'DECLINED' ? profile.rejectReason : null,
     };
   };
   // Public by design (an <img> cannot send a bearer token); ids are random UUIDs and pictures are low-sensitivity.
@@ -378,8 +379,17 @@ export async function buildApp(o: AppOptions) {
     // Failed-login counter in Redis (shared by every API process): 5 failures → 10 min lock.
     const key = `se:fail:${req.ip}|${email.toLowerCase()}`;
     if (Number((await o.bus.get(key)) ?? 0) >= 5) return reply.code(429).send({ error: 'Too many attempts, try again in a few minutes' });
-    const u = await o.users.verify(email, password);
-    if (!u) { await o.bus.incr(key, 600); return reply.code(401).send({ error: 'Invalid email or password' }); }
+    const any = await o.users.verifyAny(email, password);
+    if (!any) { await o.bus.incr(key, 600); return reply.code(401).send({ error: 'Invalid email or password' }); }
+    if (!any.active) {
+      const profile = any.role === 'SUPPLIER' ? await supplierAccounts.byUser(any.id) : null;
+      if (profile && profile.status === 'DECLINED') {
+        return reply.code(403).send({ error: 'This supplier account was declined', code: 'declined' });
+      }
+      await o.bus.incr(key, 600);
+      return reply.code(401).send({ error: 'Invalid email or password' });
+    }
+    const u = any;
     await o.bus.del(key);
     const body = (req.body ?? {}) as { refresh?: boolean; device?: string };
     return { token: sign(u), user: await me(u), ...(body.refresh ? { refreshToken: await issueRefresh(u, body.device) } : {}) };

@@ -43,10 +43,15 @@ export class UserStore {
     return this.byId(id)!;
   }
   async verify(email: string, password: string): Promise<User | null> {
+    const u = await this.verifyAny(email, password);
+    return u && u.active ? u : null;
+  }
+  /** Password check that still returns a deactivated user (used to explain a declined supplier login). */
+  async verifyAny(email: string, password: string): Promise<User | null> {
     const r = this.row(email);
     // Compare against a dummy hash when the user is missing to keep timing similar.
     const ok = await bcrypt.compare(password, r?.password_hash ?? DUMMY);
-    return r && ok && r.active ? toUser(r) : null;
+    return r && ok ? toUser(r) : null;
   }
   async setPassword(id: string, password: string) {
     if (!password) throw new Error('Password is required');

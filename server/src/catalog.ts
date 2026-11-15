@@ -106,6 +106,11 @@ function canPrice(perms: PermStore, u: User) { return perms.can(u, 'catalog.pric
 function canPublish(perms: PermStore, u: User) { return perms.can(u, 'catalog.publish'); }
 function canDelete(perms: PermStore, u: User) { return perms.can(u, 'catalog.delete'); }
 function canBanners(perms: PermStore, u: User) { return perms.can(u, 'catalog.banners'); }
+export function canManageCategories(u: User) { return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM'; }
+function categoryMatchSql(ids: string[]) {
+  const ph = ids.map(() => '?').join(',');
+  return { sql: `(p.category_id IN (${ph}) OR EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${ph})))`, params: [...ids, ...ids] };
+}
 function isSa(u: User) { return u.role === 'SUPER_ADMIN'; }
 function hidePrices(role: Role) { return sides(role).china && role !== 'SUPER_ADMIN'; }
 /** Super admin, China staff, and Marketplace Team may link a supplier to a product. India staff cannot. */
@@ -214,6 +219,9 @@ export class CatalogStore {
   async categoryById(id: string) {
     return this.db.get('SELECT id, slug, name, parent_id AS "parentId", active FROM categories WHERE id = ?', id);
   }
+  async categoryBySlugOrId(idOrSlug: string) {
+    return this.db.get('SELECT id, slug, name, parent_id AS "parentId", active FROM categories WHERE id = ? OR slug = ?', idOrSlug, idOrSlug);
+  }
   async uniqueCategorySlug(base: string, except?: string) {
     let n = 2;
     let slug = slugify(base);
@@ -269,6 +277,16 @@ export class CatalogStore {
       const p = await this.categoryById(parent);
       if (!p) bad('Parent category not found', 400);
     }
+    const parentKey = parent === undefined && id ? (await this.categoryById(id))?.parentId ?? null : (parent ?? null);
+    const sibling = await this.db.get<{ id: string }>(
+      `SELECT id FROM categories WHERE lower(name) = lower(?) AND coalesce(parent_id, '') = coalesce(?, '') AND id <> coalesce(?, '')`,
+      trimmed, parentKey, id ?? '',
+    );
+    if (sibling && !id) {
+      // Same name under the same parent: return the existing row so repeated creates are idempotent.
+      return this.categoryById(sibling.id);
+    }
+    if (sibling && id && sibling.id !== id) bad('A category with that name already exists under this parent', 409, 'duplicate');
     if (id) {
       if (parent !== undefined && await this.wouldCycle(id, parent ?? null)) bad('A category cannot be nested under itself');
       const slug = await this.uniqueCategorySlug(trimmed, id);
@@ -286,6 +304,27 @@ export class CatalogStore {
     const nid = randomUUID();
     await this.db.run('INSERT INTO categories (id, slug, name, parent_id) VALUES (?,?,?,?)', nid, slug, trimmed, parent ?? null);
     return { id: nid, slug, name: trimmed, parentId: parent ?? null, active: true };
+  }
+
+  async extraCategories(productId: string) {
+    return this.db.all<{ id: string; slug: string; name: string; parentId: string | null }>(
+      `SELECT c.id, c.slug, c.name, c.parent_id AS "parentId"
+       FROM product_categories pc JOIN categories c ON c.id = pc.category_id
+       WHERE pc.product_id = ? ORDER BY lower(c.name)`,
+      productId,
+    );
+  }
+  async setExtraCategories(productId: string, primaryId: string | null, extraIds: unknown) {
+    if (extraIds === undefined) return;
+    const raw = Array.isArray(extraIds) ? extraIds : [];
+    const uniq = [...new Set(raw.map((x) => String(x ?? '').trim()).filter(Boolean))].filter((id) => id !== primaryId);
+    for (const id of uniq) {
+      if (!(await this.categoryById(id))) bad('Category not found', 400);
+    }
+    await this.db.run('DELETE FROM product_categories WHERE product_id = ?', productId);
+    for (const id of uniq) {
+      await this.db.run('INSERT INTO product_categories (product_id, category_id) VALUES (?,?)', productId, id);
+    }
   }
 
   async get(idOrSlug: string, opts: { includeDeleted?: boolean } = {}) {
@@ -353,10 +392,17 @@ export class CatalogStore {
     const params: unknown[] = [];
     if (q.category) {
       const ids = await this.descendantIds(q.category);
-      if (!ids.length) { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
-      else {
-        where.push(`p.category_id IN (${ids.map(() => '?').join(',')})`);
-        params.push(...ids);
+      if (!ids.length) {
+        const cat = await this.categoryBySlugOrId(q.category);
+        if (cat) {
+          const m = categoryMatchSql([cat.id]);
+          where.push(m.sql); params.push(...m.params);
+        } else {
+          where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category);
+        }
+      } else {
+        const m = categoryMatchSql(ids);
+        where.push(m.sql); params.push(...m.params);
       }
     }
     if (q.moqMax != null && Number.isFinite(q.moqMax)) { where.push('(p.moq IS NULL OR p.moq <= ?)'); params.push(q.moqMax); }
@@ -384,7 +430,12 @@ export class CatalogStore {
     const params: unknown[] = [];
     if (!q.includeDeleted) where.push('p.deleted_at IS NULL');
     if (q.status) { where.push('p.status = ?'); params.push(q.status); }
-    if (q.category) { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
+    if (q.category) {
+      const cat = await this.categoryBySlugOrId(q.category);
+      const ids = cat ? await this.descendantIds(cat.id) : [];
+      if (ids.length) { const m = categoryMatchSql(ids); where.push(m.sql); params.push(...m.params); }
+      else { where.push('(c.slug = ? OR p.category_id = ?)'); params.push(q.category, q.category); }
+    }
     if (q.supplierId) { where.push('p.supplier_id = ?'); params.push(q.supplierId); }
     const query = (q.q ?? '').trim();
     if (query) { where.push('(p.title ILIKE ? OR coalesce(p.summary,\'\') ILIKE ?)'); params.push(`%${query}%`, `%${query}%`); }
@@ -419,6 +470,7 @@ export class CatalogStore {
       'GET_QUOTE', base, by, supplierId);
     const tags = parseTags(input.tags);
     if (tags.length) await this.db.run('UPDATE products SET tags = ?::jsonb WHERE id = ?', JSON.stringify(tags), id);
+    await this.setExtraCategories(id, emptyToNull(input.categoryId), input.extraCategoryIds ?? []);
     await this.audit(id, by, 'CREATE', null, { title, slug });
     return this.get(id);
   }
@@ -460,9 +512,12 @@ export class CatalogStore {
       if (patch.pinEndsAt !== undefined) next.pin_ends_at = patch.pinEndsAt || null;
     }
     const cols = Object.keys(next);
-    if (!cols.length) return cur;
-    const assign = cols.map((c) => (c === 'tags' || c === 'merchandising') ? `${c} = ?::jsonb` : `${c} = ?`);
-    await this.db.run(`UPDATE products SET ${assign.join(', ')}, updated_at = now() WHERE id = ?`, ...cols.map((c) => next[c]), id);
+    if (cols.length) {
+      const assign = cols.map((c) => (c === 'tags' || c === 'merchandising') ? `${c} = ?::jsonb` : `${c} = ?`);
+      await this.db.run(`UPDATE products SET ${assign.join(', ')}, updated_at = now() WHERE id = ?`, ...cols.map((c) => next[c]), id);
+    }
+    const primary = next.category_id !== undefined ? (next.category_id as string | null) : (cur.category_id as string | null);
+    await this.setExtraCategories(id, primary, patch.extraCategoryIds);
     if (opts.prices && Array.isArray(patch.tiers)) {
       await this.db.run('DELETE FROM product_price_tiers WHERE product_id = ?', id);
       for (const t of patch.tiers as any[]) {
@@ -739,12 +794,13 @@ function parseSpecs(raw: unknown): Record<string, string> | null {
   return normalizeSpecs(raw);
 }
 
-export function staffView(row: any, role: Role, rates: RateMap, extra: { images?: any[]; tiers?: any[]; catalogSupplier?: any } = {}) {
+export function staffView(row: any, role: Role, rates: RateMap, extra: { images?: any[]; tiers?: any[]; catalogSupplier?: any; extraCategories?: any[] } = {}) {
   const hide = hidePrices(role);
   const price = hide ? { mode: row.price_mode, base: row.base_currency, amounts: null } : priced(row, rates);
   const out: Record<string, unknown> = {
     id: row.id, slug: row.slug, title: row.title, summary: row.summary, specs: parseSpecs(row.specs),
     categoryId: row.category_id, categorySlug: row.category_slug ?? null, categoryName: row.category_name ?? null,
+    extraCategories: extra.extraCategories ?? [],
     tags: tagsOf(row),
     status: row.status, moq: row.moq, unit: row.unit, leadTime: row.lead_time,
     capacity: row.capacity ?? null, packaging: row.packaging ?? null,
@@ -819,6 +875,13 @@ export async function processBannerImage(data: Buffer, mobile?: Buffer) {
   const mobSrc = mobile ? sharp(mobile, { limitInputPixels: 50e6 }).rotate() : image;
   const mob = await mobSrc.clone().resize(1080, 720, { fit: 'cover', position: 'centre' }).webp({ quality: 82 }).toBuffer();
   return { desktop, mobile: mob };
+}
+export async function processBannerMobile(data: Buffer) {
+  if (data.length > MAX_FILE_BYTES) bad('Image must be 10 MB or smaller', 413, 'size');
+  let src: sharp.Sharp | undefined;
+  try { src = sharp(data, { limitInputPixels: 50e6 }).rotate(); await src.metadata(); }
+  catch { bad('Upload a JPEG, PNG or WebP image', 415, 'type'); }
+  return src!.resize(1080, 720, { fit: 'cover', position: 'centre' }).webp({ quality: 82 }).toBuffer();
 }
 
 const SAMPLE_CATEGORIES = ['Hardware', 'Housewares', 'Kitchenware', 'Lighting', 'Packaging', 'Textiles'];
@@ -1089,7 +1152,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   const requireVerified = async (u: User) => {
     if (u.role !== 'SUPPLIER') return null;
     const s = await supplierScope(u);
-    if (!s || s.status !== 'VERIFIED') bad('Your supplier account must be verified before you can manage products', 403, 'unverified');
+    if (!s || s.status !== 'APPROVED') bad('Your supplier account must be approved before you can manage products', 403, 'unverified');
     return s;
   };
   const owned = async (u: User, id: string, opts: { includeDeleted?: boolean } = {}) => {
@@ -1106,11 +1169,13 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   api.get('/api/catalog/categories', async () => ({ data: await store.categories(false) }));
   api.post<{ Body: { name?: string; parentId?: string | null } }>('/api/catalog/categories', async (req) => {
     const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can add categories');
     const b = req.body ?? {};
     return { data: await store.upsertCategory(String(b.name ?? ''), undefined, b.parentId === undefined ? undefined : (b.parentId ? String(b.parentId) : null)) };
   });
   api.patch<{ Params: { id: string }; Body: { name?: string; parentId?: string | null; active?: boolean } }>('/api/catalog/categories/:id', async (req) => {
     const u = req.user!; need(u, 'catalog.edit');
+    if (!canManageCategories(u)) forbid('Only the Marketplace Team or super admin can edit categories');
     const b = req.body ?? {};
     const cur = await store.categoryById(req.params.id);
     if (!cur) bad('Category not found', 404);
@@ -1189,7 +1254,8 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const link = role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA');
     const linked = link && row.supplier_id ? await store.catalogSupplier(row.supplier_id) : null;
     const catalogSupplier = linked ? catalogSupplierStaffView(linked) : undefined;
-    return staffView(row, role, await store.rates(), { images: staffPhotos(images as any, row.id), tiers, catalogSupplier });
+    const extraCategories = await store.extraCategories(row.id);
+    return staffView(row, role, await store.rates(), { images: staffPhotos(images as any, row.id), tiers, catalogSupplier, extraCategories });
   };
 
   api.post<{ Body: Record<string, unknown> }>('/api/products', async (req, reply) => {
@@ -1372,14 +1438,23 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
         parts.push({ field: part.fieldname, buf });
       }
     }
-    const desk = parts.find((p) => p.field !== 'mobile')?.buf ?? parts[0]?.buf;
-    if (!desk) bad('No file');
-    const processed = await processBannerImage(desk, parts.find((p) => p.field === 'mobile')?.buf);
-    const saved = deps.uploads.save(ownerKey('bn', cur.id), [
-      { name: 'desktop.webp', mime: 'image/webp', data: processed.desktop },
-      { name: 'mobile.webp', mime: 'image/webp', data: processed.mobile },
-    ]);
-    await deps.db.run('UPDATE banner_slides SET file_id = ?, mobile_file_id = ?, updated_at = now() WHERE id = ?', saved[0].id, saved[1].id, cur.id);
+    const desk = parts.find((p) => p.field === 'file' || p.field === 'desktop')?.buf
+      ?? parts.find((p) => p.field !== 'mobile')?.buf;
+    const mob = parts.find((p) => p.field === 'mobile')?.buf;
+    if (!desk && !mob) bad('No file');
+    if (!desk) {
+      if (!cur.file_id) bad('Upload a desktop image first');
+      const mobile = await processBannerMobile(mob!);
+      const saved = deps.uploads.save(ownerKey('bn', cur.id), [{ name: 'mobile.webp', mime: 'image/webp', data: mobile }]);
+      await deps.db.run('UPDATE banner_slides SET mobile_file_id = ?, updated_at = now() WHERE id = ?', saved[0].id, cur.id);
+    } else {
+      const processed = await processBannerImage(desk, mob);
+      const saved = deps.uploads.save(ownerKey('bn', cur.id), [
+        { name: 'desktop.webp', mime: 'image/webp', data: processed.desktop },
+        { name: 'mobile.webp', mime: 'image/webp', data: processed.mobile },
+      ]);
+      await deps.db.run('UPDATE banner_slides SET file_id = ?, mobile_file_id = ?, updated_at = now() WHERE id = ?', saved[0].id, saved[1].id, cur.id);
+    }
     await deps.mediaSync?.(ownerKey('bn', cur.id), deps.uploads.list(ownerKey('bn', cur.id)));
     return reply.code(201).send({ data: bannerDto(await deps.db.get('SELECT * FROM banner_slides WHERE id = ?', cur.id)) });
   });

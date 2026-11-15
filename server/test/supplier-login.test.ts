@@ -72,31 +72,46 @@ describe('supplier signup and verification', () => {
     const list = (await mt('GET', '/api/supplier/applications?status=PENDING')).json().data as any[];
     const appn = list.find((x) => x.loginEmail === 'test-supplier@x.in');
     expect(appn).toBeTruthy();
-    const noReason = await mt('POST', `/api/supplier/applications/${appn.id}/reject`, { reason: '' });
-    expect(noReason.statusCode).toBe(400);
+    const edited = await mt('PATCH', `/api/supplier/applications/${appn.id}`, { company: 'TEST - Source Easy QA Factory', publicYears: 8 });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().data.publicYears).toBe(8);
 
-    const rejected = await mt('POST', `/api/supplier/applications/${appn.id}/reject`, { reason: 'TEST incomplete documents' });
-    expect(rejected.statusCode).toBe(200);
-    expect(rejected.json().data.status).toBe('REJECTED');
+    const declined = await mt('POST', `/api/supplier/applications/${appn.id}/decline`, { reason: 'TEST incomplete documents' });
+    expect(declined.statusCode).toBe(200);
+    expect(declined.json().data.status).toBe('DECLINED');
+    expect(declined.json().data.displayStatus).toBe('DECLINED');
 
-    const afterReject = await loginAs(app, 'test-supplier@x.in', 'Testqa-tumbler1');
-    expect(afterReject.json().user.supplierStatus).toBe('REJECTED');
-    expect(afterReject.json().user.supplierRejectReason).toMatch(/incomplete/);
-    const tok2 = afterReject.json().token;
-    const asSup2 = (method: string, url: string, payload?: any) =>
-      app.inject({ method, url, payload, headers: { authorization: `Bearer ${tok2}` } });
-    expect((await asSup2('POST', '/api/products', { title: 'Still blocked' })).statusCode).toBe(403);
-    expect((await asSup2('POST', '/api/supplier/me/resubmit')).statusCode).toBe(200);
+    const afterDecline = await loginAs(app, 'test-supplier@x.in', 'Testqa-tumbler1');
+    expect(afterDecline.statusCode).toBe(403);
+    expect(afterDecline.json().code).toBe('declined');
 
-    const verified = await mt('POST', `/api/supplier/applications/${appn.id}/verify`);
-    expect(verified.statusCode).toBe(200);
-    expect(verified.json().data.status).toBe('VERIFIED');
+    const noReasonOk = await mt('POST', `/api/supplier/applications/${appn.id}/decline`, { reason: '' });
+    expect(noReasonOk.statusCode).toBe(200);
+
+    const accepted = await mt('POST', `/api/supplier/applications/${appn.id}/accept`);
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().data.status).toBe('APPROVED');
+    expect(accepted.json().data.displayStatus).toBe('APPROVED');
+    expect(accepted.json().data.publicVerified).toBe(false);
+
+    const tooSoon = await mt('POST', `/api/supplier/applications/${appn.id}/verify`, { verified: true });
+    // already approved, verify should work
+    expect(tooSoon.statusCode).toBe(200);
+    expect(tooSoon.json().data.publicVerified).toBe(true);
+    expect(tooSoon.json().data.displayStatus).toBe('VERIFIED');
+    const unverified = await mt('POST', `/api/supplier/applications/${appn.id}/verify`, { verified: false });
+    expect(unverified.json().data.publicVerified).toBe(false);
 
     const signed3 = await loginAs(app, 'test-supplier@x.in', 'Testqa-tumbler1');
-    expect(signed3.json().user.supplierStatus).toBe('VERIFIED');
+    expect(signed3.statusCode).toBe(200);
+    expect(signed3.json().user.supplierStatus).toBe('APPROVED');
     const tok3 = signed3.json().token;
     const asSup3 = (method: string, url: string, payload?: any) =>
       app.inject({ method, url, payload, headers: { authorization: `Bearer ${tok3}` } });
+
+    const badge = await mt('POST', `/api/supplier/applications/${appn.id}/verify`, { verified: true });
+    expect(badge.json().data.publicVerified).toBe(true);
+    const verified = { json: () => ({ data: accepted.json().data }) };
 
     const product = await asSup3('POST', '/api/products', {
       title: 'TEST supplier own tumbler',

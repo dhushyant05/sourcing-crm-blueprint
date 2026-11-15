@@ -49,15 +49,35 @@ export function registerStaffSupplier(api: FastifyInstance, accounts: SupplierAc
     return { data: rows.map(reviewView) };
   });
 
-  api.post<{ Params: { id: string } }>('/api/supplier/applications/:id/verify', async (req, reply) => catcher(req, reply, async () => {
+  api.patch<{ Params: { id: string } }>('/api/supplier/applications/:id', async (req, reply) => catcher(req, reply, async () => {
     const u = req.user!;
     if (!canReviewSuppliers(u)) return reply.code(403).send({ error: 'Only the Marketplace Team or super admin can review suppliers' });
-    return { data: reviewView(await accounts.verify(req.params.id, u.id)) };
+    return { data: reviewView(await accounts.updateByStaff(req.params.id, u.id, (req.body ?? {}) as Record<string, unknown>)) };
   }));
 
+  api.post<{ Params: { id: string } }>('/api/supplier/applications/:id/accept', async (req, reply) => catcher(req, reply, async () => {
+    const u = req.user!;
+    if (!canReviewSuppliers(u)) return reply.code(403).send({ error: 'Only the Marketplace Team or super admin can review suppliers' });
+    return { data: reviewView(await accounts.accept(req.params.id, u.id)) };
+  }));
+
+  api.post<{ Params: { id: string }; Body: { reason?: string } }>('/api/supplier/applications/:id/decline', async (req, reply) => catcher(req, reply, async () => {
+    const u = req.user!;
+    if (!canReviewSuppliers(u)) return reply.code(403).send({ error: 'Only the Marketplace Team or super admin can review suppliers' });
+    return { data: reviewView(await accounts.decline(req.params.id, u.id, req.body?.reason)) };
+  }));
+
+  api.post<{ Params: { id: string }; Body: { verified?: boolean } }>('/api/supplier/applications/:id/verify', async (req, reply) => catcher(req, reply, async () => {
+    const u = req.user!;
+    if (!canReviewSuppliers(u)) return reply.code(403).send({ error: 'Only the Marketplace Team or super admin can review suppliers' });
+    const on = req.body?.verified !== false;
+    return { data: reviewView(await accounts.setVerified(req.params.id, u.id, on)) };
+  }));
+
+  // Older clients used /reject; keep it as an alias for decline (reason optional).
   api.post<{ Params: { id: string }; Body: { reason?: string } }>('/api/supplier/applications/:id/reject', async (req, reply) => catcher(req, reply, async () => {
     const u = req.user!;
     if (!canReviewSuppliers(u)) return reply.code(403).send({ error: 'Only the Marketplace Team or super admin can review suppliers' });
-    return { data: reviewView(await accounts.reject(req.params.id, u.id, String(req.body?.reason ?? ''))) };
+    return { data: reviewView(await accounts.decline(req.params.id, u.id, req.body?.reason)) };
   }));
 }

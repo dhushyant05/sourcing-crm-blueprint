@@ -5,6 +5,7 @@ import { useApp } from '../lib/store';
 import type { GreetingStaff } from '../lib/types';
 import { HttpError } from '../lib/api';
 import { SlideOver } from '../components/ui';
+import { ImageSizeGuide } from '../components/ImageSizeGuide';
 
 // Admin: greeting banners are image-only. The uploaded artwork carries all the text; the server derives the internal name and
 // alt text, shows one image on the website, customer portal and customer app (uncropped), and keeps it live until unpublished.
@@ -45,6 +46,12 @@ export function Greetings() {
     <div className="space-y-4" data-testid="greetings">
       <h1 className="text-xl font-semibold text-ink-900 dark:text-white">{t('gr.title')}</h1>
       <p className="text-sm text-ink-500">{t('gr.introImage')}</p>
+      <ImageSizeGuide title={t('gr.sizeTitle')}>
+        <p>{t('gr.sizeDesktop')}</p>
+        <p>{t('gr.sizeMobile')}</p>
+        <p>{t('gr.sizeSafe')}</p>
+        <p>{t('gr.sizeFiles')}</p>
+      </ImageSizeGuide>
       <div className="card space-y-3 p-4" data-testid="gr-upload-card">
         <label className="btn-primary w-fit cursor-pointer"><ImagePlus size={16} />{t(file ? 'gr.chooseOther' : 'gr.chooseImage')}
           <input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" onChange={pick} data-testid="gr-file" /></label>

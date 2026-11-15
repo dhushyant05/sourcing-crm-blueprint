@@ -1397,7 +1397,12 @@
     "cancel": "Cancel",
     "replaceImage": "Replace image",
     "lockedHintImage": "This greeting is live. Unpublish it to replace the image or delete it.",
-    "legacy": "Older greeting created with text fields; it still shows as before."
+    "legacy": "Older greeting created with text fields; it still shows as before.",
+    "sizeTitle": "Image size requirements",
+    "sizeDesktop": "Recommended desktop size: 1920 × 600 pixels (16:5). The greeting is shown in full, uncropped, at the width of the page, up to 80% of the screen height.",
+    "sizeMobile": "It also works on phones. If the image is very tall, it is limited to 80% of the screen height. A slightly shorter wide image (for example 1080 × 540) reads well on a phone.",
+    "sizeSafe": "Because the image is not cropped, put all text and logos inside the artwork itself and avoid large empty margins.",
+    "sizeFiles": "File type: PNG, JPEG or WebP, up to 10 MB. Longest side no more than 8,000 pixels, and no more than 40 megapixels."
   },
   "outbox": {
     "title": "Customer notification outbox",
@@ -1526,6 +1531,37 @@
     "statusVerified": "Verified",
     "statusRejected": "Rejected",
     "signedUp": "Account created. Sign in after the Marketplace Team verifies you, or to check your status.",
-    "profile": "Supplier profile"
+    "profile": "Supplier profile",
+    "edit": "Edit",
+    "accept": "Accept",
+    "decline": "Decline",
+    "markVerified": "Mark as verified",
+    "removeVerified": "Remove verified",
+    "statusApproved": "Approved",
+    "statusDeclined": "Declined",
+    "declineConfirm": "Decline this supplier? They will not be able to sign in or add products.",
+    "reasonOptional": "Reason (optional)",
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "editTitle": "Edit supplier",
+    "approvedHint": "Your account is approved. You can add products; the Marketplace Team publishes them."
+  },
+  "banners": {
+    "sizeTitle": "Image size requirements",
+    "intro": "Up to 6 live slides. They auto-scroll on the marketplace homepage. Festival greetings are shown in their own section above the products, not in this carousel.",
+    "sizeDesktop": "Desktop image: 1920 × 640 pixels (3:1). This is the size the site stores. The homepage slot is a little shorter and wider, so the top and bottom may be cropped.",
+    "sizeMobile": "Optional mobile image: 1080 × 720 pixels (3:2). This is used on screens narrower than 640 px. If you do not upload one, the desktop image is cropped to this size.",
+    "sizeSafe": "Safe area: keep logos and text in the centre. Leave about 10% clear on the left and right, and keep important content in the middle 60% of the height so cropping does not cut it off.",
+    "sizeFiles": "File type: JPEG, PNG or WebP, up to 10 MB.",
+    "uploadHint": "Upload a desktop image at 1920 × 640. A separate mobile image (1080 × 720) is optional."
+  },
+  "cats": {
+    "newCategory": "+ New category",
+    "newSubcategory": "+ New subcategory",
+    "namePrompt": "Category name",
+    "extra": "Also show in these categories",
+    "addExtra": "Add another category",
+    "primary": "Primary category (breadcrumb)",
+    "duplicate": "A category with that name already exists here"
   }
 }

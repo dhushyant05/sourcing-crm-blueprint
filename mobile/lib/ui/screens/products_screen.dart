@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -98,9 +99,11 @@ class _ProductFormState extends State<_ProductForm> {
   late final _moq = TextEditingController(text: widget.existing?['moq'] == null ? '' : '${widget.existing?['moq']}');
   late final _unit = TextEditingController(text: '${widget.existing?['unit'] ?? 'pcs'}');
   late final _lead = TextEditingController(text: '${widget.existing?['leadTime'] ?? ''}');
-  final List<String> _pending = [];
+  final List<_PendingPhoto> _pending = [];
   final List<Map<String, dynamic>> _images = [];
   bool _busy = false;
+  static const _photoMax = 15;
+  static const _photoMaxBytes = 10 * 1024 * 1024;
 
   @override
   void initState() {
@@ -133,12 +136,23 @@ class _ProductFormState extends State<_ProductForm> {
       } else {
         saved = await repo.updateProduct('${widget.existing!['id']}', body);
       }
-      for (final path in _pending) {
-        await repo.addProductImage('${saved['id']}', path);
+      final existingIds = _images.map((e) => '${e['id']}').toList();
+      for (final photo in _pending) {
+        await repo.addProductImage('${saved['id']}', photo.path);
       }
-      if (_images.isNotEmpty) {
-        await repo.reorderProductImages('${saved['id']}', order: _images.map((e) => '${e['id']}').toList(),
-            cover: _images.cast<Map?>().firstWhere((e) => e?['cover'] == true, orElse: () => _images.first)?['id']?.toString());
+      if (_pending.isNotEmpty || _images.isNotEmpty) {
+        final fresh = await repo.getProduct('${saved['id']}');
+        final imgs = ((fresh['images'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final added = imgs.skip(existingIds.length).map((e) => '${e['id']}').toList();
+        final coverPending = _pending.indexWhere((p) => p.cover);
+        String? coverId;
+        if (coverPending >= 0 && coverPending < added.length) coverId = added[coverPending];
+        coverId ??= _images.cast<Map?>().firstWhere((e) => e?['cover'] == true, orElse: () => _images.isEmpty ? null : _images.first)?['id']?.toString();
+        coverId ??= added.isNotEmpty ? added.first : null;
+        final order = [...existingIds, ...added];
+        if (order.isNotEmpty) {
+          await repo.reorderProductImages('${saved['id']}', order: order, cover: coverId);
+        }
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -190,16 +204,57 @@ class _ProductFormState extends State<_ProductForm> {
               ]));
             },
           )),
-        if (_pending.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${_pending.length} new photo${_pending.length == 1 ? '' : 's'} will upload on save.')),
+        const Text('JPEG, PNG or WebP, up to 10 MB each, at most 15 photos. They upload when you save. Mark one as the cover.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+        if (_pending.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SizedBox(height: 148, child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _pending.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (c, i) {
+              final im = _pending[i];
+              return SizedBox(width: 120, child: Column(children: [
+                Expanded(child: Stack(children: [
+                  Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(im.path), fit: BoxFit.cover))),
+                  if (im.cover) const Positioned(left: 6, top: 6, child: Chip(label: Text('Cover', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact)),
+                ])),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  IconButton(icon: const Icon(Icons.chevron_left, size: 18), onPressed: i == 0 ? null : () { setState(() { final x = _pending.removeAt(i); _pending.insert(i - 1, x); }); }),
+                  IconButton(icon: const Icon(Icons.star_outline, size: 18), tooltip: 'Set cover', onPressed: () { setState(() { for (final x in _pending) { x.cover = false; } _pending[i].cover = true; }); }),
+                  IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: () { setState(() => _pending.removeAt(i)); }),
+                  IconButton(icon: const Icon(Icons.chevron_right, size: 18), onPressed: i == _pending.length - 1 ? null : () { setState(() { final x = _pending.removeAt(i); _pending.insert(i + 1, x); }); }),
+                ]),
+              ]));
+            },
+          )),
+        ],
         const SizedBox(height: 8),
         OutlinedButton.icon(icon: const Icon(Icons.photo_outlined), label: const Text('Add photos'),
           onPressed: () async {
             final files = await ImagePicker().pickMultiImage(maxWidth: 2000, imageQuality: 88);
-            if (files.isNotEmpty) setState(() => _pending.addAll(files.map((f) => f.path)));
+            if (files.isEmpty) return;
+            final room = _photoMax - _images.length - _pending.length;
+            final take = files.take(room < 0 ? 0 : room).toList();
+            if (take.isEmpty) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Up to 15 photos per product.')));
+              return;
+            }
+            setState(() {
+              final startEmpty = _pending.isEmpty && _images.isEmpty;
+              _pending.addAll(take.map((f) => _PendingPhoto(f.path)));
+              if (startEmpty && _pending.isNotEmpty && !_pending.any((p) => p.cover)) _pending.first.cover = true;
+            });
           }),
         const SizedBox(height: 20),
         FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
       ]),
     );
   }
+}
+
+
+class _PendingPhoto {
+  _PendingPhoto(this.path, {this.cover = false});
+  final String path;
+  bool cover;
 }
