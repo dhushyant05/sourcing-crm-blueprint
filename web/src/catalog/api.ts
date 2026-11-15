@@ -1,7 +1,16 @@
 import type { Banner, BannerSettings, CatalogStatus, Category, Product } from './types';
 
+function portalAuth(): Record<string, string> {
+  try {
+    const t = localStorage.getItem('se.portal.token');
+    return t ? { authorization: `Bearer ${t}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(path);
+  const r = await fetch(path, { headers: portalAuth() });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
   return r.json() as Promise<T>;
 }

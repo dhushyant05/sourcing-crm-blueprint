@@ -31,7 +31,7 @@ import { AssignStore, type Assignment, type Office, type NotifKind } from './ass
 import { WorkflowStore, warnAt, type LeadEvent, type EventKind, type Vis } from './workflow.js';
 import { PortalStore, PortalError, loginView, tempPassword, customerStage, sourcingFlow, freightFlow, PORTAL_MIN_PASSWORD, type CustomerUser } from './portal.js';
 import { phoneKey } from './customers.js';
-import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, marketplaceTeamAllowed, CatalogStore } from './catalog.js';
+import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, marketplaceTeamAllowed, CatalogStore, isActiveMember } from './catalog.js';
 import { registerCatalogSeo } from './catalog-seo.js';
 import { recordEnquiryEvent } from './catalog-engagement.js';
 
@@ -606,6 +606,13 @@ export async function buildApp(o: AppOptions) {
   const catalogDeps = {
     db: o.db, uploads, perms, mediaSync, createEnquiry: createCatalogEnquiry,
     readMultipart, reservePublicEnquiry, createPublicShipping,
+    isPaidMember: async (req: any) => {
+      const h = String(req.headers?.authorization ?? '');
+      const token = h.startsWith('Bearer ') ? h.slice(7) : '';
+      if (!token) return false;
+      const u = await portal.verifyToken(token);
+      return u ? isActiveMember(o.db, u.customerId) : false;
+    },
     livePublicGreetings: async () => {
       const live = await greetings.live('PUBLIC');
       return live.filter((g) => g.imageDesktop).map((g, i) => ({

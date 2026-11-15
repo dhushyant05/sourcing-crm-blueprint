@@ -3,7 +3,8 @@ import { useApp } from '../lib/store';
 import { PageHeader } from '../components/ui';
 import { staffReq } from '../catalog/api';
 import { FIXTURE_PRODUCTS } from '../catalog/fixtures';
-import type { Product } from '../catalog/types';
+import type { Category, Product } from '../catalog/types';
+import { optionLabel, topLevel, childrenOf } from '../catalog/tree';
 
 type StaffProduct = Product & { status?: string; deletedAt?: string | null };
 
@@ -14,6 +15,7 @@ export function Products() {
   const canPublish = perms.can('catalog.publish') || session?.role === 'SUPER_ADMIN';
   const canDelete = perms.can('catalog.delete') || session?.role === 'SUPER_ADMIN';
   const isSa = session?.role === 'SUPER_ADMIN';
+  const canLink = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM' || !!session?.role?.startsWith('CHINA');
   const [rows, setRows] = useState<StaffProduct[]>(demo ? FIXTURE_PRODUCTS.map((p) => ({ ...p, status: 'PUBLISHED' })) : []);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -56,6 +58,7 @@ export function Products() {
         </select>
         <button className="btn-primary ml-auto" onClick={() => setEdit('new')}>Add product</button>
       </div>
+      {!demo && <CategoryManager />}
       {err && <p className="mb-3 text-sm text-red-600">{err}</p>}
       <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
         <table className="w-full text-sm">
@@ -86,7 +89,7 @@ export function Products() {
           </tbody>
         </table>
       </div>
-      {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} busy={busy}
+      {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} canLink={canLink} busy={busy}
         onClose={() => setEdit(null)}
         onSave={async (body, files) => {
           setBusy(true); setErr(null);
@@ -112,50 +115,172 @@ export function Products() {
   );
 }
 
-function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
-  product: StaffProduct | null; canPrice: boolean; busy: boolean; onClose: () => void;
+function ProductEditor({ product, canPrice, canLink, busy, onClose, onSave }: {
+  product: StaffProduct | null; canPrice: boolean; canLink: boolean; busy: boolean; onClose: () => void;
   onSave: (body: any, files: File[]) => Promise<void>;
 }) {
+  const specsObj = product?.specs && typeof product.specs === 'object' ? product.specs : {};
   const [f, setF] = useState({
     title: product?.title ?? '', summary: product?.summary ?? '', moq: product?.moq != null ? String(product.moq) : '',
-    unit: product?.unit ?? 'pcs', leadTime: product?.leadTime ?? '', priceMode: product?.priceMode ?? product?.price?.mode ?? 'GET_QUOTE',
+    unit: product?.unit ?? 'pcs', leadTime: product?.leadTime ?? '', capacity: product?.capacity ?? '',
+    packaging: product?.packaging ?? '', customization: product?.customization ?? '', samplePolicy: product?.samplePolicy ?? '',
+    priceMode: product?.priceMode ?? product?.price?.mode ?? 'GET_QUOTE',
     priceMin: product?.priceMin != null ? String(product.priceMin) : '', priceMax: product?.priceMax != null ? String(product.priceMax) : '',
     baseCurrency: product?.baseCurrency ?? 'USD',
+    categoryId: product?.categoryId ?? product?.category?.id ?? '',
+    supplierId: product?.supplierId ?? product?.catalogSupplier?.id ?? '',
     tags: Array.isArray(product?.tags) ? product!.tags.join(', ') : '',
   });
+  const [attrs, setAttrs] = useState<{ key: string; value: string }[]>(
+    Object.entries(specsObj).map(([key, value]) => ({ key, value: String(value ?? '') })).concat([{ key: '', value: '' }]),
+  );
+  const [tiers, setTiers] = useState<{ minQty: string; maxQty: string; unitPrice: string }[]>(
+    (product?.tiers ?? []).map((t) => ({ minQty: String(t.minQty ?? ''), maxQty: t.maxQty != null ? String(t.maxQty) : '', unitPrice: String(t.amounts?.USD ?? t.amounts?.[product?.baseCurrency ?? 'USD'] ?? '') }))
+      .concat([{ minQty: '', maxQty: '', unitPrice: '' }]),
+  );
   const [files, setFiles] = useState<File[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicYears?: number | null; publicVerified?: boolean }[]>([]);
+  const [newSup, setNewSup] = useState({ name: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false, publicVerified: false });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  useEffect(() => {
+    void staffReq<{ data: Category[] }>('GET', '/api/catalog/categories').then((r) => setCategories(r.data)).catch(() => setCategories([]));
+    if (canLink) void staffReq<{ data: typeof suppliers }>('GET', '/api/catalog/suppliers').then((r) => setSuppliers(r.data)).catch(() => setSuppliers([]));
+  }, [canLink]);
+  const addSupplier = async () => {
+    if (!newSup.name.trim()) return;
+    const r = await staffReq<{ data: (typeof suppliers)[number] }>('POST', '/api/catalog/suppliers', {
+      name: newSup.name, publicRegion: newSup.publicRegion || null, publicYears: newSup.publicYears ? Number(newSup.publicYears) : null,
+      publicAbout: newSup.publicAbout || null, catalogConsent: newSup.catalogConsent, publicVerified: newSup.publicVerified,
+    });
+    setSuppliers((xs) => [...xs, r.data].sort((a, b) => a.name.localeCompare(b.name)));
+    setF((s) => ({ ...s, supplierId: r.data.id }));
+    setNewSup({ name: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false, publicVerified: false });
+  };
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    const specs = attrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() }));
+    const pricedTiers = tiers.filter((t) => t.unitPrice.trim()).map((t) => ({
+      minQty: t.minQty ? Number(t.minQty) : 1, maxQty: t.maxQty ? Number(t.maxQty) : null, unitPrice: Number(t.unitPrice),
+    }));
     void onSave({
       title: f.title, summary: f.summary, moq: f.moq ? Number(f.moq) : null, unit: f.unit, leadTime: f.leadTime,
-      tags: f.tags,
-      ...(canPrice ? { priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null, baseCurrency: f.baseCurrency } : {}),
+      capacity: f.capacity, packaging: f.packaging, customization: f.customization, samplePolicy: f.samplePolicy,
+      categoryId: f.categoryId || null, tags: f.tags, specs,
+      ...(canPrice ? {
+        priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null,
+        baseCurrency: f.baseCurrency, tiers: f.priceMode === 'TIERS' ? pricedTiers : [],
+      } : {}),
+      ...(canLink ? { supplierId: f.supplierId || null } : {}),
     }, files);
   };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4" onClick={onClose}>
-      <form data-testid="product-editor" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-lift dark:bg-ink-900" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+      <form data-testid="product-editor" className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-lift dark:bg-ink-900" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <h2 className="text-lg font-semibold text-ink-900 dark:text-white">{product ? 'Edit product' : 'Add product'}</h2>
-        <div className="mt-4 space-y-3">
-          <input className="input" required placeholder="Title" value={f.title} onChange={(e) => set('title', e.target.value)} data-testid="product-title" />
-          <textarea className="input min-h-[80px]" placeholder="Summary" value={f.summary} onChange={(e) => set('summary', e.target.value)} />
-          <div className="grid grid-cols-2 gap-3">
-            <input className="input" type="number" min="0" placeholder="MOQ" value={f.moq} onChange={(e) => set('moq', e.target.value)} />
-            <input className="input" placeholder="Unit" value={f.unit} onChange={(e) => set('unit', e.target.value)} />
-          </div>
-          <input className="input" placeholder="Lead time" value={f.leadTime} onChange={(e) => set('leadTime', e.target.value)} />
-          <input className="input" placeholder="Tags (comma separated)" value={f.tags} onChange={(e) => set('tags', e.target.value)} />
-          {canPrice && (
-            <div className="grid grid-cols-3 gap-3">
-              <select className="input" value={f.priceMode} onChange={(e) => set('priceMode', e.target.value)}>
-                <option value="GET_QUOTE">Get quote</option>
-                <option value="RANGE">Price range</option>
+        <div className="mt-4 space-y-5">
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Basic details</h3>
+            <div className="space-y-3">
+              <input className="input" required placeholder="Title" value={f.title} onChange={(e) => set('title', e.target.value)} data-testid="product-title" />
+              <textarea className="input min-h-[80px]" placeholder="Description / summary" value={f.summary} onChange={(e) => set('summary', e.target.value)} />
+              <select className="input" value={f.categoryId} onChange={(e) => set('categoryId', e.target.value)} data-testid="product-category">
+                <option value="">Select a category</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{optionLabel(categories, c)}</option>)}
               </select>
-              <input className="input" placeholder="Min price" value={f.priceMin} onChange={(e) => set('priceMin', e.target.value)} />
-              <input className="input" placeholder="Max price" value={f.priceMax} onChange={(e) => set('priceMax', e.target.value)} />
+              <input className="input" placeholder="Tags (comma separated)" value={f.tags} onChange={(e) => set('tags', e.target.value)} />
             </div>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Order & production</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <input className="input" type="number" min="0" placeholder="MOQ" value={f.moq} onChange={(e) => set('moq', e.target.value)} />
+              <input className="input" placeholder="Unit" value={f.unit} onChange={(e) => set('unit', e.target.value)} />
+              <input className="input" placeholder="Lead time" value={f.leadTime} onChange={(e) => set('leadTime', e.target.value)} />
+              <input className="input" placeholder="Supply capacity" value={f.capacity} onChange={(e) => set('capacity', e.target.value)} data-testid="product-capacity" />
+            </div>
+          </section>
+
+          {canPrice && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-ink-700">Selling price</h3>
+              <div className="grid grid-cols-3 gap-3">
+                <select className="input" value={f.priceMode} onChange={(e) => set('priceMode', e.target.value)} data-testid="product-price-mode">
+                  <option value="GET_QUOTE">Get quote</option>
+                  <option value="RANGE">Price range</option>
+                  <option value="TIERS">Price tiers</option>
+                </select>
+                <select className="input" value={f.baseCurrency} onChange={(e) => set('baseCurrency', e.target.value)}>
+                  {['USD', 'CNY', 'INR'].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              {f.priceMode === 'RANGE' && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <input className="input" placeholder="Min price" value={f.priceMin} onChange={(e) => set('priceMin', e.target.value)} />
+                  <input className="input" placeholder="Max price" value={f.priceMax} onChange={(e) => set('priceMax', e.target.value)} />
+                </div>
+              )}
+              {f.priceMode === 'TIERS' && (
+                <div className="mt-3 space-y-2" data-testid="product-tiers">
+                  {tiers.map((t, i) => (
+                    <div key={i} className="grid grid-cols-3 gap-2">
+                      <input className="input" placeholder="Min qty" value={t.minQty} onChange={(e) => setTiers((xs) => xs.map((x, j) => j === i ? { ...x, minQty: e.target.value } : x))} />
+                      <input className="input" placeholder="Max qty" value={t.maxQty} onChange={(e) => setTiers((xs) => xs.map((x, j) => j === i ? { ...x, maxQty: e.target.value } : x))} />
+                      <input className="input" placeholder={`Unit price (${f.baseCurrency})`} value={t.unitPrice} onChange={(e) => setTiers((xs) => {
+                        const next = xs.map((x, j) => j === i ? { ...x, unitPrice: e.target.value } : x);
+                        if (i === next.length - 1 && e.target.value) next.push({ minQty: '', maxQty: '', unitPrice: '' });
+                        return next;
+                      })} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           )}
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-ink-700">Key attributes</h3>
+            <div className="space-y-2" data-testid="product-attributes">
+              {attrs.map((a, i) => (
+                <div key={i} className="grid grid-cols-2 gap-2">
+                  <input className="input" placeholder="Attribute (e.g. Material)" value={a.key} onChange={(e) => setAttrs((xs) => xs.map((x, j) => j === i ? { ...x, key: e.target.value } : x))} />
+                  <input className="input" placeholder="Value" value={a.value} onChange={(e) => setAttrs((xs) => {
+                    const next = xs.map((x, j) => j === i ? { ...x, value: e.target.value } : x);
+                    if (i === next.length - 1 && (e.target.value || a.key)) next.push({ key: '', value: '' });
+                    return next;
+                  })} />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm">Packaging & delivery<textarea className="input mt-1 min-h-[80px]" value={f.packaging} onChange={(e) => set('packaging', e.target.value)} /></label>
+            <label className="text-sm">Customization<textarea className="input mt-1 min-h-[80px]" value={f.customization} onChange={(e) => set('customization', e.target.value)} /></label>
+            <label className="text-sm">Samples<textarea className="input mt-1 min-h-[80px]" value={f.samplePolicy} onChange={(e) => set('samplePolicy', e.target.value)} /></label>
+          </section>
+
+          {canLink && (
+            <section data-testid="product-supplier">
+              <h3 className="mb-2 text-sm font-semibold text-ink-700">Linked supplier</h3>
+              <p className="mb-2 text-xs text-ink-500">Company, location, years and verified status are shown on the product page only to paid members, and only if the supplier has consented. Factory cost is never shown.</p>
+              <select className="input" value={f.supplierId} onChange={(e) => set('supplierId', e.target.value)}>
+                <option value="">No supplier linked</option>
+                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.catalogConsent ? ' · consented' : ''}{s.publicRegion ? ` · ${s.publicRegion}` : ''}</option>)}
+              </select>
+              <div className="mt-3 grid gap-2 rounded-xl border border-ink-100 p-3 sm:grid-cols-2">
+                <input className="input" placeholder="New supplier company" value={newSup.name} onChange={(e) => setNewSup((x) => ({ ...x, name: e.target.value }))} />
+                <input className="input" placeholder="Public location" value={newSup.publicRegion} onChange={(e) => setNewSup((x) => ({ ...x, publicRegion: e.target.value }))} />
+                <input className="input" placeholder="Years in business" value={newSup.publicYears} onChange={(e) => setNewSup((x) => ({ ...x, publicYears: e.target.value }))} />
+                <input className="input" placeholder="Public about" value={newSup.publicAbout} onChange={(e) => setNewSup((x) => ({ ...x, publicAbout: e.target.value }))} />
+                <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={newSup.catalogConsent} onChange={(e) => setNewSup((x) => ({ ...x, catalogConsent: e.target.checked }))} /> Catalog consent</label>
+                <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={newSup.publicVerified} onChange={(e) => setNewSup((x) => ({ ...x, publicVerified: e.target.checked }))} /> Verified</label>
+                <button type="button" className="btn-outline sm:col-span-2" onClick={() => void addSupplier()}>Add and link supplier</button>
+              </div>
+            </section>
+          )}
+
           {product?.id && !product.id.startsWith('local-') && <ImageManager productId={product.id} images={product.images ?? []} />}
           <div>
             <label className="text-sm font-medium text-ink-700">Add photos</label>
@@ -169,6 +294,58 @@ function ProductEditor({ product, canPrice, busy, onClose, onSave }: {
         </div>
       </form>
     </div>
+  );
+}
+
+function CategoryManager() {
+  const [open, setOpen] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [name, setName] = useState('');
+  const [parentId, setParentId] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const load = () => staffReq<{ data: Category[] }>('GET', '/api/catalog/categories').then((r) => setCategories(r.data)).catch((e) => setErr((e as Error).message));
+  useEffect(() => { if (open) void load(); }, [open]); // eslint-disable-line
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    try {
+      await staffReq('POST', '/api/catalog/categories', { name, parentId: parentId || null });
+      setName('');
+      await load();
+    } catch (e) { setErr((e as Error).message); }
+  };
+  if (!open) return <button type="button" className="btn-outline !py-1 text-xs" onClick={() => setOpen(true)}>Manage categories</button>;
+  return (
+    <div className="mb-4 rounded-2xl border border-ink-200 bg-white p-4" data-testid="category-manager">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-ink-800">Categories</h3>
+        <button type="button" className="text-sm text-ink-500" onClick={() => setOpen(false)}>Close</button>
+      </div>
+      {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
+      <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+        {topLevel(categories).map((c) => (
+          <CategoryBranch key={c.id} cat={c} all={categories} depth={0} />
+        ))}
+      </ul>
+      <form onSubmit={(e) => void add(e)} className="mt-3 flex flex-wrap gap-2">
+        <input className="input flex-1" placeholder="New category name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <select className="input w-auto" value={parentId} onChange={(e) => setParentId(e.target.value)}>
+          <option value="">Top level</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{optionLabel(categories, c)}</option>)}
+        </select>
+        <button className="btn-primary" type="submit">Add</button>
+      </form>
+    </div>
+  );
+}
+
+function CategoryBranch({ cat, all, depth }: { cat: Category; all: Category[]; depth: number }) {
+  const kids = childrenOf(all, cat.id);
+  return (
+    <li>
+      <span style={{ paddingLeft: depth * 12 }} className="block text-ink-800">{cat.name}</span>
+      {kids.length > 0 && <ul>{kids.map((k) => <CategoryBranch key={k.id} cat={k} all={all} depth={depth + 1} />)}</ul>}
+    </li>
   );
 }
 

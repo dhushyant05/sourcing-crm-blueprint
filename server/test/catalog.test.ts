@@ -105,7 +105,9 @@ describe('search, prices and enquire', () => {
     expect(genLead).toMatchObject({ sourceChannel: 'CATALOG', productInterest: 'Custom kitchen hardware' });
     const viaLead = leads.find((l) => l.leadRef === viaId.json().reference);
     expect(viaLead).toMatchObject({ sourceChannel: 'CATALOG', productInterest: p.title });
-    expect(JSON.stringify(p)).not.toMatch(/supplier/i);
+    expect(p.supplier).toBeNull();
+    expect(p.supplierAvailable).toBe(false);
+    expect(p).not.toHaveProperty('supplierId');
     expect(p.images.length).toBe(4);
   }, 180_000);
 });

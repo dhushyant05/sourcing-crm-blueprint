@@ -5,6 +5,7 @@ import { HomePage, ListingPage, ProductPage } from './pages';
 import { FavoritesPage } from './FavoriteButton';
 import { TopBar } from './TopBar';
 import type { Banner, BannerSettings, Category, Product, TrustItem } from './types';
+import { topLevel } from './tree';
 
 function pathOf() {
   const p = location.pathname.replace(/\/$/, '') || '/';
@@ -75,7 +76,7 @@ export function Marketplace() {
               <h3 className="text-sm font-semibold text-ink-800">Catalog</h3>
               <div className="mt-3 space-y-2 text-sm">
                 <button type="button" className="block text-ink-600 hover:text-brand-700" onClick={() => { history.pushState({}, '', '/products'); setLoc(pathOf()); }}>All products</button>
-                {categories.map((cat) => (
+                {topLevel(categories).map((cat) => (
                   <button key={cat.id} type="button" className="block text-ink-600 hover:text-brand-700" onClick={() => { history.pushState({}, '', `/c/${cat.slug}`); setLoc(pathOf()); }}>{cat.name}</button>
                 ))}
               </div>
