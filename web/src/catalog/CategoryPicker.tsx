@@ -102,11 +102,14 @@ export function CategoryPicker({
           ))}
         </div>
         {addingAt != null && canCreate && (
-          <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => void create(addingAt === 'root' ? null : addingAt, e)} data-testid="new-category-form">
-            <input className="input flex-1" autoFocus placeholder="Category name" value={newName} onChange={(e) => setNewName(e.target.value)} required data-testid="new-category-name" />
-            <button className="btn-primary" type="submit">Add</button>
+          <div className="mt-2 flex flex-wrap gap-2" data-testid="new-category-form">
+            <input className="input flex-1" autoFocus placeholder="Category name" value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(addingAt === 'root' ? null : addingAt); } }}
+              data-testid="new-category-name" />
+            <button className="btn-primary" type="button" onClick={() => void create(addingAt === 'root' ? null : addingAt)}>Add</button>
             <button className="btn-outline" type="button" onClick={() => setAddingAt(null)}>Cancel</button>
-          </form>
+          </div>
         )}
       </div>
       <div>
