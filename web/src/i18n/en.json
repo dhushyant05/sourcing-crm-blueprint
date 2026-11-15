@@ -1189,6 +1189,7 @@
     "save": "Save",
     "sourcedTrack": "Tracking for this request follows the order's shipment on the Shipping page.",
     "rejectTitle": "Reject (reason stays internal)",
+    "rejectPlaceholder": "Reason (internal, not shown to the customer)",
     "reason": {
       "PRICE": "Price too high",
       "QUALITY": "Quality / specification",

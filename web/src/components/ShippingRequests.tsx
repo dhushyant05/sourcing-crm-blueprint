@@ -117,7 +117,7 @@ function SrPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; 
           <button disabled={busy} className="btn-primary !py-1 text-xs" onClick={() => void act('stage', clean(stg))} data-testid="sr-stage-save">{t('sr.save')}</button></div>}
         {r.kind === 'SOURCED' && r.status === 'ACCEPTED' && <p className="text-xs text-ink-500">{t('sr.sourcedTrack')}</p>}
         {!chinaView && open && <div className="space-y-2 rounded-lg border border-rose-100 p-3 dark:border-rose-500/20"><div className="text-xs font-medium">{t('sr.rejectTitle')}</div>
-          <input className="input" value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t('sr.reason')} />
+          <input className="input" value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t('sr.rejectPlaceholder')} data-testid="sr-reject-reason" />
           <button disabled={busy || !why.trim()} className="btn-ghost !py-1 text-xs text-rose-600" onClick={() => void act('reject', { reason: why })}>{t('sr.rejectBtn')}</button></div>}
         {!chinaView && <div className="space-y-1"><div className="text-xs font-medium">{t('sr.internalNote')}</div><textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           <button disabled={busy || note === (r.internalNote ?? '')} className="btn-ghost !py-1 text-xs" onClick={() => void run(() => api.srPatch!(id, { internalNote: note }))}>{t('sr.saveNote')}</button></div>}
