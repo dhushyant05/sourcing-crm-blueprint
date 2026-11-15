@@ -95,7 +95,7 @@ export function CategoryPicker({
                   onChange(id);
                 }}>
                 <option value="">{lvl.parentId ? 'Select a subcategory' : 'Select a category'}</option>
-                {lvl.options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {lvl.options.map((c) => <option key={c.id} value={c.id}>{c.name}{c.active === false ? ' (inactive)' : ''}</option>)}
                 {canCreate && <option value="__new__">{lvl.parentId ? '+ New subcategory' : '+ New category'}</option>}
               </select>
             </div>
@@ -116,9 +116,9 @@ export function CategoryPicker({
         <p className="mb-1 text-xs font-medium text-ink-600">Also show in these categories</p>
         <div className="flex flex-wrap gap-2">
           {extras.map((c) => (
-            <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2 py-1 text-xs text-ink-800">
+            <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2 py-1 text-xs text-ink-800" data-testid="extra-category-chip">
               {pathLabel(categories, c)}
-              <button type="button" className="text-ink-500 hover:text-red-600" onClick={() => onExtrasChange(extraIds.filter((id) => id !== c.id))} aria-label="Remove">×</button>
+              <button type="button" className="rounded px-1 text-xs font-medium text-red-600 hover:bg-red-50" onClick={() => onExtrasChange(extraIds.filter((id) => id !== c.id))} data-testid="remove-extra-category">Remove</button>
             </span>
           ))}
         </div>
@@ -126,7 +126,7 @@ export function CategoryPicker({
           <select className="input mt-2" defaultValue="" onChange={(e) => addExtra(e.target.value)} data-testid="extra-category">
             <option value="">Select a category</option>
             {categories.filter((c) => c.id !== value && !extraIds.includes(c.id)).map((c) => (
-              <option key={c.id} value={c.id}>{pathLabel(categories, c)}</option>
+              <option key={c.id} value={c.id}>{pathLabel(categories, c)}{c.active === false ? ' (inactive)' : ''}</option>
             ))}
           </select>
         ) : (

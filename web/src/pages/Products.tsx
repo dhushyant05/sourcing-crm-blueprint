@@ -4,8 +4,8 @@ import { PageHeader } from '../components/ui';
 import { staffReq } from '../catalog/api';
 import { FIXTURE_PRODUCTS } from '../catalog/fixtures';
 import type { Category, Merchandising, Product } from '../catalog/types';
-import { optionLabel, topLevel, childrenOf } from '../catalog/tree';
 import { CategoryPicker } from '../catalog/CategoryPicker';
+import { CategoryManager } from '../catalog/CategoryManager';
 
 type StaffProduct = Product & { status?: string; deletedAt?: string | null };
 function ymdIST(iso?: string | null) {
@@ -599,59 +599,6 @@ function AttrRows({ rows, setRows, keyPh, testId }: { rows: { key: string; value
     </div>
   );
 }
-
-function CategoryManager() {
-  const [open, setOpen] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [name, setName] = useState('');
-  const [parentId, setParentId] = useState('');
-  const [err, setErr] = useState<string | null>(null);
-  const load = () => staffReq<{ data: Category[] }>('GET', '/api/catalog/categories').then((r) => setCategories(r.data)).catch((e) => setErr((e as Error).message));
-  useEffect(() => { if (open) void load(); }, [open]); // eslint-disable-line
-  const add = async (e: FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    try {
-      await staffReq('POST', '/api/catalog/categories', { name, parentId: parentId || null });
-      setName('');
-      await load();
-    } catch (e) { setErr((e as Error).message); }
-  };
-  if (!open) return <button type="button" className="btn-outline !py-1 text-xs" onClick={() => setOpen(true)}>Manage categories</button>;
-  return (
-    <div className="mb-4 rounded-2xl border border-ink-200 bg-white p-4" data-testid="category-manager">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink-800">Categories</h3>
-        <button type="button" className="text-sm text-ink-500" onClick={() => setOpen(false)}>Close</button>
-      </div>
-      {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
-        {topLevel(categories).map((c) => (
-          <CategoryBranch key={c.id} cat={c} all={categories} depth={0} />
-        ))}
-      </ul>
-      <form onSubmit={(e) => void add(e)} className="mt-3 flex flex-wrap gap-2">
-        <input className="input flex-1" placeholder="New category name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <select className="input w-auto" value={parentId} onChange={(e) => setParentId(e.target.value)}>
-          <option value="">Top level</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{optionLabel(categories, c)}</option>)}
-        </select>
-        <button className="btn-primary" type="submit">Add</button>
-      </form>
-    </div>
-  );
-}
-
-function CategoryBranch({ cat, all, depth }: { cat: Category; all: Category[]; depth: number }) {
-  const kids = childrenOf(all, cat.id);
-  return (
-    <li>
-      <span style={{ paddingLeft: depth * 12 }} className="block text-ink-800">{cat.name}</span>
-      {kids.length > 0 && <ul>{kids.map((k) => <CategoryBranch key={k.id} cat={k} all={all} depth={depth + 1} />)}</ul>}
-    </li>
-  );
-}
-
 
 function PhotoDrafts({ photos, setPhotos, error, setError, already }: {
   photos: PhotoDraft[]; setPhotos: Dispatch<SetStateAction<PhotoDraft[]>>;
