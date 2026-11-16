@@ -156,10 +156,7 @@ function clearanceSalePrice(row: any, rates: RateMap, regular: ReturnType<typeof
   }
   if (baseSale == null) return null;
   const amounts: Record<Currency, { min: number | null; max: number | null }> = { USD: { min: null, max: null }, CNY: { min: null, max: null }, INR: { min: null, max: null } };
-  for (const cur of CURRENCIES) {
-    const v = convertAmount(baseSale, base, cur, rates);
-    amounts[cur] = { min: v, max: v };
-  }
+  amounts[base] = { min: baseSale, max: baseSale };
   return { mode: 'RANGE' as const, base, amounts };
 }
 function categoryMatchSql(ids: string[]) {
@@ -544,12 +541,16 @@ export class CatalogStore {
     return { rows, total, limit, offset };
   }
 
-  async listStaff(q: { q?: string; status?: string; category?: string; includeDeleted?: boolean; supplierId?: string; limit?: number; offset?: number }) {
+  async listStaff(q: { q?: string; status?: string; category?: string; includeDeleted?: boolean; supplierId?: string; fromSourcing?: boolean; limit?: number; offset?: number }) {
     const limit = Math.min(100, Math.max(1, q.limit ?? 40));
     const offset = Math.max(0, q.offset ?? 0);
     const where: string[] = [];
     const params: unknown[] = [];
     if (!q.includeDeleted) where.push('p.deleted_at IS NULL');
+    if (q.fromSourcing) {
+      where.push("p.source_quote_id IS NOT NULL AND p.source_discarded_at IS NULL");
+      where.push("(p.status <> 'PUBLISHED' OR p.source_update_pending = true)");
+    }
     if (q.status) { where.push('p.status = ?'); params.push(q.status); }
     if (q.category) {
       const cat = await this.categoryBySlugOrId(q.category);
@@ -596,7 +597,7 @@ export class CatalogStore {
     return this.get(id);
   }
 
-  async update(id: string, patch: Record<string, unknown>, by: string, opts: { prices: boolean; linkSupplier?: boolean; promote?: boolean }) {
+  async update(id: string, patch: Record<string, unknown>, by: string, opts: { prices: boolean; linkSupplier?: boolean; promote?: boolean; fromSync?: boolean }) {
     const cur = await this.get(id); if (!cur) bad('Product not found', 404);
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
     const next: Record<string, unknown> = {};
@@ -671,6 +672,9 @@ export class CatalogStore {
           randomUUID(), id, numOrNull(t.minQty) ?? 1, numOrNull(t.maxQty), unitPrice, numOrNull(t.priceUsd), numOrNull(t.priceCny), numOrNull(t.priceInr));
       }
     }
+    if (cur.source_quote_id && !opts.fromSync && cols.length) {
+      await this.db.run('UPDATE products SET source_team_edited_at = coalesce(source_team_edited_at, now()) WHERE id = ?', id);
+    }
     await this.audit(id, by, 'UPDATE', pickPublic(cur), next);
     return this.get(id);
   }
@@ -696,9 +700,12 @@ export class CatalogStore {
   async publish(id: string, by: string) {
     const cur = await this.get(id); if (!cur) bad('Product not found', 404);
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
-    if (cur.price_mode !== 'GET_QUOTE' && cur.price_min == null && cur.price_usd == null && cur.price_inr == null && cur.price_cny == null) {
-      const n = (await this.db.get<{ n: number }>('SELECT count(*)::int AS n FROM product_price_tiers WHERE product_id = ?', id))?.n ?? 0;
-      if (!n) bad('Set a selling price or mark the product as Get quote before publishing');
+    const hasSelling = cur.price_min != null || cur.price_usd != null || cur.price_inr != null || cur.price_cny != null
+      || ((await this.db.get<{ n: number }>('SELECT count(*)::int AS n FROM product_price_tiers WHERE product_id = ?', id))?.n ?? 0) > 0;
+    if (cur.source_quote_id) {
+      if (!hasSelling) bad('Set a selling price in USD, RMB or INR before publishing a product from a sourcing request');
+    } else if (cur.price_mode !== 'GET_QUOTE' && !hasSelling) {
+      bad('Set a selling price or mark the product as Get quote before publishing');
     }
     await this.db.run(`UPDATE products SET status = 'PUBLISHED', approved_by = ?, published_at = coalesce(published_at, now()), updated_at = now() WHERE id = ?`, by, id);
     await this.audit(id, by, 'PUBLISH', { status: cur.status }, { status: 'PUBLISHED' });
@@ -709,6 +716,19 @@ export class CatalogStore {
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
     await this.db.run(`UPDATE products SET status = 'UNPUBLISHED', updated_at = now() WHERE id = ?`, id);
     await this.audit(id, by, 'UNPUBLISH', { status: cur.status }, { status: 'UNPUBLISHED' });
+    return this.get(id);
+  }
+  /** Hide a sourcing draft from the review queue. Does not change the sourcing request or its quotes. */
+  async discardSourceDraft(id: string, by: string) {
+    const cur = await this.get(id); if (!cur) bad('Product not found', 404);
+    if (!cur.source_quote_id) bad('This product did not come from a sourcing request', 400);
+    if (cur.status === 'DELETED' || cur.source_discarded_at) return cur;
+    if (cur.status === 'PUBLISHED') {
+      await this.db.run(`UPDATE products SET status = 'UNPUBLISHED', source_discarded_at = now(), source_discarded_by = ?, source_update_pending = false, updated_at = now() WHERE id = ?`, by, id);
+    } else {
+      await this.db.run(`UPDATE products SET source_discarded_at = now(), source_discarded_by = ?, source_update_pending = false, updated_at = now() WHERE id = ?`, by, id);
+    }
+    await this.audit(id, by, 'SOURCE_DISCARD', { status: cur.status }, { discarded: true });
     return this.get(id);
   }
   async softDelete(id: string, by: string) {
@@ -792,7 +812,7 @@ export function staffPhotos(images: ImgRow[], productId: string) {
     cardUrl: url(g.card) || url(g.gallery) || url(g.original),
   }));
 }
-async function saveProductPhoto(deps: CatalogDeps, productId: string, processed: { original: Buffer; card: Buffer; gallery: Buffer }, alt: string, sort: number, cover: boolean) {
+export async function saveProductPhoto(deps: CatalogDeps, productId: string, processed: { original: Buffer; card: Buffer; gallery: Buffer }, alt: string, sort: number, cover: boolean) {
   const groupId = randomUUID();
   const incoming = [
     { name: 'original.jpg', mime: 'image/jpeg', data: processed.original },
@@ -810,20 +830,20 @@ async function saveProductPhoto(deps: CatalogDeps, productId: string, processed:
 }
 
 
-export function priced(row: any, rates: RateMap) {
+export function priced(row: any, _rates?: RateMap) {
   const base = (CURRENCIES.includes(row.base_currency) ? row.base_currency : 'USD') as Currency;
   const mode = row.price_mode ?? 'GET_QUOTE';
   if (mode === 'GET_QUOTE' && row.price_min == null && row.price_usd == null && row.price_inr == null && row.price_cny == null)
     return { mode: 'GET_QUOTE' as const, base, amounts: null as null };
   const amounts: Record<Currency, { min: number | null; max: number | null }> = { USD: { min: null, max: null }, CNY: { min: null, max: null }, INR: { min: null, max: null } };
   const put = (cur: Currency, min: number | null, max: number | null) => { amounts[cur] = { min, max }; };
-  // Manual per-currency overrides win; otherwise convert from base min/max.
+  // Each currency is stored and shown as entered. A base min/max applies only to the base currency.
   const baseMin = numOrNull(row.price_min) ?? numOrNull(row.unit_price);
   const baseMax = numOrNull(row.price_max) ?? baseMin;
   for (const cur of CURRENCIES) {
     const manual = cur === 'USD' ? numOrNull(row.price_usd) : cur === 'CNY' ? numOrNull(row.price_cny) : numOrNull(row.price_inr);
     if (manual != null) put(cur, manual, manual);
-    else if (baseMin != null) put(cur, convertAmount(baseMin, base, cur, rates), baseMax != null ? convertAmount(baseMax, base, cur, rates) : null);
+    else if (cur === base && baseMin != null) put(cur, baseMin, baseMax);
   }
   return { mode, base, amounts };
 }
@@ -898,10 +918,11 @@ export async function publicView(store: CatalogStore, row: any, rates: RateMap, 
   const breadcrumbs = row.category_id ? await store.categoryPath(row.category_id) : [];
   const price = priced(row, rates);
   const pubTiers = await Promise.all(tiers.map(async (t: any) => {
-    const amounts: Record<string, number | null> = {};
+    const amounts: Record<string, number | null> = { USD: null, CNY: null, INR: null };
     for (const cur of CURRENCIES) {
       const manual = cur === 'USD' ? t.priceUsd : cur === 'CNY' ? t.priceCny : t.priceInr;
-      amounts[cur] = manual != null ? Number(manual) : convertAmount(Number(t.unitPrice), price.base, cur, rates);
+      if (manual != null) amounts[cur] = Number(manual);
+      else if (cur === price.base && t.unitPrice != null) amounts[cur] = Number(t.unitPrice);
     }
     return { minQty: t.minQty, maxQty: t.maxQty, amounts };
   }));
@@ -972,6 +993,20 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
   if (role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA')) {
     out.supplierId = row.supplier_id ?? null;
     if (extra.catalogSupplier) out.catalogSupplier = extra.catalogSupplier;
+  }
+  if (row.source_quote_id) {
+    out.fromSourcing = true;
+    if (role === 'SUPER_ADMIN' || role === 'INDIA_ADMIN' || role === 'MARKETPLACE_TEAM' || role.startsWith('CHINA')) {
+      out.sourceLeadId = row.source_lead_id;
+      out.sourceQuoteId = row.source_quote_id;
+      out.sourceLeadRef = row.source_lead_ref;
+      out.sourceHref = row.source_lead_id ? `/app#/leads?id=${row.source_lead_id}` : '/app#/leads';
+      out.sourceLabel = 'From sourcing request';
+      out.sourceUpdatePending = !!row.source_update_pending;
+      out.sourceDiscardedAt = row.source_discarded_at ?? null;
+      out.sourceTeamEditedAt = row.source_team_edited_at ?? null;
+      out.referenceCost = row.source_unit_price != null ? { amount: Number(row.source_unit_price), currency: row.source_currency || null } : null;
+    }
   }
   return out;
 }
@@ -1429,6 +1464,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const { rows, total, limit, offset } = await store.listStaff({
       q: q.q, status: q.status, category: q.category, includeDeleted: isSa(u) && (q.deleted === '1' || q.deleted === 'true'),
       supplierId: scope?.supplierId,
+      fromSourcing: q.fromSourcing === '1' || q.fromSourcing === 'true' || q.source === 'sourcing',
       limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined,
     });
     const data = [];
@@ -1494,6 +1530,21 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   api.post<{ Params: { id: string } }>('/api/products/:id/unpublish', async (req) => {
     const u = req.user!; need(u, 'catalog.publish');
     return { data: staffView(await store.unpublish(req.params.id, u.id), u.role, await store.rates()) };
+  });
+  const canReviewSourcing = (u: { role: string }) => u.role === 'SUPER_ADMIN' || u.role === 'INDIA_ADMIN' || u.role === 'MARKETPLACE_TEAM';
+  api.post<{ Params: { id: string } }>('/api/products/:id/discard-source', async (req) => {
+    const u = req.user!; need(u, 'catalog.delete');
+    if (!canReviewSourcing(u)) forbid('Only the Marketplace Team, India admin or super admin can discard a sourcing draft');
+    return { data: await staffProductView(await store.discardSourceDraft(req.params.id, u.id), u.role) };
+  });
+  api.post<{ Params: { id: string } }>('/api/products/:id/ack-source-update', async (req) => {
+    const u = req.user!; need(u, 'catalog.edit');
+    if (!canReviewSourcing(u)) forbid('Only the Marketplace Team, India admin or super admin can review a sourcing update');
+    const row = await owned(u, req.params.id);
+    if (!row.source_quote_id) bad('This product did not come from a sourcing request', 400);
+    await store.db.run('UPDATE products SET source_update_pending = false, updated_at = now() WHERE id = ?', row.id);
+    await store.audit(row.id, u.id, 'SOURCE_UPDATE_ACK', { pending: true }, { pending: false });
+    return { data: await staffProductView(await store.get(row.id), u.role) };
   });
   api.post<{ Params: { id: string }; Body: { confirm?: unknown } }>('/api/products/:id/delete', async (req) => {
     const u = req.user!; need(u, 'catalog.delete');

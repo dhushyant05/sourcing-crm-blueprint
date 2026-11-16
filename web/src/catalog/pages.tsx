@@ -311,7 +311,7 @@ export function ProductPage({ slug }: { slug: string }) {
                 </p>
               </div>
             ) : (
-              <p className="mt-4 text-2xl font-semibold text-brand-700" data-testid="product-price">{priceLabel(p.price, currency)}</p>
+              priceLabel(p.price, currency) ? <p className="mt-4 text-2xl font-semibold text-brand-700" data-testid="product-price">{priceLabel(p.price, currency)}</p> : null
             )}
             <p className="mt-1 text-sm text-ink-400">Sourced in China · Prices in USD, RMB and INR</p>
 

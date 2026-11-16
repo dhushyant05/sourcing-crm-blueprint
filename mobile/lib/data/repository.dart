@@ -483,11 +483,12 @@ class SourceEasyRepository {
   Future<Map<String, dynamic>> claimShippingRequest(String id) async =>
       ((await api.send('POST', '/api/shipping-requests/${Uri.encodeComponent(id)}/assign', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
 
-  Future<List<Map<String, dynamic>>> listProducts({String q = '', String status = '', bool includeDeleted = false}) async {
+  Future<List<Map<String, dynamic>>> listProducts({String q = '', String status = '', bool includeDeleted = false, bool fromSourcing = false}) async {
     final query = <String, String>{
       if (q.isNotEmpty) 'q': q,
       if (status.isNotEmpty) 'status': status,
       if (includeDeleted) 'deleted': '1',
+      if (fromSourcing) 'fromSourcing': '1',
     };
     return _list(await api.send('GET', '/api/products', query: query.isEmpty ? null : query));
   }
@@ -517,6 +518,10 @@ class SourceEasyRepository {
       ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/${on ? 'publish' : 'unpublish'}', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
   Future<Map<String, dynamic>> getProduct(String id) async =>
       ((await api.send('GET', '/api/products/${Uri.encodeComponent(id)}') as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> discardSourceDraft(String id) async =>
+      ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/discard-source', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> ackSourceUpdate(String id) async =>
+      ((await api.send('POST', '/api/products/${Uri.encodeComponent(id)}/ack-source-update', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
   Future<void> addProductImage(String id, String path) async {
     await api.upload('/api/products/${Uri.encodeComponent(id)}/images', [path], field: 'file');
   }

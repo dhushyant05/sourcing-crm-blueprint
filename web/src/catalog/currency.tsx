@@ -25,7 +25,10 @@ export function formatMoney(n: number, currency: Currency) {
 }
 export function priceLabel(price: Price | undefined, currency: Currency) {
   const a = price?.amounts?.[currency];
-  if (!a || a.min == null) return 'Get quote';
+  if (!a || a.min == null) {
+    const any = price?.amounts && (['USD', 'CNY', 'INR'] as Currency[]).some((c) => price.amounts?.[c]?.min != null);
+    return any ? '' : 'Get quote';
+  }
   const min = formatMoney(a.min, currency);
   if (a.max != null && a.max !== a.min) return `${min} – ${formatMoney(a.max, currency)}`;
   return min;

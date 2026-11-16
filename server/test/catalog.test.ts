@@ -76,7 +76,7 @@ describe('sample seed is opt-in and reversible', () => {
 });
 
 describe('search, prices and enquire', () => {
-  it('finds a product, converts currencies, and turns a request quote into a catalog lead', async () => {
+  it('finds a product, keeps entered currencies unconverted, and turns a request quote into a catalog lead', async () => {
     const { app, call } = await setupCatalog();
     await call('sa', 'POST', '/api/catalog/samples/seed');
     await call('sa', 'PATCH', '/api/catalog/settings', { homepageEnabled: true });
@@ -85,8 +85,8 @@ describe('search, prices and enquire', () => {
     expect(found.data[0].title).toMatch(/Hex Bolts/i);
     const p = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${found.data[0].slug}` })).json().data;
     expect(p.price.amounts.USD.min).toBeCloseTo(0.08, 2);
-    expect(p.price.amounts.INR.min).toBeGreaterThan(1);
-    expect(p.price.amounts.CNY.min).toBeGreaterThan(0);
+    expect(p.price.amounts.INR.min).toBeNull();
+    expect(p.price.amounts.CNY.min).toBeNull();
     const miss = await app.inject({ method: 'POST', url: `/api/public/catalog/products/${p.id}/enquire`, payload: { name: 'Ravi' } });
     expect(miss.statusCode).toBe(400);
     const badMail = await app.inject({ method: 'POST', url: '/api/public/catalog/enquire', payload: { name: 'Ravi', phone: '9000000000', phoneCode: '+91', email: 'not-an-email' } });

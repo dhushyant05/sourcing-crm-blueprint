@@ -97,5 +97,8 @@ class Permissions {
   bool get canManageCategories => role == Role.superAdmin || role == Role.marketplaceTeam;
   /// Manual Trending pin and Clearance flags. Marketplace Team and super admin only.
   bool get canPromoteCatalog => role == Role.superAdmin || role == Role.marketplaceTeam;
+  bool get canReviewSourcing =>
+      role == Role.superAdmin || role == Role.indiaAdmin || role == Role.marketplaceTeam;
 }
+
 

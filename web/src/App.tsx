@@ -25,7 +25,9 @@ import { Portal } from './portal/Portal';
 import type { Lead } from './lib/types';
 
 const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'greetings', 'products', 'banners', 'applications', 'users', 'settings'];
-const fromHash = (fallback: Route = 'dashboard'): Route => (routes.find((r) => location.hash === `#/${r}`) ?? fallback);
+const hashRoute = () => location.hash.replace(/^#\/?/, '').split('?')[0];
+const hashQuery = () => new URLSearchParams(location.hash.split('?')[1] || '');
+const fromHash = (fallback: Route = 'dashboard'): Route => (routes.find((r) => r === hashRoute()) ?? fallback);
 
 function Shell() {
   const { session, perms, api } = useApp();
@@ -38,6 +40,16 @@ function Shell() {
   const [lead, setLead] = useState<Lead | null>(null);
   const go = (r: Route) => { location.hash = `/${r}`; };
   useEffect(() => { const h = () => setRoute(fromHash(catalogOnly ? 'products' : 'dashboard')); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h); }, [catalogOnly]);
+  useEffect(() => {
+    const open = () => {
+      if (hashRoute() !== 'leads') return;
+      const id = hashQuery().get('id');
+      if (id) void api.lead(id).then((l) => l && setLead(l)).catch(() => undefined);
+    };
+    open();
+    addEventListener('hashchange', open);
+    return () => removeEventListener('hashchange', open);
+  }, [api]);
   useEffect(() => {
     if (isSupplier && !['products', 'settings'].includes(route)) go('products');
     else if (catalogOnly && !['products', 'banners', 'applications', 'settings'].includes(route)) go('products');
