@@ -35,7 +35,7 @@ import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, mar
 import { SupplierAccountStore } from './supplier-accounts.js';
 import { registerPublicSupplier, registerStaffSupplier } from './supplier-routes.js';
 import { registerCatalogSeo } from './catalog-seo.js';
-import { syncSourcingDrafts } from './catalog-from-sourcing.js';
+import { syncSourcingDrafts, backfillSourcingDrafts } from './catalog-from-sourcing.js';
 import { recordEnquiryEvent } from './catalog-engagement.js';
 
 export interface AppOptions {
@@ -679,6 +679,13 @@ export async function buildApp(o: AppOptions) {
       if (!supplierAllowed(path, req.method)) return reply.code(403).send({ error: 'This login can only manage your own catalog' });
     });
     registerStaffCatalog(api, catalogDeps);
+    api.post<{ Body: { dryRun?: boolean | string; confirm?: unknown } }>('/api/catalog/sourcing-drafts/backfill', async (req, reply) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Super admin only');
+      const dryRun = req.body?.dryRun === true || req.body?.dryRun === 'true';
+      if (!dryRun && req.body?.confirm !== true && req.body?.confirm !== 'true') throw bad('Confirm backfill of unpublished sourcing drafts');
+      const result = await backfillSourcingDrafts(catalogDeps, req.user!.id, { dryRun });
+      return reply.code(200).send({ data: result, dryRun });
+    });
     registerStaffSupplier(api, supplierAccounts);
     // Feature permissions: one 403 gate per endpoint (route pattern + method), after authentication.
     const PAY = ['qty', 'agreedPrice', 'advance', 'paymentStatus'], INR = ['agreedPrice', 'advance'];
