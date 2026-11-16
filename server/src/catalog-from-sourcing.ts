@@ -6,8 +6,8 @@
  */
 import type { CatalogDeps } from './catalog.js';
 import { CatalogStore, normalizeSpecs, ownerKey, processProductImage, saveProductPhoto, slugify } from './catalog.js';
-import type { Quote } from './quotes.js';
-import type { Rec } from './leads.js';
+import { QuoteStore, type Quote } from './quotes.js';
+import { LeadStore, type Rec } from './leads.js';
 
 const PRICE_RE = /^(\d+(?:\.\d+)?)/;
 
@@ -173,6 +173,86 @@ export async function syncSourcingDrafts(deps: CatalogDeps, lead: Rec, quotes: Q
     if (row) out.push(row);
   }
   return out;
+}
+
+
+/** Historical QA / test sourcing records — excluded from backfill only, not from live sync. */
+export function isTestSourcingRecord(lead: Rec | null | undefined, quote?: Quote | null): boolean {
+  if (String(lead?.leadRef ?? '') === 'SE-2611-0109') return true;
+  const parts = [lead?.leadRef, lead?.name, lead?.productInterest, lead?.summary, quote?.product, quote?.notes];
+  const text = parts.map((v) => String(v ?? '').trim()).filter(Boolean).join(' \n ');
+  if (!text) return false;
+  if (/\bTEST(?:[\s\-–_]+QA)?\b/i.test(text)) return true;
+  if (/\bQA[\s\-–_]+TEST\b/i.test(text)) return true;
+  const fields = [lead?.name, lead?.productInterest, quote?.product].map((v) => String(v ?? '').trim());
+  if (fields.some((f) => /^test$/i.test(f))) return true;
+  return false;
+}
+
+export type BackfillSkipReason = 'test_record' | 'already_exists' | 'no_price';
+export type BackfillItem = { leadRef: string | null; quoteId: string; title: string; productId?: string; slug?: string; status?: string };
+export type BackfillSkip = BackfillItem & { reason: BackfillSkipReason };
+export type BackfillResult = { created: BackfillItem[]; skipped: BackfillSkip[]; counts: { candidates: number; created: number; skipped: number; testRecord: number; alreadyExists: number } };
+
+/**
+ * Idempotent backfill of unpublished marketplace drafts for historical priced quotes
+ * on quoted or India-held leads. Never auto-publishes. Leaves existing drafts untouched.
+ * Skips TEST / QA sourcing records.
+ */
+export async function backfillSourcingDrafts(deps: CatalogDeps, by: string | null, opts: { dryRun?: boolean } = {}): Promise<BackfillResult> {
+  const leads = new LeadStore(deps.db);
+  const quotes = new QuoteStore(deps.db);
+  const rows = await deps.db.all<{ quote_id: string; lead_id: string; lead_ref: string | null; status: string; owner_office: string | null; assigned_office: string | null }>(
+    `SELECT q.id AS quote_id, q.lead_id, l.lead_ref, l.status, l.owner_office, l.assigned_office
+       FROM quotes q
+       JOIN leads l ON l.id = q.lead_id
+      WHERE q.unit_price IS NOT NULL
+        AND (l.status IN ('QUOTED', 'APPROVED') OR l.owner_office = 'INDIA' OR l.assigned_office = 'INDIA')
+      ORDER BY l.lead_ref NULLS LAST, q.created_at, q.id`,
+  );
+  const created: BackfillItem[] = [];
+  const skipped: BackfillSkip[] = [];
+  for (const row of rows) {
+    const lead = await leads.get(row.lead_id);
+    const quote = await quotes.get(row.quote_id);
+    if (!lead || !quote) continue;
+    lead.ownerOffice = row.owner_office ?? lead.assignedOffice ?? null;
+    const item: BackfillItem = {
+      leadRef: (lead.leadRef as string) || row.lead_ref || null,
+      quoteId: quote.id,
+      title: (String(quote.product || lead.productInterest || 'Sourced product')).slice(0, 200),
+    };
+    if (quote.unitPrice == null || !Number.isFinite(Number(quote.unitPrice))) {
+      skipped.push({ ...item, reason: 'no_price' });
+      continue;
+    }
+    if (isTestSourcingRecord(lead, quote)) {
+      skipped.push({ ...item, reason: 'test_record' });
+      continue;
+    }
+    const existing = await deps.db.get<{ id: string; slug: string; status: string; source_discarded_at: string | null }>(
+      'SELECT id, slug, status, source_discarded_at FROM products WHERE source_quote_id = ?',
+      quote.id,
+    );
+    if (existing) {
+      skipped.push({ ...item, reason: 'already_exists', productId: existing.id, slug: existing.slug, status: existing.status });
+      continue;
+    }
+    if (opts.dryRun) {
+      created.push(item);
+      continue;
+    }
+    const out = await syncSourcingDrafts(deps, lead, [quote], by, { quoteId: quote.id, force: true });
+    const draft = out[0];
+    if (draft) created.push({ ...item, productId: draft.id, slug: draft.slug, status: draft.status });
+  }
+  const testRecord = skipped.filter((s) => s.reason === 'test_record').length;
+  const alreadyExists = skipped.filter((s) => s.reason === 'already_exists').length;
+  return {
+    created,
+    skipped,
+    counts: { candidates: rows.length, created: created.length, skipped: skipped.length, testRecord, alreadyExists },
+  };
 }
 
 export function sourceStaffFields(row: any, role: string) {
