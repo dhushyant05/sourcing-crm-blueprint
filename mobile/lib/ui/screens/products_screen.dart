@@ -16,12 +16,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
   bool _loading = true;
   String _q = '';
   String _status = '';
+  bool _fromSourcing = false;
 
   Future<void> _load() async {
     setState(() { _loading = true; _err = null; });
     try {
       final s = context.read<Session>();
-      final rows = await s.repo.listProducts(q: _q, status: _status, includeDeleted: s.perms.isSuperAdmin);
+      final rows = await s.repo.listProducts(q: _q, status: _status, includeDeleted: s.perms.isSuperAdmin, fromSourcing: _fromSourcing);
       if (mounted) setState(() { _rows = rows; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _err = e.toString(); _loading = false; });
@@ -86,6 +87,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
           items: [for (final st in statuses) DropdownMenuItem(value: st, child: Text(st.isEmpty ? 'All statuses' : st))],
           onChanged: (v) { setState(() => _status = v ?? ''); _load(); },
         ),
+        if (s.perms.canReviewSourcing) ...[
+          const SizedBox(height: 8),
+          FilterChip(
+            label: const Text('From sourcing — needs review'),
+            selected: _fromSourcing,
+            onSelected: (v) { setState(() => _fromSourcing = v); _load(); },
+          ),
+        ],
         const SizedBox(height: 12),
         if (_loading) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
         if (_err != null) Padding(padding: const EdgeInsets.all(16), child: Text(_err!, style: const TextStyle(color: Colors.red))),
@@ -96,6 +105,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
             subtitle: Text([
               '${p['status'] ?? ''}',
               if (p['isSample'] == true) 'Sample',
+              if (p['fromSourcing'] == true) 'From sourcing request',
+              if (p['sourceUpdatePending'] == true) 'Price updated — review',
               if (p['categoryName'] != null) '${p['categoryName']}',
             ].join(' · ')),
             isThreeLine: false,
@@ -108,6 +119,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 IconButton(icon: const Icon(Icons.publish_outlined), tooltip: 'Publish', onPressed: () => _run(() => s.repo.publishProduct('${p['id']}'))),
               if (s.perms.canPublishCatalog && p['status'] == 'PUBLISHED')
                 IconButton(icon: const Icon(Icons.unpublished_outlined), tooltip: 'Unpublish', onPressed: () => _run(() => s.repo.publishProduct('${p['id']}', on: false))),
+              if (s.perms.canReviewSourcing && p['fromSourcing'] == true && p['status'] != 'DELETED')
+                IconButton(icon: const Icon(Icons.remove_circle_outline), tooltip: 'Discard sourcing draft', onPressed: () async {
+                  final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+                    title: const Text('Discard from review?'),
+                    content: const Text('The sourcing request itself will not be changed.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                      TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Discard')),
+                    ],
+                  ));
+                  if (ok == true) _run(() => s.repo.discardSourceDraft('${p['id']}'));
+                }),
               if (s.perms.canDeleteCatalog && p['status'] != 'DELETED')
                 IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _delete(p)),
               if (s.perms.isSuperAdmin && p['status'] == 'DELETED')

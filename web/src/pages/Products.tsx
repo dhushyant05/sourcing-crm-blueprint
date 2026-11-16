@@ -7,7 +7,13 @@ import type { Category, Merchandising, Product } from '../catalog/types';
 import { CategoryPicker } from '../catalog/CategoryPicker';
 import { CategoryManager } from '../catalog/CategoryManager';
 
-type StaffProduct = Product & { status?: string; deletedAt?: string | null };
+type StaffProduct = Product & {
+  status?: string; deletedAt?: string | null;
+  fromSourcing?: boolean; sourceLeadId?: string; sourceQuoteId?: string; sourceLeadRef?: string;
+  sourceHref?: string; sourceLabel?: string; sourceUpdatePending?: boolean; sourceTeamEditedAt?: string | null;
+  referenceCost?: { amount: number; currency: string | null } | null;
+  priceUsd?: number | null; priceCny?: number | null; priceInr?: number | null;
+};
 function ymdIST(iso?: string | null) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -45,16 +51,17 @@ export function Products() {
   const [rows, setRows] = useState<StaffProduct[]>(demo ? FIXTURE_PRODUCTS.map((p) => ({ ...p, status: 'PUBLISHED' })) : []);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [fromSourcing, setFromSourcing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [edit, setEdit] = useState<StaffProduct | 'new' | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
     if (demo) return;
-    const r = await staffReq<{ data: StaffProduct[] }>('GET', `/api/products?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ''}${isSa ? '&deleted=1' : ''}`);
+    const r = await staffReq<{ data: StaffProduct[] }>('GET', `/api/products?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ''}${fromSourcing ? '&fromSourcing=1' : ''}${isSa ? '&deleted=1' : ''}`);
     setRows(r.data);
   };
-  useEffect(() => { void load().catch((e) => setErr((e as Error).message)); }, [q, status, demo]); // eslint-disable-line
+  useEffect(() => { void load().catch((e) => setErr((e as Error).message)); }, [q, status, fromSourcing, demo]); // eslint-disable-line
 
   const remove = async (p: StaffProduct) => {
     if (!confirm(`Delete “${p.title}”? This hides it from the catalog. Super admin can restore it.`)) return;
@@ -77,6 +84,12 @@ export function Products() {
     await staffReq('POST', `/api/products/${p.id}/${on ? 'publish' : 'unpublish'}`, {});
     await load();
   };
+  const canReviewSourcing = session?.role === 'SUPER_ADMIN' || session?.role === 'INDIA_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
+  const discardSource = async (p: StaffProduct) => {
+    if (!confirm(`Discard “${p.title}” from the marketplace review queue? The sourcing request itself will not be changed.`)) return;
+    await staffReq('POST', `/api/products/${p.id}/discard-source`, {});
+    await load();
+  };
 
   return (
     <>
@@ -87,6 +100,12 @@ export function Products() {
           <option value="">All statuses</option>
           {['DRAFT', 'READY_FOR_PRICE', 'PENDING_REVIEW', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        {canReviewSourcing && (
+          <button type="button" data-testid="filter-from-sourcing" onClick={() => setFromSourcing((v) => !v)}
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium ${fromSourcing ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-200 text-ink-700 hover:bg-ink-50'}`}>
+            From sourcing — needs review
+          </button>
+        )}
         <button className="btn-primary ml-auto" onClick={() => setEdit('new')}>Add product</button>
       </div>
       {!demo && (session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM') && <CategoryManager />}
@@ -101,7 +120,7 @@ export function Products() {
               <tr key={p.id} className="border-t border-ink-100 dark:border-ink-800">
                 <td className="px-4 py-3">
                   <div className="font-medium text-ink-900 dark:text-white">{p.title}</div>
-                  <div className="text-xs text-ink-500">{p.category?.name || p.categoryName}{p.isSample ? ' · Sample' : ''}{p.pinned ? ' · Trending' : ''}{p.clearance ? ' · Clearance' : ''}</div>
+                  <div className="text-xs text-ink-500">{p.category?.name || p.categoryName}{p.isSample ? ' · Sample' : ''}{p.pinned ? ' · Trending' : ''}{p.clearance ? ' · Clearance' : ''}{p.fromSourcing ? ' · From sourcing request' : ''}{p.sourceUpdatePending ? ' · Price updated — review' : ''}</div>
                 </td>
                 <td className="text-ink-600">{p.status}{p.deletedAt ? ' (deleted)' : ''}</td>
                 <td>{p.moq ?? '—'} {p.unit || ''}</td>
@@ -112,6 +131,7 @@ export function Products() {
                     {isSupplier && p.status === 'PENDING_REVIEW' && <button className="btn-outline !py-1 text-xs" data-testid="withdraw-review" onClick={() => void submitReview(p, false)}>Withdraw review</button>}
                     {canPublish && p.status !== 'PUBLISHED' && p.status !== 'DELETED' && <button className="btn-outline !py-1 text-xs" onClick={() => void publish(p, true)}>Publish</button>}
                     {canPublish && p.status === 'PUBLISHED' && <button className="btn-outline !py-1 text-xs" onClick={() => void publish(p, false)}>Unpublish</button>}
+                    {canReviewSourcing && p.fromSourcing && p.status !== 'DELETED' && <button className="btn-outline !py-1 text-xs" data-testid="discard-source" onClick={() => void discardSource(p)}>Discard</button>}
                     {canDelete && p.status !== 'DELETED' && <button className="btn-outline !py-1 text-xs text-red-600" onClick={() => void remove(p)}>Delete</button>}
                     {isSa && p.status === 'DELETED' && <button className="btn-outline !py-1 text-xs" onClick={() => void restore(p)}>Restore</button>}
                   </div>
@@ -175,6 +195,9 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
     packaging: product?.packaging ?? '', customization: product?.customization ?? '', samplePolicy: product?.samplePolicy ?? '',
     priceMode: product?.priceMode ?? product?.price?.mode ?? 'GET_QUOTE',
     priceMin: product?.priceMin != null ? String(product.priceMin) : '', priceMax: product?.priceMax != null ? String(product.priceMax) : '',
+    priceUsd: product?.price?.amounts?.USD?.min != null ? String(product.price.amounts.USD.min) : (product?.priceUsd != null ? String(product.priceUsd) : ''),
+    priceCny: product?.price?.amounts?.CNY?.min != null ? String(product.price.amounts.CNY.min) : (product?.priceCny != null ? String(product.priceCny) : ''),
+    priceInr: product?.price?.amounts?.INR?.min != null ? String(product.price.amounts.INR.min) : (product?.priceInr != null ? String(product.priceInr) : ''),
     baseCurrency: product?.baseCurrency ?? 'USD',
     categoryId: product?.categoryId ?? product?.category?.id ?? '',
     extraCategoryIds: (product?.extraCategories ?? []).map((c: { id: string }) => c.id),
@@ -191,10 +214,17 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
   const [attrs, setAttrs] = useState<{ key: string; value: string }[]>(
     Object.entries(specsObj).map(([key, value]) => ({ key, value: String(value ?? '') })).concat([{ key: '', value: '' }]),
   );
-  const [tiers, setTiers] = useState<{ minQty: string; maxQty: string; unitPrice: string }[]>(
-    (product?.tiers ?? []).map((t) => ({ minQty: String(t.minQty ?? ''), maxQty: t.maxQty != null ? String(t.maxQty) : '', unitPrice: String(t.amounts?.USD ?? t.amounts?.[product?.baseCurrency ?? 'USD'] ?? '') }))
-      .concat([{ minQty: '', maxQty: '', unitPrice: '' }]),
+  const emptyTier = { minQty: '', maxQty: '', unitPrice: '', priceUsd: '', priceCny: '', priceInr: '' };
+  const [tiers, setTiers] = useState<{ minQty: string; maxQty: string; unitPrice: string; priceUsd: string; priceCny: string; priceInr: string }[]>(
+    (product?.tiers ?? []).map((t: any) => ({
+      minQty: String(t.minQty ?? ''), maxQty: t.maxQty != null ? String(t.maxQty) : '',
+      unitPrice: t.unitPrice != null ? String(t.unitPrice) : String(t.amounts?.[product?.baseCurrency ?? 'USD'] ?? ''),
+      priceUsd: t.priceUsd != null ? String(t.priceUsd) : t.amounts?.USD != null ? String(t.amounts.USD) : '',
+      priceCny: t.priceCny != null ? String(t.priceCny) : t.amounts?.CNY != null ? String(t.amounts.CNY) : '',
+      priceInr: t.priceInr != null ? String(t.priceInr) : t.amounts?.INR != null ? String(t.amounts.INR) : '',
+    })).concat([emptyTier]),
   );
+  const [sourcePending, setSourcePending] = useState(!!product?.sourceUpdatePending);
   const merch: Merchandising = product?.merchandising ?? {};
   const [variations, setVariations] = useState<{ name: string; options: { label: string; hex: string }[] }[]>(
     (merch.variations ?? []).map((v) => ({ name: v.name, options: (v.options ?? []).map((o) => ({ label: o.label, hex: o.hex || '' })).concat([{ label: '', hex: '' }]) })).concat([{ name: '', options: [{ label: '', hex: '' }] }]),
@@ -242,7 +272,11 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
           ...s,
           categoryId: p.categoryId ?? p.category?.id ?? s.categoryId,
           extraCategoryIds: (p.extraCategories ?? []).map((c: { id: string }) => c.id),
+          priceUsd: p.price?.amounts?.USD?.min != null ? String(p.price.amounts.USD.min) : s.priceUsd,
+          priceCny: p.price?.amounts?.CNY?.min != null ? String(p.price.amounts.CNY.min) : s.priceCny,
+          priceInr: p.price?.amounts?.INR?.min != null ? String(p.price.amounts.INR.min) : s.priceInr,
         }));
+        if (p.sourceUpdatePending != null) setSourcePending(!!p.sourceUpdatePending);
       }).catch(() => { /* keep values from the list row */ });
     }
   }, [canLink, product?.id]); // eslint-disable-line
@@ -259,8 +293,10 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const specs = attrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() }));
-    const pricedTiers = tiers.filter((t) => t.unitPrice.trim()).map((t) => ({
-      minQty: t.minQty ? Number(t.minQty) : 1, maxQty: t.maxQty ? Number(t.maxQty) : null, unitPrice: Number(t.unitPrice),
+    const pricedTiers = tiers.filter((t) => t.unitPrice.trim() || t.priceUsd.trim() || t.priceCny.trim() || t.priceInr.trim()).map((t) => ({
+      minQty: t.minQty ? Number(t.minQty) : 1, maxQty: t.maxQty ? Number(t.maxQty) : null,
+      unitPrice: t.unitPrice ? Number(t.unitPrice) : (t.priceUsd ? Number(t.priceUsd) : t.priceCny ? Number(t.priceCny) : Number(t.priceInr)),
+      priceUsd: t.priceUsd ? Number(t.priceUsd) : null, priceCny: t.priceCny ? Number(t.priceCny) : null, priceInr: t.priceInr ? Number(t.priceInr) : null,
     }));
     const merchandising = {
       variations: variations.filter((v) => v.name.trim()).map((v) => ({
@@ -291,6 +327,7 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
       categoryId: f.categoryId || null, extraCategoryIds: f.extraCategoryIds, tags: f.tags, specs: allAttrs.length ? allAttrs : specs, merchandising,
       ...(canPrice ? {
         priceMode: f.priceMode, priceMin: f.priceMin ? Number(f.priceMin) : null, priceMax: f.priceMax ? Number(f.priceMax) : null,
+        priceUsd: f.priceUsd === '' ? null : Number(f.priceUsd), priceCny: f.priceCny === '' ? null : Number(f.priceCny), priceInr: f.priceInr === '' ? null : Number(f.priceInr),
         baseCurrency: f.baseCurrency, tiers: f.priceMode === 'TIERS' ? pricedTiers : [],
       } : {}),
       ...(canPromote ? {
@@ -307,7 +344,23 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4" onClick={onClose}>
       <form data-testid="product-editor" className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-lift dark:bg-ink-900" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
-        <h2 className="text-lg font-semibold text-ink-900 dark:text-white">{product ? 'Edit product' : 'Add product'}</h2>
+                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">{product ? 'Edit product' : 'Add product'}</h2>
+        {product?.fromSourcing && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-ink-800" data-testid="source-from-sourcing">
+            <p className="font-semibold text-amber-900">{product.sourceLabel || 'From sourcing request'}</p>
+            {product.sourceLeadRef && <p className="mt-0.5 text-ink-600">Request {product.sourceLeadRef}</p>}
+            {product.sourceHref && <a className="mt-1 inline-block text-brand-700 underline" href={product.sourceHref}>Open sourcing request</a>}
+            {product.referenceCost && product.referenceCost.amount != null && (
+              <p className="mt-2 font-medium text-ink-800">China quoted cost (internal only): {product.referenceCost.currency || ''} {product.referenceCost.amount}</p>
+            )}
+            <p className="mt-1 text-xs text-ink-500">Set selling prices in USD, RMB and INR as entered — they are not converted. This cost is never shown on the public marketplace.</p>
+            {sourcePending && product.id && (
+              <p className="mt-2 text-amber-800">The China quote was updated after this draft was edited.
+                <button type="button" className="ml-2 underline" onClick={() => void staffReq('POST', `/api/products/${product.id}/ack-source-update`, {}).then(() => setSourcePending(false))}>Mark as reviewed</button>
+              </p>
+            )}
+          </div>
+        )}
         <div className="mt-4 space-y-5">
           <section>
             <h3 className="mb-2 text-sm font-semibold text-ink-700">Basic details</h3>
@@ -340,6 +393,7 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
           {canPrice && (
             <section>
               <h3 className="mb-2 text-sm font-semibold text-ink-700">Selling price</h3>
+              <p className="mb-2 text-xs text-ink-500">Enter USD, RMB and INR separately. A missing currency is left blank — values are never converted.</p>
               <div className="grid grid-cols-3 gap-3">
                 <select className="input" value={f.priceMode} onChange={(e) => set('priceMode', e.target.value)} data-testid="product-price-mode">
                   <option value="GET_QUOTE">Get quote</option>
@@ -347,26 +401,39 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
                   <option value="TIERS">Price tiers</option>
                 </select>
                 <select className="input" value={f.baseCurrency} onChange={(e) => set('baseCurrency', e.target.value)}>
-                  {['USD', 'CNY', 'INR'].map((c) => <option key={c} value={c}>{c}</option>)}
+                  {['USD', 'CNY', 'INR'].map((c) => <option key={c} value={c}>{c === 'CNY' ? 'RMB' : c}</option>)}
                 </select>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <label className="text-xs text-ink-600">USD
+                  <input className="input mt-1" inputMode="decimal" placeholder="USD" value={f.priceUsd} onChange={(e) => set('priceUsd', e.target.value)} data-testid="product-price-usd" />
+                </label>
+                <label className="text-xs text-ink-600">RMB
+                  <input className="input mt-1" inputMode="decimal" placeholder="RMB" value={f.priceCny} onChange={(e) => set('priceCny', e.target.value)} data-testid="product-price-cny" />
+                </label>
+                <label className="text-xs text-ink-600">INR
+                  <input className="input mt-1" inputMode="decimal" placeholder="INR" value={f.priceInr} onChange={(e) => set('priceInr', e.target.value)} data-testid="product-price-inr" />
+                </label>
               </div>
               {f.priceMode === 'RANGE' && (
                 <div className="mt-3 grid grid-cols-2 gap-3">
-                  <input className="input" placeholder="Min price" value={f.priceMin} onChange={(e) => set('priceMin', e.target.value)} />
-                  <input className="input" placeholder="Max price" value={f.priceMax} onChange={(e) => set('priceMax', e.target.value)} />
+                  <input className="input" placeholder={`Min price (${f.baseCurrency === 'CNY' ? 'RMB' : f.baseCurrency})`} value={f.priceMin} onChange={(e) => set('priceMin', e.target.value)} />
+                  <input className="input" placeholder={`Max price (${f.baseCurrency === 'CNY' ? 'RMB' : f.baseCurrency})`} value={f.priceMax} onChange={(e) => set('priceMax', e.target.value)} />
                 </div>
               )}
               {f.priceMode === 'TIERS' && (
                 <div className="mt-3 space-y-2" data-testid="product-tiers">
                   {tiers.map((t, i) => (
-                    <div key={i} className="grid grid-cols-3 gap-2">
+                    <div key={i} className="grid grid-cols-5 gap-2">
                       <input className="input" placeholder="Min qty" value={t.minQty} onChange={(e) => setTiers((xs) => xs.map((x, j) => j === i ? { ...x, minQty: e.target.value } : x))} />
                       <input className="input" placeholder="Max qty" value={t.maxQty} onChange={(e) => setTiers((xs) => xs.map((x, j) => j === i ? { ...x, maxQty: e.target.value } : x))} />
-                      <input className="input" placeholder={`Unit price (${f.baseCurrency})`} value={t.unitPrice} onChange={(e) => setTiers((xs) => {
-                        const next = xs.map((x, j) => j === i ? { ...x, unitPrice: e.target.value } : x);
-                        if (i === next.length - 1 && e.target.value) next.push({ minQty: '', maxQty: '', unitPrice: '' });
+                      <input className="input" placeholder="USD" value={t.priceUsd} onChange={(e) => setTiers((xs) => {
+                        const next = xs.map((x, j) => j === i ? { ...x, priceUsd: e.target.value } : x);
+                        if (i === next.length - 1 && (e.target.value || t.priceCny || t.priceInr || t.unitPrice)) next.push(emptyTier);
                         return next;
                       })} />
+                      <input className="input" placeholder="RMB" value={t.priceCny} onChange={(e) => setTiers((xs) => xs.map((x, j) => j === i ? { ...x, priceCny: e.target.value } : x))} />
+                      <input className="input" placeholder="INR" value={t.priceInr} onChange={(e) => setTiers((xs) => xs.map((x, j) => j === i ? { ...x, priceInr: e.target.value } : x))} />
                     </div>
                   ))}
                 </div>

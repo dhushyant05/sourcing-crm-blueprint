@@ -27,8 +27,8 @@ class _Kv {
 }
 
 class _Tier {
-  _Tier({this.minQty = '', this.maxQty = '', this.unitPrice = ''});
-  String minQty, maxQty, unitPrice;
+  _Tier({this.minQty = '', this.maxQty = '', this.unitPrice = '', this.priceUsd = '', this.priceCny = '', this.priceInr = ''});
+  String minQty, maxQty, unitPrice, priceUsd, priceCny, priceInr;
 }
 
 class _Lead {
@@ -75,6 +75,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late final _samplePolicy = TextEditingController();
   late final _priceMin = TextEditingController();
   late final _priceMax = TextEditingController();
+  late final _priceUsd = TextEditingController();
+  late final _priceCny = TextEditingController();
+  late final _priceInr = TextEditingController();
   late final _sampleAmount = TextEditingController();
   late final _sampleLead = TextEditingController();
   late final _shipOrigin = TextEditingController();
@@ -160,6 +163,18 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     }
   }
 
+
+  String _amt(dynamic price, String cur, [dynamic fallback]) {
+    if (fallback != null) return _s(fallback);
+    if (price is! Map) return '';
+    final amounts = price['amounts'];
+    if (amounts is! Map) return '';
+    final a = amounts[cur];
+    if (a is Map && a['min'] != null) return _s(a['min']);
+    if (a != null && a is! Map) return _s(a);
+    return '';
+  }
+
   void _hydrate(Map<String, dynamic>? p) {
     _title.text = _s(p?['title']);
     _summary.text = _s(p?['summary']);
@@ -178,6 +193,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     if (_baseCurrency.isEmpty) _baseCurrency = 'USD';
     _priceMin.text = p?['priceMin'] == null ? '' : _s(p?['priceMin']);
     _priceMax.text = p?['priceMax'] == null ? '' : _s(p?['priceMax']);
+    _priceUsd.text = _amt(p?['price'], 'USD', p?['priceUsd']);
+    _priceCny.text = _amt(p?['price'], 'CNY', p?['priceCny']);
+    _priceInr.text = _amt(p?['price'], 'INR', p?['priceInr']);
     _pinned = p?['pinned'] == true;
     _clearance = p?['clearance'] == true;
     final sale = p?['clearancePrice'];
@@ -261,9 +279,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       final m = Map<String, dynamic>.from(t as Map);
       final amounts = m['amounts'] is Map ? Map<String, dynamic>.from(m['amounts'] as Map) : <String, dynamic>{};
       final price = amounts[base] ?? amounts['USD'] ?? m['unitPrice'];
-      return _Tier(minQty: _s(m['minQty']), maxQty: m['maxQty'] == null ? '' : _s(m['maxQty']), unitPrice: _s(price));
+      return _Tier(
+        minQty: _s(m['minQty']), maxQty: m['maxQty'] == null ? '' : _s(m['maxQty']), unitPrice: _s(price),
+        priceUsd: _s(m['priceUsd'] ?? amounts['USD']),
+        priceCny: _s(m['priceCny'] ?? amounts['CNY']),
+        priceInr: _s(m['priceInr'] ?? amounts['INR']),
+      );
     }).toList();
-    if (_tiers.isEmpty || _tiers.last.unitPrice.isNotEmpty) _tiers.add(_Tier());
+    if (_tiers.isEmpty || _tiers.last.unitPrice.isNotEmpty || _tiers.last.priceUsd.isNotEmpty) _tiers.add(_Tier());
 
     _images
       ..clear()
@@ -292,7 +315,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   void dispose() {
     for (final c in [
       _title, _summary, _tags, _moq, _unit, _lead, _capacity, _packaging, _customization, _samplePolicy,
-      _priceMin, _priceMax, _clearancePrice, _clearanceDiscount, _clearanceEnds, _clearanceStock,
+      _priceMin, _priceMax, _priceUsd, _priceCny, _priceInr, _clearancePrice, _clearanceDiscount, _clearanceEnds, _clearanceStock,
       _sampleAmount, _sampleLead, _shipOrigin, _shipEstimate, _shipNote,
       _sellingUnits, _packageSize, _grossWeight, _packageType, _longDescription, _reviewsNote,
       _newSupName, _newSupRegion, _newSupYears, _newSupAbout,
@@ -385,12 +408,18 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         body['priceMode'] = _priceMode;
         body['priceMin'] = num.tryParse(_priceMin.text.trim());
         body['priceMax'] = num.tryParse(_priceMax.text.trim());
+        body['priceUsd'] = num.tryParse(_priceUsd.text.trim());
+        body['priceCny'] = num.tryParse(_priceCny.text.trim());
+        body['priceInr'] = num.tryParse(_priceInr.text.trim());
         body['baseCurrency'] = _baseCurrency;
         body['tiers'] = _priceMode == 'TIERS'
-            ? _tiers.where((t) => t.unitPrice.trim().isNotEmpty).map((t) => {
+            ? _tiers.where((t) => t.unitPrice.trim().isNotEmpty || t.priceUsd.trim().isNotEmpty || t.priceCny.trim().isNotEmpty || t.priceInr.trim().isNotEmpty).map((t) => {
                 'minQty': num.tryParse(t.minQty.trim()) ?? 1,
                 'maxQty': num.tryParse(t.maxQty.trim()),
-                'unitPrice': num.tryParse(t.unitPrice.trim()),
+                'unitPrice': num.tryParse(t.unitPrice.trim()) ?? num.tryParse(t.priceUsd.trim()) ?? num.tryParse(t.priceCny.trim()) ?? num.tryParse(t.priceInr.trim()),
+                'priceUsd': num.tryParse(t.priceUsd.trim()),
+                'priceCny': num.tryParse(t.priceCny.trim()),
+                'priceInr': num.tryParse(t.priceInr.trim()),
               }).toList()
             : [];
       }
@@ -475,6 +504,36 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
               if (_err != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_err!, style: const TextStyle(color: Colors.red))),
+              if (_product?['fromSourcing'] == true)
+                Card(
+                  color: const Color(0xFFFFF8E1),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${_product?['sourceLabel'] ?? 'From sourcing request'}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (_s(_product?['sourceLeadRef']).isNotEmpty) Text('Request ${_s(_product?['sourceLeadRef'])}'),
+                      if (_product?['referenceCost'] is Map && (_product!['referenceCost'] as Map)['amount'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text('China quoted cost (internal only): ${(_product!['referenceCost'] as Map)['currency'] ?? ''} ${(_product!['referenceCost'] as Map)['amount']}'),
+                        ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('Set selling prices in USD, RMB and INR as entered. This cost is never shown on the public marketplace.', style: TextStyle(fontSize: 12)),
+                      ),
+                      if (_product?['sourceUpdatePending'] == true)
+                        TextButton(
+                          onPressed: () async {
+                            final id = _s(_product?['id']);
+                            if (id.isEmpty) return;
+                            await context.read<Session>().repo.ackSourceUpdate(id);
+                            if (mounted) setState(() => _product!['sourceUpdatePending'] = false);
+                          },
+                          child: const Text('Mark quote update as reviewed'),
+                        ),
+                    ]),
+                  ),
+                ),
               _section(
                 title: 'Basic details',
                 initiallyExpanded: true,
@@ -523,21 +582,35 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     items: [for (final c in _currencies) DropdownMenuItem(value: c, child: Text(c))],
                     onChanged: (v) => setState(() => _baseCurrency = v ?? 'USD'),
                   ),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8, bottom: 4),
+                    child: Text('Enter USD, RMB and INR separately. Missing currencies stay blank — values are never converted.', style: TextStyle(fontSize: 12)),
+                  ),
+                  TextField(controller: _priceUsd, decoration: const InputDecoration(labelText: 'Selling price (USD)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                  TextField(controller: _priceCny, decoration: const InputDecoration(labelText: 'Selling price (RMB)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                  TextField(controller: _priceInr, decoration: const InputDecoration(labelText: 'Selling price (INR)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
                   if (_priceMode == 'RANGE') ...[
-                    TextField(controller: _priceMin, decoration: const InputDecoration(labelText: 'Min price'), keyboardType: TextInputType.number),
-                    TextField(controller: _priceMax, decoration: const InputDecoration(labelText: 'Max price'), keyboardType: TextInputType.number),
+                    TextField(controller: _priceMin, decoration: InputDecoration(labelText: 'Min price ($_baseCurrency)'), keyboardType: TextInputType.number),
+                    TextField(controller: _priceMax, decoration: InputDecoration(labelText: 'Max price ($_baseCurrency)'), keyboardType: TextInputType.number),
                   ],
                   if (_priceMode == 'TIERS')
                     for (var i = 0; i < _tiers.length; i++)
-                      Row(children: [
-                        Expanded(child: _MemField(value: _tiers[i].minQty, decoration: const InputDecoration(labelText: 'Min qty'), keyboardType: TextInputType.number, onChanged: (v) { _tiers[i].minQty = v; })),
-                        const SizedBox(width: 8),
-                        Expanded(child: _MemField(value: _tiers[i].maxQty, decoration: const InputDecoration(labelText: 'Max qty'), keyboardType: TextInputType.number, onChanged: (v) { _tiers[i].maxQty = v; })),
-                        const SizedBox(width: 8),
-                        Expanded(child: _MemField(value: _tiers[i].unitPrice, decoration: InputDecoration(labelText: 'Unit price ($_baseCurrency)'), keyboardType: TextInputType.number, onChanged: (v) {
-                          _tiers[i].unitPrice = v;
-                          if (i == _tiers.length - 1 && v.isNotEmpty) setState(() => _tiers.add(_Tier()));
-                        })),
+                      Column(children: [
+                        Row(children: [
+                          Expanded(child: _MemField(value: _tiers[i].minQty, decoration: const InputDecoration(labelText: 'Min qty'), keyboardType: TextInputType.number, onChanged: (v) { _tiers[i].minQty = v; })),
+                          const SizedBox(width: 8),
+                          Expanded(child: _MemField(value: _tiers[i].maxQty, decoration: const InputDecoration(labelText: 'Max qty'), keyboardType: TextInputType.number, onChanged: (v) { _tiers[i].maxQty = v; })),
+                        ]),
+                        Row(children: [
+                          Expanded(child: _MemField(value: _tiers[i].priceUsd, decoration: const InputDecoration(labelText: 'USD'), keyboardType: TextInputType.number, onChanged: (v) {
+                            _tiers[i].priceUsd = v;
+                            if (i == _tiers.length - 1 && v.isNotEmpty) setState(() => _tiers.add(_Tier()));
+                          })),
+                          const SizedBox(width: 8),
+                          Expanded(child: _MemField(value: _tiers[i].priceCny, decoration: const InputDecoration(labelText: 'RMB'), keyboardType: TextInputType.number, onChanged: (v) { _tiers[i].priceCny = v; })),
+                          const SizedBox(width: 8),
+                          Expanded(child: _MemField(value: _tiers[i].priceInr, decoration: const InputDecoration(labelText: 'INR'), keyboardType: TextInputType.number, onChanged: (v) { _tiers[i].priceInr = v; })),
+                        ]),
                       ]),
                 ]),
               if (perms.canPromoteCatalog)

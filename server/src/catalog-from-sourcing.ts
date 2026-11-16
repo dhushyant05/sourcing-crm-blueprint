@@ -1,0 +1,195 @@
+/**
+ * When China returns a sourcing quote with a price, create or refresh an
+ * unpublished marketplace draft for the Marketplace Team to review.
+ * Never auto-publishes. Factory/reference cost is staff-only.
+ * Customer identity is never copied onto the product.
+ */
+import type { CatalogDeps } from './catalog.js';
+import { CatalogStore, normalizeSpecs, ownerKey, processProductImage, saveProductPhoto, slugify } from './catalog.js';
+import type { Quote } from './quotes.js';
+import type { Rec } from './leads.js';
+
+const PRICE_RE = /^(\d+(?:\.\d+)?)/;
+
+export function parseMoq(raw: unknown, fallback?: unknown): number | null {
+  for (const v of [raw, fallback]) {
+    if (v == null || v === '') continue;
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+    const m = String(v).replace(/,/g, '').trim().match(PRICE_RE);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+function titleOf(quote: Quote, lead: Rec): string {
+  const fromQuote = String(quote.product ?? '').trim();
+  const fromLead = String(lead.productInterest ?? lead.name ?? '').trim();
+  return (fromQuote || fromLead || 'Sourced product').slice(0, 200);
+}
+
+function summaryOf(quote: Quote, lead: Rec): string | null {
+  const notes = String(quote.notes ?? '').trim();
+  const summary = String(lead.summary ?? '').trim();
+  const text = notes || summary;
+  return text ? text.slice(0, 4000) : null;
+}
+
+function specsOf(quote: Quote, lead: Rec): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  if (quote.moq) out.MOQ = String(quote.moq);
+  else if (lead.quantity != null) out.MOQ = String(lead.quantity) + (lead.unit ? ` ${lead.unit}` : '');
+  if (quote.leadTime) out['Lead time'] = String(quote.leadTime);
+  if (quote.validity) out.Validity = String(quote.validity);
+  if (quote.shipTerm) out.Incoterm = String(quote.shipTerm);
+  if (quote.shipMode) out['Shipping mode'] = String(quote.shipMode);
+  if (quote.shipPort) out.Port = String(quote.shipPort);
+  if (quote.shipTransit) out.Transit = String(quote.shipTransit);
+  return Object.keys(out).length ? out : null;
+}
+
+/** A lead has been "returned with a price" when China has quoted it or sent it back to India. */
+export function leadIsReturnedWithPrice(lead: Rec | null | undefined): boolean {
+  if (!lead) return false;
+  const status = String(lead.status ?? '');
+  if (status === 'QUOTED' || status === 'APPROVED') return true;
+  const office = String(lead.ownerOffice ?? lead.assignedOffice ?? '');
+  if (office === 'INDIA' && ['SOURCING', 'ASSIGNED', 'QUOTED', 'APPROVED', 'NEW'].includes(status)) return true;
+  return false;
+}
+
+async function matchCategory(store: CatalogStore, title: string): Promise<string | null> {
+  const name = title.trim();
+  if (!name) return null;
+  const exact = await store.db.get<{ id: string }>('SELECT id FROM categories WHERE lower(name) = lower(?) AND active = true LIMIT 1', name);
+  if (exact) return exact.id;
+  const words = name.split(/\s+/).filter((w) => w.length >= 4).slice(0, 4);
+  for (const w of words) {
+    const row = await store.db.get<{ id: string }>('SELECT id FROM categories WHERE active = true AND lower(name) = lower(?) LIMIT 1', w);
+    if (row) return row.id;
+  }
+  return null;
+}
+
+async function copyImages(deps: CatalogDeps, productId: string, keys: string[], alt: string) {
+  const existing = await deps.db.all<{ n: number }>('SELECT count(distinct coalesce(group_id, file_id))::int AS n FROM product_images WHERE product_id = ?', productId);
+  let sort = Number(existing?.[0] ? 0 : 0);
+  const groups = (await deps.db.all<{ n: number }>('SELECT count(*)::int AS n FROM (SELECT coalesce(group_id, file_id) FROM product_images WHERE product_id = ? GROUP BY 1) x', productId))?.[0];
+  sort = groups?.n ?? 0;
+  let added = 0;
+  for (const key of keys) {
+    for (const meta of deps.uploads.list(key)) {
+      if (sort + added >= 15) return;
+      if (!/^image\/(jpeg|jpg|png|webp)$/i.test(meta.mime || '')) continue;
+      const file = deps.uploads.read(key, meta.id);
+      if (!file?.data) continue;
+      try {
+        const processed = await processProductImage(file.data);
+        await saveProductPhoto(deps, productId, processed, alt.slice(0, 200), sort + added, sort + added === 0);
+        added += 1;
+        await deps.mediaSync?.(ownerKey('p', productId), deps.uploads.list(ownerKey('p', productId)));
+      } catch {
+        // Skip a bad file; the draft should still be created.
+      }
+    }
+  }
+}
+
+function qKey(id: string) { return `q_${id.replace(/-/g, '')}`.slice(0, 64); }
+
+async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string | null) {
+  const store = new CatalogStore(deps.db);
+  const existing = await store.db.get<any>(
+    'SELECT * FROM products WHERE source_quote_id = ?',
+    quote.id,
+  );
+  if (existing?.source_discarded_at || existing?.status === 'DELETED' || existing?.deleted_at) return existing ?? null;
+
+  const title = titleOf(quote, lead);
+  const summary = summaryOf(quote, lead);
+  const specs = specsOf(quote, lead);
+  const moq = parseMoq(quote.moq, lead.quantity);
+  const unit = quote.moq && /[a-zA-Z]+/.test(String(quote.moq))
+    ? (String(quote.moq).match(/[a-zA-Z]+(?:\s+[a-zA-Z]+)*$/)?.[0]?.trim().slice(0, 24) || (lead.unit as string) || 'pcs')
+    : ((lead.unit as string) || 'pcs');
+  const leadTime = (quote.leadTime || null) as string | null;
+  const categoryId = existing?.category_id ?? await matchCategory(store, String(lead.productInterest ?? title));
+  const ref = String(lead.leadRef ?? existing?.source_lead_ref ?? '').slice(0, 32) || null;
+
+  if (!existing) {
+    const id = (await import('node:crypto')).randomUUID();
+    const slug = await store.uniqueSlug(slugify(title) || 'sourced-product');
+    await store.db.run(
+      `INSERT INTO products (
+         id, slug, title, summary, specs, category_id, status, moq, unit, lead_time,
+         price_mode, base_currency, created_by, is_sample,
+         source_lead_id, source_quote_id, source_lead_ref,
+         source_unit_price, source_currency, source_update_pending
+       ) VALUES (?,?,?,?,?::jsonb,?,?,?,?,?, 'GET_QUOTE', 'USD', ?, false, ?,?,?,?,?, false)`,
+      id, slug, title, summary, specs ? JSON.stringify(normalizeSpecs(specs)) : null,
+      categoryId, 'UNPUBLISHED', moq, unit, leadTime, by,
+      lead.id, quote.id, ref, quote.unitPrice, quote.currency,
+    );
+    await store.audit(id, by, 'SOURCE_DRAFT', null, { sourceLeadId: lead.id, sourceQuoteId: quote.id, sourceLeadRef: ref });
+    await copyImages(deps, id, [qKey(quote.id), String(lead.id)], title);
+    return store.get(id);
+  }
+
+  const teamEdited = !!existing.source_team_edited_at;
+  const published = existing.status === 'PUBLISHED';
+  if (teamEdited || published) {
+    await store.db.run(
+      `UPDATE products SET source_unit_price = ?, source_currency = ?, source_lead_ref = coalesce(source_lead_ref, ?),
+         source_update_pending = true, updated_at = now() WHERE id = ?`,
+      quote.unitPrice, quote.currency, ref, existing.id,
+    );
+    await store.audit(existing.id, by, 'SOURCE_UPDATE_FLAGGED', { sourceUnitPrice: existing.source_unit_price, sourceCurrency: existing.source_currency }, { sourceUnitPrice: quote.unitPrice, sourceCurrency: quote.currency });
+    return store.get(existing.id);
+  }
+
+  await store.db.run(
+    `UPDATE products SET title = ?, summary = ?, specs = ?::jsonb, moq = ?, unit = ?, lead_time = ?,
+       category_id = coalesce(category_id, ?), source_lead_id = ?, source_lead_ref = ?,
+       source_unit_price = ?, source_currency = ?, source_update_pending = false, updated_at = now()
+     WHERE id = ?`,
+    title, summary, specs ? JSON.stringify(normalizeSpecs(specs)) : null, moq, unit, leadTime,
+    categoryId, lead.id, ref, quote.unitPrice, quote.currency, existing.id,
+  );
+  await store.audit(existing.id, by, 'SOURCE_REFRESH', { title: existing.title }, { title, sourceUnitPrice: quote.unitPrice, sourceCurrency: quote.currency });
+  const imgs = await store.images(existing.id);
+  if (!imgs.length) await copyImages(deps, existing.id, [qKey(quote.id), String(lead.id)], title);
+  return store.get(existing.id);
+}
+
+/** Create or refresh drafts for one quote, or every priced quote on a returned lead. */
+export async function syncSourcingDrafts(deps: CatalogDeps, lead: Rec, quotes: Quote[], by: string | null, opts: { quoteId?: string; force?: boolean } = {}) {
+  if (!lead?.id) return [];
+  const list = opts.quoteId ? quotes.filter((q) => q.id === opts.quoteId) : quotes;
+  const out = [];
+  for (const q of list) {
+    if (q.unitPrice == null || !Number.isFinite(Number(q.unitPrice))) continue;
+    const already = await deps.db.get<{ id: string }>('SELECT id FROM products WHERE source_quote_id = ?', q.id);
+    if (!already && !opts.force && !leadIsReturnedWithPrice(lead)) continue;
+    const row = await upsertOne(deps, lead, q, by);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+export function sourceStaffFields(row: any, role: string) {
+  if (!row?.source_quote_id) return {};
+  const canReview = role === 'SUPER_ADMIN' || role === 'INDIA_ADMIN' || role === 'MARKETPLACE_TEAM' || role.startsWith('CHINA');
+  if (!canReview) return { fromSourcing: true };
+  return {
+    fromSourcing: true,
+    sourceLeadId: row.source_lead_id,
+    sourceQuoteId: row.source_quote_id,
+    sourceLeadRef: row.source_lead_ref,
+    sourceHref: row.source_lead_id ? `/app#/leads?id=${row.source_lead_id}` : '/app#/leads',
+    sourceLabel: 'From sourcing request',
+    sourceUpdatePending: !!row.source_update_pending,
+    sourceDiscardedAt: row.source_discarded_at ?? null,
+    sourceTeamEditedAt: row.source_team_edited_at ?? null,
+    // Factory/reference cost — never included in publicView.
+    referenceCost: row.source_unit_price != null ? { amount: Number(row.source_unit_price), currency: row.source_currency || null } : null,
+  };
+}

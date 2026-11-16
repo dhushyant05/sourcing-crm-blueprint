@@ -35,6 +35,7 @@ import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, mar
 import { SupplierAccountStore } from './supplier-accounts.js';
 import { registerPublicSupplier, registerStaffSupplier } from './supplier-routes.js';
 import { registerCatalogSeo } from './catalog-seo.js';
+import { syncSourcingDrafts } from './catalog-from-sourcing.js';
 import { recordEnquiryEvent } from './catalog-engagement.js';
 
 export interface AppOptions {
@@ -649,6 +650,19 @@ export async function buildApp(o: AppOptions) {
       }));
     },
   };
+
+  const syncFromSourcing = async (leadId: string, by: string | null, opts: { quoteId?: string; force?: boolean } = {}) => {
+    try {
+      const lead = await leadDb.get(leadId);
+      if (!lead) return;
+      const a = await assign.get(leadId);
+      const rec = { ...lead, ownerOffice: a?.ownerOffice ?? lead.assignedOffice } as any;
+      await syncSourcingDrafts(catalogDeps, rec, await quotes.list(leadId), by, opts);
+    } catch (err) {
+      app.log.error({ err, leadId }, 'sourcing marketplace draft sync failed');
+    }
+  };
+
   registerPublicCatalog(app, catalogDeps);
   registerPublicSupplier(app, supplierAccounts);
 
@@ -856,6 +870,7 @@ export async function buildApp(o: AppOptions) {
       const q = await quotes.create(id, body, req.user!.id);
       const list = await quotes.list(id);
       await ev(id, 'QUOTE_ADDED', req.user!, { n: list.findIndex((x) => x.id === q.id) + 1, supplier: q.supplierId ? (await quotes.supplier(q.supplierId))?.name ?? null : null });
+      await syncFromSourcing(id, req.user!.id, { quoteId: q.id });
       return reply.code(201).send({ data: await viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(id)) });
     });
     api.patch<{ Params: { qid: string }; Body: Record<string, unknown> }>('/api/quotes/:qid', async (req) => {
@@ -875,6 +890,7 @@ export async function buildApp(o: AppOptions) {
       }
       const list = await quotes.list(q.leadId), qn = list.findIndex((x) => x.id === n.id) + 1;
       if (chinaKeys.length) await ev(q.leadId, 'QUOTE_EDITED', req.user!, { n: qn });
+      if (chinaKeys.length) await syncFromSourcing(q.leadId, req.user!.id, { quoteId: n.id });
       if (clientKeys.some((k) => k in (req.body ?? {}))) await ev(q.leadId, 'CQ_PREPARED', req.user!, { n: qn, edit: true }, 'INDIA');
       return { data: await viewQuote(req.user!, n, list.findIndex((x) => x.id === n.id), await leadRefOf(q.leadId)) };
     });
@@ -1098,6 +1114,7 @@ export async function buildApp(o: AppOptions) {
       if (sb?.quoteId === q.id) await wf.setSendBack(q.leadId, null);
       const back = sb?.quoteId === q.id && sb.from && indiaOwner(o.users.byId(sb.from)) ? sb.from : undefined;
       await handoff(lead, u, 'INDIA', back, { kind: 'QUOTE_REVISED', detail: `Q${n} rev ${nq.revision}${note ? ': ' + note : ''}`.slice(0, 120) });
+      await syncFromSourcing(q.leadId, u.id, { quoteId: nq.id, force: true });
       return { data: await refresh(u, nq) };
     });
     // ---- Customer rejection follow-up (India): request a revised quote from China, or close as LOST ----
@@ -1594,6 +1611,7 @@ export async function buildApp(o: AppOptions) {
         if ('status' in data && data.status !== existing.status) {
           await ev(id, 'STATUS', req.user!, { from: existing.status ?? null, to: data.status });
           if (['WON', 'LOST', 'DELIVERED', 'COMPLETED'].includes(String(data.status))) await stopClock(id);
+          if (data.status === 'QUOTED' && officeOf(role) === 'CHINA') await syncFromSourcing(id, req.user!.id, { force: true });
         }
         if ('summary' in data && data.summary !== existing.summary) await ev(id, 'SUMMARY', req.user!);
       }
@@ -1632,6 +1650,7 @@ export async function buildApp(o: AppOptions) {
         await leadDb.update(String(lead.id), patch); Object.assign(lead, patch);
       }
       if (b.office || to !== undefined) await handoff(lead, actor, office, to);
+      if (office === 'INDIA' && officeOf(actor.role) === 'CHINA') await syncFromSourcing(String(lead.id), actor.id, { force: true });
       const f = readFilter('lead', lead, await ctxOf(actor.role))!;
       return { data: await decorate(f, await assign.get(String(lead.id)), userNames()) };
     });

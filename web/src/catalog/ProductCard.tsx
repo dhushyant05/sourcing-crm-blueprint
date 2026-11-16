@@ -39,15 +39,15 @@ export function ProductCard({ product, variant = 'grid' }: { product: Product; v
       </div>
       <div className={`flex flex-1 flex-col ${variant === 'compact' ? 'p-2.5' : 'p-3'}`}>
         <h3 className="line-clamp-2 text-[13px] font-medium leading-snug text-ink-800">{product.title}</h3>
-        {product.clearance && product.clearancePrice && typeof product.clearancePrice === 'object' && product.clearancePrice.amounts ? (
+        {product.clearance && product.clearancePrice && typeof product.clearancePrice === 'object' && product.clearancePrice.amounts && priceLabel(product.clearancePrice, currency) ? (
           <p className="mt-1 text-sm font-semibold text-rose-700">
             {priceLabel(product.clearancePrice, currency)}
             {product.price?.amounts?.[currency]?.min != null && <span className="ml-1.5 text-xs font-normal text-ink-400 line-through">{priceLabel(product.price, currency)}</span>}
             {product.clearanceDiscountPct != null && <span className="ml-1 text-[11px] font-semibold text-rose-600">{Math.round(product.clearanceDiscountPct)}% off</span>}
           </p>
-        ) : (
+        ) : priceLabel(product.price, currency) ? (
           <p className="mt-1 text-sm font-semibold text-brand-700">{priceLabel(product.price, currency)}</p>
-        )}
+        ) : null}
         {product.clearance && product.clearanceStockLeft != null && <p className="text-[11px] font-medium text-rose-600">Only {product.clearanceStockLeft} left</p>}
         {product.moq != null && <p className="mt-0.5 text-[11px] text-ink-500">MOQ {product.moq} {product.unit || 'pcs'}</p>}
         <p className="mt-1 text-[11px] text-ink-400">Sourced in China</p>
