@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 /**
  * When China returns a sourcing quote with a price, create or refresh an
  * unpublished marketplace draft for the Marketplace Team to review.
@@ -96,6 +97,102 @@ async function copyImages(deps: CatalogDeps, productId: string, keys: string[], 
 
 function qKey(id: string) { return `q_${id.replace(/-/g, '')}`.slice(0, 64); }
 
+/** Quote photos only. Lead-level enquiry photos are used only when this is the lead's sole priced quote, so sibling products cannot leak in. */
+export async function imageKeysForQuote(deps: CatalogDeps, leadId: string, quoteId: string): Promise<string[]> {
+  const keys = [qKey(quoteId)];
+  const priced = await deps.db.get<{ n: number }>('SELECT count(*)::int AS n FROM quotes WHERE lead_id = ? AND unit_price IS NOT NULL', leadId);
+  if ((priced?.n ?? 0) <= 1) keys.push(leadId);
+  return keys;
+}
+
+function sha256(data: Buffer) { return createHash('sha256').update(data).digest('hex'); }
+
+async function hashesForKeys(deps: CatalogDeps, keys: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const key of keys) {
+    for (const meta of deps.uploads.list(key)) {
+      if (!/^image\/(jpeg|jpg|png|webp)$/i.test(meta.mime || '')) continue;
+      const file = deps.uploads.read(key, meta.id);
+      if (!file?.data) continue;
+      try {
+        const processed = await processProductImage(file.data);
+        out.add(sha256(processed.original));
+      } catch { /* skip */ }
+    }
+  }
+  return out;
+}
+
+async function clearPhotoGroup(deps: CatalogDeps, productId: string, fileIds: string[]) {
+  for (const fid of fileIds) {
+    await deps.db.run('DELETE FROM product_images WHERE product_id = ? AND file_id = ?', productId, fid);
+    deps.uploads.remove(ownerKey('p', productId), fid);
+  }
+  await deps.mediaSync?.(ownerKey('p', productId), deps.uploads.list(ownerKey('p', productId)));
+}
+
+/** Drop photos that came from a sibling quote or from a shared lead album, then fill any missing quote photos. */
+export async function isolateSourcingPhotos(deps: CatalogDeps, productId: string, leadId: string, quoteId: string, alt: string, opts: { dryRun?: boolean } = {}): Promise<{ kept: number; removed: number; added: number; merged: boolean }> {
+  const store = new CatalogStore(deps.db);
+  const allowedKeys = await imageKeysForQuote(deps, leadId, quoteId);
+  const allowed = await hashesForKeys(deps, allowedKeys);
+  const siblingKeys: string[] = [];
+  const siblings = await deps.db.all<{ id: string }>('SELECT id FROM quotes WHERE lead_id = ? AND id <> ? AND unit_price IS NOT NULL', leadId, quoteId);
+  for (const q of siblings) siblingKeys.push(qKey(q.id));
+  if (siblings.length) siblingKeys.push(leadId);
+  const leaked = await hashesForKeys(deps, siblingKeys);
+  const imgs = await store.images(productId) as { fileId: string; kind: string; groupId: string | null }[];
+  const groups = new Map<string, { fileIds: string[]; originalId?: string }>();
+  for (const im of imgs) {
+    const gid = im.groupId || im.fileId;
+    const g = groups.get(gid) ?? { fileIds: [] };
+    g.fileIds.push(im.fileId);
+    if (im.kind === 'ORIGINAL') g.originalId = im.fileId;
+    groups.set(gid, g);
+  }
+  let removed = 0;
+  for (const g of groups.values()) {
+    const origId = g.originalId ?? g.fileIds[0];
+    const file = deps.uploads.read(ownerKey('p', productId), origId);
+    const hash = file?.data ? sha256(file.data) : '';
+    const isLeaked = !!hash && leaked.has(hash) && !allowed.has(hash);
+    if (isLeaked) {
+      if (!opts.dryRun) await clearPhotoGroup(deps, productId, g.fileIds);
+      removed += 1;
+    }
+  }
+  const remainingGroups = new Map<string, { fileIds: string[]; originalId?: string }>();
+  for (const im of await store.images(productId) as any[]) {
+    const gid = im.groupId || im.fileId;
+    const g = remainingGroups.get(gid) ?? { fileIds: [] };
+    g.fileIds.push(im.fileId);
+    if (im.kind === 'ORIGINAL') g.originalId = im.fileId;
+    remainingGroups.set(gid, g);
+  }
+  let groupsLeft = 0;
+  for (const g of remainingGroups.values()) {
+    const origId = g.originalId ?? g.fileIds[0];
+    const file = deps.uploads.read(ownerKey('p', productId), origId);
+    const hash = file?.data ? sha256(file.data) : '';
+    const isLeaked = !!hash && leaked.has(hash) && !allowed.has(hash);
+    if (opts.dryRun && isLeaked) continue;
+    groupsLeft += 1;
+  }
+  let added = 0;
+  if (!groupsLeft) {
+    if (opts.dryRun) {
+      added = allowed.size; // one hash per source image (original)
+    } else {
+      await copyImages(deps, productId, allowedKeys, alt);
+      const after = new Set((await store.images(productId)).map((i: any) => i.groupId || i.fileId)).size;
+      added = after;
+    }
+  }
+  const kept = opts.dryRun ? groupsLeft + added : new Set((await store.images(productId)).map((i: any) => i.groupId || i.fileId)).size;
+  return { kept, removed, added, merged: removed > 0 };
+}
+
+
 async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string | null) {
   const store = new CatalogStore(deps.db);
   const existing = await store.db.get<any>(
@@ -116,7 +213,7 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
   const ref = String(lead.leadRef ?? existing?.source_lead_ref ?? '').slice(0, 32) || null;
 
   if (!existing) {
-    const id = (await import('node:crypto')).randomUUID();
+    const id = randomUUID();
     const slug = await store.uniqueSlug(slugify(title) || 'sourced-product');
     await store.db.run(
       `INSERT INTO products (
@@ -130,7 +227,7 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
       lead.id, quote.id, ref, quote.unitPrice, quote.currency,
     );
     await store.audit(id, by, 'SOURCE_DRAFT', null, { sourceLeadId: lead.id, sourceQuoteId: quote.id, sourceLeadRef: ref });
-    await copyImages(deps, id, [qKey(quote.id), String(lead.id)], title);
+    await copyImages(deps, id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
     return store.get(id);
   }
 
@@ -156,7 +253,7 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
   );
   await store.audit(existing.id, by, 'SOURCE_REFRESH', { title: existing.title }, { title, sourceUnitPrice: quote.unitPrice, sourceCurrency: quote.currency });
   const imgs = await store.images(existing.id);
-  if (!imgs.length) await copyImages(deps, existing.id, [qKey(quote.id), String(lead.id)], title);
+  if (!imgs.length) await copyImages(deps, existing.id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
   return store.get(existing.id);
 }
 
@@ -252,6 +349,64 @@ export async function backfillSourcingDrafts(deps: CatalogDeps, by: string | nul
     created,
     skipped,
     counts: { candidates: rows.length, created: created.length, skipped: skipped.length, testRecord, alreadyExists },
+  };
+}
+
+
+export type RepairItem = BackfillItem & { kept?: number; removed?: number; added?: number; merged?: boolean };
+export type RepairSkipReason = 'team_edited' | 'discarded' | 'published' | 'missing_quote' | 'already_clean';
+export type RepairResult = {
+  repaired: RepairItem[];
+  skipped: (BackfillItem & { reason: RepairSkipReason })[];
+  counts: { candidates: number; repaired: number; merged: number; skipped: number; teamEdited: number; alreadyClean: number };
+};
+
+/**
+ * Un-merge photos leaked from sibling quotes or a shared lead album, and
+ * refresh unedited unpublished drafts from their own quote only.
+ * Never publishes. Team-edited, discarded and published drafts are left untouched.
+ */
+export async function repairSourcingDrafts(deps: CatalogDeps, by: string | null, opts: { dryRun?: boolean } = {}): Promise<RepairResult> {
+  const leads = new LeadStore(deps.db);
+  const quotes = new QuoteStore(deps.db);
+  const rows = await deps.db.all<any>(
+    `SELECT id, slug, title, status, source_lead_id, source_quote_id, source_lead_ref,
+            source_team_edited_at, source_discarded_at, deleted_at
+       FROM products
+      WHERE source_quote_id IS NOT NULL AND deleted_at IS NULL
+      ORDER BY source_lead_ref NULLS LAST, created_at, id`,
+  );
+  const repaired: RepairItem[] = [];
+  const skipped: RepairResult['skipped'] = [];
+  for (const row of rows) {
+    const item: BackfillItem = { leadRef: row.source_lead_ref ?? null, quoteId: row.source_quote_id, title: row.title, productId: row.id, slug: row.slug, status: row.status };
+    if (row.source_discarded_at) { skipped.push({ ...item, reason: 'discarded' }); continue; }
+    if (row.status === 'PUBLISHED') { skipped.push({ ...item, reason: 'published' }); continue; }
+    if (row.source_team_edited_at) { skipped.push({ ...item, reason: 'team_edited' }); continue; }
+    const lead = row.source_lead_id ? await leads.get(row.source_lead_id) : null;
+    const quote = await quotes.get(row.source_quote_id);
+    if (!lead || !quote) { skipped.push({ ...item, reason: 'missing_quote' }); continue; }
+    const title = titleOf(quote, lead);
+    const photo = await isolateSourcingPhotos(deps, row.id, String(lead.id), quote.id, title, { dryRun: !!opts.dryRun });
+    if (!opts.dryRun) {
+      await syncSourcingDrafts(deps, { ...lead, ownerOffice: lead.ownerOffice ?? lead.assignedOffice } as Rec, [quote], by, { quoteId: quote.id, force: true });
+    }
+    if (!photo.merged && !photo.added) { skipped.push({ ...item, reason: 'already_clean' }); continue; }
+    repaired.push({ ...item, title, kept: photo.kept, removed: photo.removed, added: photo.added, merged: photo.merged, status: 'UNPUBLISHED' });
+  }
+  const teamEdited = skipped.filter((s) => s.reason === 'team_edited').length;
+  const alreadyClean = skipped.filter((s) => s.reason === 'already_clean').length;
+  return {
+    repaired,
+    skipped,
+    counts: {
+      candidates: rows.length,
+      repaired: repaired.length,
+      merged: repaired.filter((r) => r.merged).length,
+      skipped: skipped.length,
+      teamEdited,
+      alreadyClean,
+    },
   };
 }
 
