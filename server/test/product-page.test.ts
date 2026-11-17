@@ -87,8 +87,7 @@ describe('supplier card privacy', () => {
       catalogConsent: true, publicRegion: 'Zhejiang, China', publicYears: 12, publicVerified: true, publicAbout: 'Catalog partner',
     });
     expect(profile.statusCode).toBe(200);
-    expect(profile.json().data).toMatchObject({ name: 'Ningbo Secret Factory', catalogConsent: true, publicRegion: 'Zhejiang, China' });
-    expect(JSON.stringify(profile.json().data)).not.toMatch(/wx_secret|\+86|Mr Wang|factory cost/i);
+    expect(profile.json().data).toMatchObject({ name: 'Ningbo Secret Factory', catalogConsent: true, publicRegion: 'Zhejiang, China', contact: 'Mr Wang', phone: '+86 13800001111', wechat: 'wx_secret', city: 'Ningbo' });
 
     expect((await call('is', 'GET', '/api/catalog/suppliers')).statusCode).toBe(403);
     expect((await call('ia', 'GET', '/api/catalog/suppliers')).statusCode).toBe(403);

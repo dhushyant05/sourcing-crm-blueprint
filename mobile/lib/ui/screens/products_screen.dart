@@ -87,6 +87,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return tiers is List && tiers.isNotEmpty;
   }
 
+  bool _needsSelling(Map<String, dynamic> p) {
+    final price = p['price'];
+    final mode = '${p['priceMode'] ?? (price is Map ? price['mode'] : null) ?? 'GET_QUOTE'}';
+    if (mode == 'GET_QUOTE') return false;
+    return !_hasSelling(p);
+  }
+
+  String? _supplierName(Map<String, dynamic> p) {
+    final s = p['catalogSupplier'];
+    if (s is Map && s['name'] != null && '${s['name']}'.trim().isNotEmpty) return '${s['name']}'.trim();
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
@@ -136,7 +149,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
               '${p['status'] ?? ''}',
               if (p['isSample'] == true) 'Sample',
               if (p['fromSourcing'] == true) 'From sourcing request',
-              if (p['sourceUpdatePending'] == true) 'Price updated — review',
+              if (p['sourceUpdatePending'] == true) 'Updated from sourcing — review',
+              if (_supplierName(p) != null) _supplierName(p)!,
               if (p['categoryName'] != null) '${p['categoryName']}',
             ].join(' · ')),
             isThreeLine: false,
@@ -149,8 +163,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 IconButton(icon: const Icon(Icons.publish_outlined), tooltip: 'Publish', onPressed: () => _run(() async {
                   final blockers = (p['publishBlockers'] as List?) ?? const [];
                   if (blockers.isNotEmpty) throw blockers.first.toString();
-                  if (p['fromSourcing'] == true && !_hasSelling(p)) {
-                    throw 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a product from a sourcing request. The China factory cost is never shown publicly.';
+                  if (_needsSelling(p)) {
+                    throw 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a fixed-price product. One currency is enough. Or switch the pricing mode to Get quote. The China factory cost is never shown publicly.';
                   }
                   await s.repo.publishProduct('${p['id']}');
                 })),

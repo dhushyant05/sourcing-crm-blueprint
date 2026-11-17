@@ -35,7 +35,7 @@ import { registerPublicCatalog, registerStaffCatalog, registerPortalCatalog, mar
 import { SupplierAccountStore } from './supplier-accounts.js';
 import { registerPublicSupplier, registerStaffSupplier } from './supplier-routes.js';
 import { registerCatalogSeo } from './catalog-seo.js';
-import { syncSourcingDrafts, backfillSourcingDrafts, repairSourcingDrafts } from './catalog-from-sourcing.js';
+import { syncSourcingDrafts, backfillSourcingDrafts, repairSourcingDrafts, linkSourcingDraftSuppliers } from './catalog-from-sourcing.js';
 import { recordEnquiryEvent } from './catalog-engagement.js';
 
 export interface AppOptions {
@@ -691,6 +691,13 @@ export async function buildApp(o: AppOptions) {
       const dryRun = req.body?.dryRun === true || req.body?.dryRun === 'true';
       if (!dryRun && req.body?.confirm !== true && req.body?.confirm !== 'true') throw bad('Confirm repair of unpublished sourcing drafts');
       const result = await repairSourcingDrafts(catalogDeps, req.user!.id, { dryRun });
+      return reply.code(200).send({ data: result, dryRun });
+    });
+    api.post<{ Body: { dryRun?: boolean | string; confirm?: unknown } }>('/api/catalog/sourcing-drafts/link-suppliers', async (req, reply) => {
+      if (req.user!.role !== 'SUPER_ADMIN') throw new Forbidden('Super admin only');
+      const dryRun = req.body?.dryRun === true || req.body?.dryRun === 'true';
+      if (!dryRun && req.body?.confirm !== true && req.body?.confirm !== 'true') throw bad('Confirm linking sourced drafts to their quote suppliers');
+      const result = await linkSourcingDraftSuppliers(catalogDeps, req.user!.id, { dryRun });
       return reply.code(200).send({ data: result, dryRun });
     });
     registerStaffSupplier(api, supplierAccounts);

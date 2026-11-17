@@ -169,6 +169,10 @@ function hidePrices(role: Role) { return sides(role).china && role !== 'SUPER_AD
 export function canLinkSupplier(u: User) {
   return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM' || u.role.startsWith('CHINA');
 }
+/** Who may see supplier identity on staff catalog screens. Follows the existing rule: SA, Marketplace Team, China, and a supplier on their own products. India-only roles (INDIA_ADMIN, INDIA_STAFF, etc.) cannot. */
+export function canSeeSupplierIdentity(role: Role) {
+  return role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA');
+}
 
 export class CatalogStore {
   constructor(readonly db: Db) {}
@@ -880,7 +884,7 @@ export function normalizeSpecs(raw: unknown): Record<string, string> | null {
   return null;
 }
 
-const CATALOG_SUPPLIER_COLS = 'id, name, catalog_consent AS "catalogConsent", public_region AS "publicRegion", public_about AS "publicAbout", public_years AS "publicYears", public_verified AS "publicVerified", show_contacts_to_members AS "showContactsToMembers"';
+const CATALOG_SUPPLIER_COLS = 'id, name, contact, phone, wechat, city, notes, catalog_consent AS "catalogConsent", public_region AS "publicRegion", public_about AS "publicAbout", public_years AS "publicYears", public_verified AS "publicVerified", show_contacts_to_members AS "showContactsToMembers"';
 
 export function catalogSupplierCard(row: any, paidMember: boolean): { supplier: Record<string, unknown> | null; supplierAvailable: boolean } {
   if (!row || !row.catalogConsent) return { supplier: null, supplierAvailable: false };
@@ -901,6 +905,11 @@ export function catalogSupplierStaffView(row: any) {
   return {
     id: row.id,
     name: row.name,
+    contact: row.contact || null,
+    phone: row.phone || null,
+    wechat: row.wechat || null,
+    city: row.city || null,
+    notes: row.notes || null,
     catalogConsent: !!row.catalogConsent,
     publicRegion: row.publicRegion || null,
     publicAbout: row.publicAbout || null,
@@ -970,15 +979,13 @@ export function rowHasSellingPrice(row: any) {
   return row.price_min != null || row.price_usd != null || row.price_inr != null || row.price_cny != null;
 }
 
-/** Why this product cannot be published yet. One currency is enough; factory cost never counts as a selling price. */
+/** Why this product cannot be published yet. Get quote needs no selling price (including sourced drafts). Fixed-price modes need one currency. Factory cost never counts. */
 export function publishBlockers(row: any, hasSelling?: boolean): string[] {
   if (row.status === 'DELETED') return ['This product has been deleted'];
   const priced = hasSelling ?? rowHasSellingPrice(row);
-  if (row.source_quote_id && !priced) {
-    return ['Set a selling price in USD, RMB or INR before publishing a product from a sourcing request. One currency is enough.'];
-  }
-  if (!row.source_quote_id && row.price_mode !== 'GET_QUOTE' && !priced) {
-    return ['Set a selling price or mark the product as Get quote before publishing'];
+  const mode = row.price_mode ?? 'GET_QUOTE';
+  if (mode !== 'GET_QUOTE' && !priced) {
+    return ['Set a selling price in USD, RMB or INR before publishing a fixed-price product. One currency is enough. Or switch the pricing mode to Get quote.'];
   }
   return [];
 }
@@ -1009,8 +1016,8 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
     out.priceMin = row.price_min; out.priceMax = row.price_max;
     out.priceUsd = row.price_usd; out.priceCny = row.price_cny; out.priceInr = row.price_inr;
   }
-  // India staff never see supplier identity. Super admin, China, and Marketplace Team may see the catalog card (never contacts or factory cost).
-  if (role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA')) {
+  // Supplier identity (including staff contact/location) follows canSeeSupplierIdentity: SA, Marketplace Team, China, and a supplier on their own products. India-only roles never see it. Public APIs use catalogSupplierCard instead (consent + paid member, no contacts, no factory cost).
+  if (canSeeSupplierIdentity(role)) {
     out.supplierId = row.supplier_id ?? null;
     if (extra.catalogSupplier) out.catalogSupplier = extra.catalogSupplier;
   }
@@ -1491,10 +1498,18 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
       limit: limitNum, offset: q.offset ? Number(q.offset) : undefined, page: q.page ? Number(q.page) : undefined,
     });
     const data = [];
+    const canSee = canSeeSupplierIdentity(u.role);
+    const supplierIds = canSee ? [...new Set(rows.map((r: any) => r.supplier_id).filter(Boolean))] : [];
+    const supplierMap = new Map<string, ReturnType<typeof catalogSupplierStaffView>>();
+    for (const id of supplierIds) {
+      const linked = await store.catalogSupplier(String(id));
+      if (linked) supplierMap.set(String(id), catalogSupplierStaffView(linked));
+    }
     for (const r of rows) {
       const images = await store.images(r.id);
       const extraCategories = await store.extraCategories(r.id);
-      data.push(staffView(r, u.role, rates, { images: staffPhotos(images as any, r.id), extraCategories }));
+      const catalogSupplier = canSee && r.supplier_id ? supplierMap.get(r.supplier_id) : undefined;
+      data.push(staffView(r, u.role, rates, { images: staffPhotos(images as any, r.id), extraCategories, catalogSupplier }));
     }
     const page = limit ? Math.floor(offset / limit) + 1 : 1;
     const pageCount = Math.max(1, Math.ceil(total / (limit || 25)));
@@ -1504,7 +1519,7 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
   const staffProductView = async (row: any, role: Role) => {
     const images = await store.images(row.id);
     const tiers = await store.tiers(row.id);
-    const link = role === 'SUPER_ADMIN' || role === 'MARKETPLACE_TEAM' || role === 'SUPPLIER' || role.startsWith('CHINA');
+    const link = canSeeSupplierIdentity(role);
     const linked = link && row.supplier_id ? await store.catalogSupplier(row.supplier_id) : null;
     const catalogSupplier = linked ? catalogSupplierStaffView(linked) : undefined;
     const extraCategories = await store.extraCategories(row.id);
