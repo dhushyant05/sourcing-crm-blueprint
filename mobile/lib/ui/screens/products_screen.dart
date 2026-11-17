@@ -17,13 +17,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
   String _q = '';
   String _status = '';
   bool _fromSourcing = false;
+  bool _discarded = false;
+  int _page = 1;
+  int _pageCount = 1;
+  int _total = 0;
+  static const _pageSize = 25;
 
-  Future<void> _load() async {
-    setState(() { _loading = true; _err = null; });
+  Future<void> _load({int? page}) async {
+    final nextPage = page ?? _page;
+    setState(() { _loading = true; _err = null; _page = nextPage; });
     try {
       final s = context.read<Session>();
-      final rows = await s.repo.listProducts(q: _q, status: _status, includeDeleted: s.perms.isSuperAdmin, fromSourcing: _fromSourcing);
-      if (mounted) setState(() { _rows = rows; _loading = false; });
+      final result = await s.repo.listProducts(
+        q: _q, status: _status,
+        includeDeleted: s.perms.isSuperAdmin && _status == 'DELETED',
+        fromSourcing: _fromSourcing, discarded: _discarded,
+        page: nextPage, limit: _pageSize,
+      );
+      if (mounted) setState(() { _rows = result.data; _total = result.total; _page = result.page; _pageCount = result.pageCount; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _err = e.toString(); _loading = false; });
     }
@@ -64,6 +75,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
+  bool _hasSelling(Map<String, dynamic> p) {
+    if (p['priceUsd'] != null || p['priceCny'] != null || p['priceInr'] != null || p['priceMin'] != null) return true;
+    final price = p['price'];
+    if (price is Map && price['amounts'] is Map) {
+      for (final a in (price['amounts'] as Map).values) {
+        if (a is Map && (a['min'] != null || a['max'] != null)) return true;
+      }
+    }
+    final tiers = p['tiers'];
+    return tiers is List && tiers.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
@@ -78,22 +101,29 @@ class _ProductsScreenState extends State<ProductsScreen> {
         TextField(
           decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search products'),
           onChanged: (v) { _q = v; },
-          onSubmitted: (_) => _load(),
+          onSubmitted: (_) { _page = 1; _load(page: 1); },
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: _status,
           decoration: const InputDecoration(labelText: 'Status'),
           items: [for (final st in statuses) DropdownMenuItem(value: st, child: Text(st.isEmpty ? 'All statuses' : st))],
-          onChanged: (v) { setState(() => _status = v ?? ''); _load(); },
+          onChanged: (v) { setState(() { _status = v ?? ''; _page = 1; }); _load(page: 1); },
         ),
         if (s.perms.canReviewSourcing) ...[
           const SizedBox(height: 8),
-          FilterChip(
-            label: const Text('From sourcing — needs review'),
-            selected: _fromSourcing,
-            onSelected: (v) { setState(() => _fromSourcing = v); _load(); },
-          ),
+          Wrap(spacing: 8, children: [
+            FilterChip(
+              label: const Text('From sourcing — needs review'),
+              selected: _fromSourcing,
+              onSelected: (v) { setState(() { _fromSourcing = v; _discarded = false; _page = 1; }); _load(page: 1); },
+            ),
+            FilterChip(
+              label: const Text('Discarded'),
+              selected: _discarded,
+              onSelected: (v) { setState(() { _discarded = v; _fromSourcing = false; _page = 1; }); _load(page: 1); },
+            ),
+          ]),
         ],
         const SizedBox(height: 12),
         if (_loading) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
@@ -116,7 +146,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
               if (s.perms.isSupplier && p['status'] == 'PENDING_REVIEW')
                 IconButton(icon: const Icon(Icons.undo), tooltip: 'Withdraw review', onPressed: () => _run(() => s.repo.submitProductReview('${p['id']}', on: false))),
               if (s.perms.canPublishCatalog && p['status'] != 'PUBLISHED' && p['status'] != 'DELETED')
-                IconButton(icon: const Icon(Icons.publish_outlined), tooltip: 'Publish', onPressed: () => _run(() => s.repo.publishProduct('${p['id']}'))),
+                IconButton(icon: const Icon(Icons.publish_outlined), tooltip: 'Publish', onPressed: () => _run(() async {
+                  final blockers = (p['publishBlockers'] as List?) ?? const [];
+                  if (blockers.isNotEmpty) throw blockers.first.toString();
+                  if (p['fromSourcing'] == true && !_hasSelling(p)) {
+                    throw 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a product from a sourcing request. The China factory cost is never shown publicly.';
+                  }
+                  await s.repo.publishProduct('${p['id']}');
+                })),
               if (s.perms.canPublishCatalog && p['status'] == 'PUBLISHED')
                 IconButton(icon: const Icon(Icons.unpublished_outlined), tooltip: 'Unpublish', onPressed: () => _run(() => s.repo.publishProduct('${p['id']}', on: false))),
               if (s.perms.canReviewSourcing && p['fromSourcing'] == true && p['status'] != 'DELETED')
@@ -144,6 +181,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
               _openForm(existing: p);
             },
           )),
+        if (!_loading && _total > 0) Padding(
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+          child: Row(children: [
+            Expanded(child: Text('Showing ${((_page - 1) * _pageSize) + 1}–${(_page * _pageSize).clamp(0, _total)} of $_total')),
+            TextButton(onPressed: _page <= 1 ? null : () => _load(page: _page - 1), child: const Text('Previous')),
+            Text('Page $_page of $_pageCount'),
+            TextButton(onPressed: _page >= _pageCount ? null : () => _load(page: _page + 1), child: const Text('Next')),
+          ]),
+        ),
       ])),
     );
   }

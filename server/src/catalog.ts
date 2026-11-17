@@ -541,15 +541,21 @@ export class CatalogStore {
     return { rows, total, limit, offset };
   }
 
-  async listStaff(q: { q?: string; status?: string; category?: string; includeDeleted?: boolean; supplierId?: string; fromSourcing?: boolean; limit?: number; offset?: number }) {
-    const limit = Math.min(100, Math.max(1, q.limit ?? 40));
-    const offset = Math.max(0, q.offset ?? 0);
+  async listStaff(q: { q?: string; status?: string; category?: string; includeDeleted?: boolean; supplierId?: string; fromSourcing?: boolean; discarded?: boolean; limit?: number; offset?: number; page?: number }) {
+    const limit = Math.min(100, Math.max(1, Number.isFinite(q.limit as number) ? Number(q.limit) : 25));
+    const page = Math.max(1, Number(q.page) || 1);
+    const offset = q.offset != null && Number.isFinite(q.offset) ? Math.max(0, Number(q.offset)) : (page - 1) * limit;
     const where: string[] = [];
     const params: unknown[] = [];
     if (!q.includeDeleted) where.push('p.deleted_at IS NULL');
-    if (q.fromSourcing) {
+    if (q.discarded) {
+      where.push("p.source_quote_id IS NOT NULL AND p.source_discarded_at IS NOT NULL");
+    } else if (q.fromSourcing) {
       where.push("p.source_quote_id IS NOT NULL AND p.source_discarded_at IS NULL");
       where.push("(p.status <> 'PUBLISHED' OR p.source_update_pending = true)");
+    } else {
+      // All statuses (and other status filters) hide discarded sourcing drafts; use discarded=1 to see them.
+      where.push('p.source_discarded_at IS NULL');
     }
     if (q.status) { where.push('p.status = ?'); params.push(q.status); }
     if (q.category) {
@@ -700,13 +706,9 @@ export class CatalogStore {
   async publish(id: string, by: string) {
     const cur = await this.get(id); if (!cur) bad('Product not found', 404);
     if (cur.status === 'DELETED') bad('This product has been deleted', 409);
-    const hasSelling = cur.price_min != null || cur.price_usd != null || cur.price_inr != null || cur.price_cny != null
+    const hasSelling = rowHasSellingPrice(cur)
       || ((await this.db.get<{ n: number }>('SELECT count(*)::int AS n FROM product_price_tiers WHERE product_id = ?', id))?.n ?? 0) > 0;
-    if (cur.source_quote_id) {
-      if (!hasSelling) bad('Set a selling price in USD, RMB or INR before publishing a product from a sourcing request');
-    } else if (cur.price_mode !== 'GET_QUOTE' && !hasSelling) {
-      bad('Set a selling price or mark the product as Get quote before publishing');
-    }
+    for (const msg of publishBlockers(cur, hasSelling)) bad(msg);
     await this.db.run(`UPDATE products SET status = 'PUBLISHED', approved_by = ?, published_at = coalesce(published_at, now()), updated_at = now() WHERE id = ?`, by, id);
     await this.audit(id, by, 'PUBLISH', { status: cur.status }, { status: 'PUBLISHED' });
     return this.get(id);
@@ -964,6 +966,23 @@ function parseSpecs(raw: unknown): Record<string, string> | null {
   return normalizeSpecs(raw);
 }
 
+export function rowHasSellingPrice(row: any) {
+  return row.price_min != null || row.price_usd != null || row.price_inr != null || row.price_cny != null;
+}
+
+/** Why this product cannot be published yet. One currency is enough; factory cost never counts as a selling price. */
+export function publishBlockers(row: any, hasSelling?: boolean): string[] {
+  if (row.status === 'DELETED') return ['This product has been deleted'];
+  const priced = hasSelling ?? rowHasSellingPrice(row);
+  if (row.source_quote_id && !priced) {
+    return ['Set a selling price in USD, RMB or INR before publishing a product from a sourcing request. One currency is enough.'];
+  }
+  if (!row.source_quote_id && row.price_mode !== 'GET_QUOTE' && !priced) {
+    return ['Set a selling price or mark the product as Get quote before publishing'];
+  }
+  return [];
+}
+
 export function staffView(row: any, role: Role, rates: RateMap, extra: { images?: any[]; tiers?: any[]; catalogSupplier?: any; extraCategories?: any[] } = {}) {
   const hide = hidePrices(role);
   const price = hide ? { mode: row.price_mode, base: row.base_currency, amounts: null } : priced(row, rates);
@@ -984,6 +1003,7 @@ export function staffView(row: any, role: Role, rates: RateMap, extra: { images?
     isSample: !!row.is_sample, deletedAt: row.deleted_at, publishedAt: row.published_at,
     updatedAt: row.updated_at, createdAt: row.created_at,
     price, images: extra.images ?? [], tiers: hide ? [] : (extra.tiers ?? []),
+    publishBlockers: publishBlockers(row, rowHasSellingPrice(row) || !!(extra.tiers && extra.tiers.length)),
   };
   if (!hide) {
     out.priceMin = row.price_min; out.priceMax = row.price_max;
@@ -1461,11 +1481,14 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
     const q = req.query ?? {};
     const rates = await store.rates();
     const scope = await supplierScope(u);
+    const limitNum = q.limit ? Number(q.limit) : undefined;
     const { rows, total, limit, offset } = await store.listStaff({
-      q: q.q, status: q.status, category: q.category, includeDeleted: isSa(u) && (q.deleted === '1' || q.deleted === 'true'),
+      q: q.q, status: q.status, category: q.category,
+      includeDeleted: isSa(u) && (q.status === 'DELETED' || q.deleted === '1' || q.deleted === 'true'),
       supplierId: scope?.supplierId,
       fromSourcing: q.fromSourcing === '1' || q.fromSourcing === 'true' || q.source === 'sourcing',
-      limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined,
+      discarded: q.discarded === '1' || q.discarded === 'true',
+      limit: limitNum, offset: q.offset ? Number(q.offset) : undefined, page: q.page ? Number(q.page) : undefined,
     });
     const data = [];
     for (const r of rows) {
@@ -1473,7 +1496,9 @@ export function registerStaffCatalog(api: FastifyInstance, deps: CatalogDeps) {
       const extraCategories = await store.extraCategories(r.id);
       data.push(staffView(r, u.role, rates, { images: staffPhotos(images as any, r.id), extraCategories }));
     }
-    return { data, total, limit, offset };
+    const page = limit ? Math.floor(offset / limit) + 1 : 1;
+    const pageCount = Math.max(1, Math.ceil(total / (limit || 25)));
+    return { data, total, limit, offset, page, pageCount };
   });
 
   const staffProductView = async (row: any, role: Role) => {

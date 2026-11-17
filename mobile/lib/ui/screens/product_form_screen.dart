@@ -334,12 +334,24 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       rows.where((r) => r.key.trim().isNotEmpty && r.value.trim().isNotEmpty)
           .map((r) => {'key': r.key.trim(), 'value': r.value.trim()}).toList();
 
-  Future<void> _save(Permissions perms) async {
+  bool _formHasSellingPrice() {
+    if (_priceUsd.text.trim().isNotEmpty || _priceCny.text.trim().isNotEmpty || _priceInr.text.trim().isNotEmpty || _priceMin.text.trim().isNotEmpty) return true;
+    if (_priceMode == 'TIERS' && _tiers.any((x) => x.unitPrice.trim().isNotEmpty || x.priceUsd.trim().isNotEmpty || x.priceCny.trim().isNotEmpty || x.priceInr.trim().isNotEmpty)) return true;
+    return false;
+  }
+
+  Future<void> _save(Permissions perms, {bool publish = false}) async {
     if (_title.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Title is required.')));
       return;
     }
-    setState(() => _busy = true);
+    if (publish && _product?['fromSourcing'] == true && !_formHasSellingPrice()) {
+      const msg = 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a product from a sourcing request. The China factory cost is never shown publicly.';
+      setState(() => _err = msg);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(msg)));
+      return;
+    }
+    setState(() { _busy = true; _err = null; });
     try {
       final repo = context.read<Session>().repo;
       final industry = _filledKv(_industry);
@@ -459,6 +471,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           await repo.reorderProductImages('${saved['id']}', order: order, cover: coverId);
         }
       }
+      if (publish) {
+        await repo.publishProduct('${saved['id']}');
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -519,7 +534,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         ),
                       const Padding(
                         padding: EdgeInsets.only(top: 4),
-                        child: Text('Set selling prices in USD, RMB and INR as entered. This cost is never shown on the public marketplace.', style: TextStyle(fontSize: 12)),
+                        child: Text('Set a selling price in at least one currency (USD, RMB or INR). Values are stored as entered and never converted. The China factory cost is never shown on the public marketplace.', style: TextStyle(fontSize: 12)),
                       ),
                       if (_product?['sourceUpdatePending'] == true)
                         TextButton(
@@ -750,6 +765,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               ]),
               const SizedBox(height: 20),
               FilledButton(onPressed: _busy ? null : () => _save(perms), child: Text(_busy ? 'Saving…' : 'Save')),
+              if (perms.canPublishCatalog && (_product?['status'] ?? widget.existing?['status']) != 'PUBLISHED' && (_product?['status'] ?? widget.existing?['status']) != 'DELETED') ...[
+                const SizedBox(height: 8),
+                FilledButton(onPressed: _busy ? null : () => _save(perms, publish: true), child: Text(_busy ? 'Publishing…' : 'Save and publish')),
+              ],
             ]),
     );
   }
