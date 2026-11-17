@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useApp } from '../lib/store';
 import { PageHeader } from '../components/ui';
 import { staffReq } from '../catalog/api';
@@ -13,6 +13,7 @@ type StaffProduct = Product & {
   sourceHref?: string; sourceLabel?: string; sourceUpdatePending?: boolean; sourceTeamEditedAt?: string | null;
   referenceCost?: { amount: number; currency: string | null } | null;
   priceUsd?: number | null; priceCny?: number | null; priceInr?: number | null;
+  publishBlockers?: string[];
 };
 function ymdIST(iso?: string | null) {
   if (!iso) return '';
@@ -37,6 +38,17 @@ function checkPhoto(file: File) {
   return null;
 }
 
+const PAGE_SIZE = 25;
+const SOURCE_PRICE_MSG = 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a product from a sourcing request. The China factory cost is never shown publicly.';
+
+function hasSellingPrice(p: StaffProduct | { priceUsd?: number | null; priceCny?: number | null; priceInr?: number | null; priceMin?: number | null; price?: any; tiers?: any[]; publishBlockers?: string[] }) {
+  if (p.priceUsd != null || p.priceCny != null || p.priceInr != null || p.priceMin != null) return true;
+  const amounts = p.price?.amounts;
+  if (amounts && Object.values(amounts).some((a: any) => a && (a.min != null || a.max != null))) return true;
+  if (Array.isArray(p.tiers) && p.tiers.length) return true;
+  return false;
+}
+
 
 export function Products() {
   const { session, perms } = useApp();
@@ -52,16 +64,31 @@ export function Products() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [fromSourcing, setFromSourcing] = useState(false);
+  const [discarded, setDiscarded] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
   const [err, setErr] = useState<string | null>(null);
   const [edit, setEdit] = useState<StaffProduct | 'new' | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
     if (demo) return;
-    const r = await staffReq<{ data: StaffProduct[] }>('GET', `/api/products?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ''}${fromSourcing ? '&fromSourcing=1' : ''}${isSa ? '&deleted=1' : ''}`);
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (status) params.set('status', status);
+    if (fromSourcing) params.set('fromSourcing', '1');
+    if (discarded) params.set('discarded', '1');
+    if (isSa && status === 'DELETED') params.set('deleted', '1');
+    params.set('limit', String(PAGE_SIZE));
+    params.set('page', String(page));
+    const r = await staffReq<{ data: StaffProduct[]; total: number; page: number; pageCount: number }>('GET', `/api/products?${params}`);
     setRows(r.data);
+    setTotal(r.total ?? r.data.length);
+    setPageCount(Math.max(1, r.pageCount ?? 1));
   };
-  useEffect(() => { void load().catch((e) => setErr((e as Error).message)); }, [q, status, fromSourcing, demo]); // eslint-disable-line
+  useEffect(() => { setPage(1); }, [q, status, fromSourcing, discarded]); // eslint-disable-line
+  useEffect(() => { void load().catch((e) => setErr((e as Error).message)); }, [q, status, fromSourcing, discarded, page, demo]); // eslint-disable-line
 
   const remove = async (p: StaffProduct) => {
     if (!confirm(`Delete “${p.title}”? This hides it from the catalog. Super admin can restore it.`)) return;
@@ -80,9 +107,17 @@ export function Products() {
     await load();
   };
   const publish = async (p: StaffProduct, on: boolean) => {
-    if (demo) { setRows((xs) => xs.map((x) => x.id === p.id ? { ...x, status: on ? 'PUBLISHED' : 'UNPUBLISHED' } : x)); return; }
-    await staffReq('POST', `/api/products/${p.id}/${on ? 'publish' : 'unpublish'}`, {});
-    await load();
+    try {
+      setErr(null);
+      if (demo) { setRows((xs) => xs.map((x) => x.id === p.id ? { ...x, status: on ? 'PUBLISHED' : 'UNPUBLISHED' } : x)); return; }
+      if (on && p.fromSourcing && !hasSellingPrice(p)) {
+        setErr(SOURCE_PRICE_MSG);
+        setEdit(p);
+        return;
+      }
+      await staffReq('POST', `/api/products/${p.id}/${on ? 'publish' : 'unpublish'}`, {});
+      await load();
+    } catch (e) { setErr((e as Error).message); }
   };
   const canReviewSourcing = session?.role === 'SUPER_ADMIN' || session?.role === 'INDIA_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
   const discardSource = async (p: StaffProduct) => {
@@ -101,9 +136,15 @@ export function Products() {
           {['DRAFT', 'READY_FOR_PRICE', 'PENDING_REVIEW', 'PUBLISHED', 'UNPUBLISHED', 'DELETED'].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         {canReviewSourcing && (
-          <button type="button" data-testid="filter-from-sourcing" onClick={() => setFromSourcing((v) => !v)}
+          <button type="button" data-testid="filter-from-sourcing" onClick={() => { setFromSourcing((v) => !v); setDiscarded(false); }}
             className={`rounded-full border px-3 py-1.5 text-sm font-medium ${fromSourcing ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-200 text-ink-700 hover:bg-ink-50'}`}>
             From sourcing — needs review
+          </button>
+        )}
+        {canReviewSourcing && (
+          <button type="button" data-testid="filter-discarded" onClick={() => { setDiscarded((v) => !v); setFromSourcing(false); }}
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium ${discarded ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-200 text-ink-700 hover:bg-ink-50'}`}>
+            Discarded
           </button>
         )}
         <button className="btn-primary ml-auto" onClick={() => setEdit('new')}>Add product</button>
@@ -142,9 +183,21 @@ export function Products() {
           </tbody>
         </table>
       </div>
-      {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} canLink={canLink} canPromote={canPromote} busy={busy}
+      {!demo && total > 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-ink-600" data-testid="product-pagination">
+          <p data-testid="product-page-status">
+            Showing {Math.min(total, (page - 1) * PAGE_SIZE + 1)}–{Math.min(total, page * PAGE_SIZE)} of {total}
+          </p>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-outline !py-1 text-xs" data-testid="product-page-prev" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button>
+            <span>Page {page} of {pageCount}</span>
+            <button type="button" className="btn-outline !py-1 text-xs" data-testid="product-page-next" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>Next</button>
+          </div>
+        </div>
+      )}
+      {edit && <ProductEditor product={edit === 'new' ? null : edit} canPrice={canPrice} canLink={canLink} canPromote={canPromote} canPublish={canPublish} busy={busy}
         onClose={() => setEdit(null)}
-        onSave={async (body, photos) => {
+        onSave={async (body, photos, opts) => {
           setBusy(true); setErr(null);
           try {
             if (demo) {
@@ -172,6 +225,9 @@ export function Products() {
                   });
                 }
               }
+              if (opts?.publish) {
+                await staffReq('POST', `/api/products/${saved.id}/publish`, {});
+              }
               await load();
             }
             setEdit(null);
@@ -182,12 +238,13 @@ export function Products() {
   );
 }
 
-function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, onSave }: {
-  product: StaffProduct | null; canPrice: boolean; canLink: boolean; canPromote: boolean; busy: boolean; onClose: () => void;
-  onSave: (body: any, photos: PhotoDraft[]) => Promise<void>;
+function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, busy, onClose, onSave }: {
+  product: StaffProduct | null; canPrice: boolean; canLink: boolean; canPromote: boolean; canPublish?: boolean; busy: boolean; onClose: () => void;
+  onSave: (body: any, photos: PhotoDraft[], opts?: { publish?: boolean }) => Promise<void>;
 }) {
   const { session } = useApp();
   const canCreate = session?.role === 'SUPER_ADMIN' || session?.role === 'MARKETPLACE_TEAM';
+  const [formErr, setFormErr] = useState<string | null>(null);
   const specsObj = product?.specs && typeof product.specs === 'object' ? product.specs : {};
   const [f, setF] = useState({
     title: product?.title ?? '', summary: product?.summary ?? '', moq: product?.moq != null ? String(product.moq) : '',
@@ -290,8 +347,18 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
     setF((s) => ({ ...s, supplierId: r.data.id }));
     setNewSup({ name: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false, publicVerified: false });
   };
-  const submit = (e: FormEvent) => {
+  const formHasSellingPrice = () => {
+    if (f.priceUsd.trim() || f.priceCny.trim() || f.priceInr.trim() || f.priceMin.trim()) return true;
+    if (f.priceMode === 'TIERS' && tiers.some((t) => t.unitPrice.trim() || t.priceUsd.trim() || t.priceCny.trim() || t.priceInr.trim())) return true;
+    return false;
+  };
+  const submit = (e: { preventDefault(): void }, opts?: { publish?: boolean }) => {
     e.preventDefault();
+    setFormErr(null);
+    if (opts?.publish && product?.fromSourcing && !formHasSellingPrice()) {
+      setFormErr(SOURCE_PRICE_MSG);
+      return;
+    }
     const specs = attrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() }));
     const pricedTiers = tiers.filter((t) => t.unitPrice.trim() || t.priceUsd.trim() || t.priceCny.trim() || t.priceInr.trim()).map((t) => ({
       minQty: t.minQty ? Number(t.minQty) : 1, maxQty: t.maxQty ? Number(t.maxQty) : null,
@@ -339,7 +406,7 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
         clearanceStockLeft: f.clearanceStockLeft === '' ? null : Number(f.clearanceStockLeft),
       } : {}),
       ...(canLink ? { supplierId: f.supplierId || null } : {}),
-    }, photos);
+    }, photos, opts);
   };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4" onClick={onClose}>
@@ -353,7 +420,7 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
             {product.referenceCost && product.referenceCost.amount != null && (
               <p className="mt-2 font-medium text-ink-800">China quoted cost (internal only): {product.referenceCost.currency || ''} {product.referenceCost.amount}</p>
             )}
-            <p className="mt-1 text-xs text-ink-500">Set selling prices in USD, RMB and INR as entered — they are not converted. This cost is never shown on the public marketplace.</p>
+            <p className="mt-1 text-xs text-ink-500">Set a selling price in at least one currency (USD, RMB or INR). Values are stored as entered and never converted. The China factory cost is never shown on the public marketplace.</p>
             {sourcePending && product.id && (
               <p className="mt-2 text-amber-800">The China quote was updated after this draft was edited.
                 <button type="button" className="ml-2 underline" onClick={() => void staffReq('POST', `/api/products/${product.id}/ack-source-update`, {}).then(() => setSourcePending(false))}>Mark as reviewed</button>
@@ -650,9 +717,14 @@ function ProductEditor({ product, canPrice, canLink, canPromote, busy, onClose, 
             already={(product?.images ?? []).length}
           />
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        {formErr && <p className="mt-4 text-sm text-red-600" data-testid="product-publish-error">{formErr}</p>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={busy} data-testid="product-save">{busy ? 'Saving…' : 'Save'}</button>
+          {canPublish && product && product.status !== 'PUBLISHED' && product.status !== 'DELETED' && (
+            <button type="button" className="btn-primary" disabled={busy} data-testid="product-publish"
+              onClick={(e) => submit(e, { publish: true })}>{busy ? 'Publishing…' : 'Save and publish'}</button>
+          )}
         </div>
       </form>
     </div>

@@ -483,14 +483,26 @@ class SourceEasyRepository {
   Future<Map<String, dynamic>> claimShippingRequest(String id) async =>
       ((await api.send('POST', '/api/shipping-requests/${Uri.encodeComponent(id)}/assign', body: {}) as Map)['data'] as Map).cast<String, dynamic>();
 
-  Future<List<Map<String, dynamic>>> listProducts({String q = '', String status = '', bool includeDeleted = false, bool fromSourcing = false}) async {
+  Future<({List<Map<String, dynamic>> data, int total, int limit, int offset, int page, int pageCount})> listProducts({
+    String q = '', String status = '', bool includeDeleted = false, bool fromSourcing = false, bool discarded = false, int page = 1, int limit = 25,
+  }) async {
     final query = <String, String>{
       if (q.isNotEmpty) 'q': q,
       if (status.isNotEmpty) 'status': status,
       if (includeDeleted) 'deleted': '1',
       if (fromSourcing) 'fromSourcing': '1',
+      if (discarded) 'discarded': '1',
+      'page': '$page',
+      'limit': '$limit',
     };
-    return _list(await api.send('GET', '/api/products', query: query.isEmpty ? null : query));
+    final r = (await api.send('GET', '/api/products', query: query)) as Map;
+    final data = ((r['data'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final total = (r['total'] as num?)?.toInt() ?? data.length;
+    final lim = (r['limit'] as num?)?.toInt() ?? limit;
+    final offset = (r['offset'] as num?)?.toInt() ?? 0;
+    final pg = (r['page'] as num?)?.toInt() ?? page;
+    final pageCount = (r['pageCount'] as num?)?.toInt() ?? (lim == 0 ? 1 : ((total + lim - 1) ~/ lim).clamp(1, 1 << 30));
+    return (data: data, total: total, limit: lim, offset: offset, page: pg, pageCount: pageCount);
   }
   Future<List<Map<String, dynamic>>> listCategories() async =>
       _list(await api.send('GET', '/api/catalog/categories'));
