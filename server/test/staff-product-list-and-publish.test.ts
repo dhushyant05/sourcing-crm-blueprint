@@ -76,6 +76,20 @@ describe('staff product list pagination and sourced-draft publish', () => {
     expect(discardedList.data.some((x: any) => x.id === discarded.id)).toBe(true);
     expect((await mt('GET', '/api/products?fromSourcing=1')).json().data.some((x: any) => x.id === discarded.id)).toBe(false);
 
+    // Default sourced drafts are Get quote and can be published with no selling price.
+    expect(sourced.priceMode ?? sourced.price?.mode).toBe('GET_QUOTE');
+    expect(sourced.publishBlockers ?? []).toEqual([]);
+    const asQuote = await mt('POST', `/api/products/${sourced.id}/publish`, {});
+    expect(asQuote.statusCode).toBe(200);
+    const liveQuote = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${sourced.slug}` })).json().data;
+    expect(liveQuote.price.mode).toBe('GET_QUOTE');
+    expect(liveQuote.price.amounts).toBeNull();
+    expect(JSON.stringify(liveQuote)).not.toMatch(/4\.2|referenceCost|sourceLead|Secret Customer|Priya Secret/i);
+    expect((await mt('POST', `/api/products/${sourced.id}/unpublish`, {})).statusCode).toBe(200);
+
+    // Fixed-price mode still needs one currency.
+    const ranged = await mt('PATCH', `/api/products/${sourced.id}`, { priceMode: 'RANGE' });
+    expect(ranged.statusCode).toBe(200);
     const blocked = await mt('POST', `/api/products/${sourced.id}/publish`, {});
     expect(blocked.statusCode).toBe(400);
     expect(blocked.json().error).toMatch(/selling price/i);

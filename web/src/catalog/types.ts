@@ -44,7 +44,7 @@ export type Product = {
   deletedAt?: string | null; publishedAt?: string | null;
   merchandising?: Merchandising;
   supplier?: CatalogSupplier | null; supplierAvailable?: boolean;
-  supplierId?: string | null; catalogSupplier?: { id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicAbout?: string | null; publicYears?: number | null; publicVerified?: boolean } | null;
+  supplierId?: string | null; catalogSupplier?: { id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicAbout?: string | null; publicYears?: number | null; publicVerified?: boolean; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null; notes?: string | null } | null;
 };
 export type Banner = { id: string; sort: number; altText: string; imageUrl: string; mobileUrl?: string | null; href?: string | null; source?: string; isSample?: boolean; active?: boolean };
 export type PromoStrip = { enabled: boolean; text: string; href: string };

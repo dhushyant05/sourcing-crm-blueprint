@@ -102,7 +102,8 @@ describe('sourcing draft backfill', () => {
     expect(draft.title).toBe('wedding gown no.1');
     expect(draft.referenceCost).toEqual({ amount: 3.5, currency: 'CNY' });
     expect(JSON.stringify(draft)).not.toMatch(/Secret Customer|Priya Secret/i);
-    expect(draft.supplierId ?? null).toBeNull();
+    expect(draft.supplierId).toBe(real.q.supplierId);
+    expect(draft.catalogSupplier?.name).toBe('Secret Factory Backfill');
     expect((await app.inject({ method: 'GET', url: `/api/public/catalog/products/${draft.slug}` })).statusCode).toBe(404);
     const pub = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?q=wedding+gown&limit=48' })).json();
     expect((pub.data ?? []).some((p: any) => p.id === draft.id)).toBe(false);

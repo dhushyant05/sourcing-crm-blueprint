@@ -39,14 +39,38 @@ function checkPhoto(file: File) {
 }
 
 const PAGE_SIZE = 25;
-const SOURCE_PRICE_MSG = 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a product from a sourcing request. The China factory cost is never shown publicly.';
+const SOURCE_PRICE_MSG = 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a fixed-price product. One currency is enough. Or switch the pricing mode to Get quote. The China factory cost is never shown publicly.';
 
-function hasSellingPrice(p: StaffProduct | { priceUsd?: number | null; priceCny?: number | null; priceInr?: number | null; priceMin?: number | null; price?: any; tiers?: any[]; publishBlockers?: string[] }) {
+function priceModeOf(p: { priceMode?: string; price?: any }) {
+  return p.priceMode ?? p.price?.mode ?? 'GET_QUOTE';
+}
+function hasSellingPrice(p: StaffProduct | { priceUsd?: number | null; priceCny?: number | null; priceInr?: number | null; priceMin?: number | null; price?: any; tiers?: any[]; publishBlockers?: string[]; priceMode?: string }) {
   if (p.priceUsd != null || p.priceCny != null || p.priceInr != null || p.priceMin != null) return true;
   const amounts = p.price?.amounts;
   if (amounts && Object.values(amounts).some((a: any) => a && (a.min != null || a.max != null))) return true;
   if (Array.isArray(p.tiers) && p.tiers.length) return true;
   return false;
+}
+function needsSellingPrice(p: StaffProduct | { priceMode?: string; price?: any; priceUsd?: number | null; priceCny?: number | null; priceInr?: number | null; priceMin?: number | null; tiers?: any[] }) {
+  return priceModeOf(p) !== 'GET_QUOTE' && !hasSellingPrice(p);
+}
+
+type StaffSupplier = { id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicAbout?: string | null; publicYears?: number | null; publicVerified?: boolean; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null; notes?: string | null };
+function SupplierDetails({ s }: { s: StaffSupplier }) {
+  const location = s.city || s.publicRegion || null;
+  const rows: [string, string][] = [];
+  if (s.contact) rows.push(['Contact', s.contact]);
+  if (s.phone) rows.push(['Phone', s.phone]);
+  if (s.wechat) rows.push(['WeChat', s.wechat]);
+  if (location) rows.push(['Location', location]);
+  if (s.notes) rows.push(['Notes', s.notes]);
+  return (
+    <div className="mt-2 rounded-xl border border-ink-100 bg-ink-50 px-3 py-2 text-sm text-ink-800 dark:border-ink-800 dark:bg-ink-850 dark:text-ink-100" data-testid="product-supplier-details">
+      <p className="font-medium">{s.name}</p>
+      {rows.map(([k, v]) => <p key={k} className="text-ink-600 dark:text-ink-300">{k}: {v}</p>)}
+      <p className="mt-1 text-xs text-ink-500">{s.catalogConsent ? 'Catalog consent given — public details are shown only to paid members.' : 'Has not consented to public catalog display.'}</p>
+    </div>
+  );
 }
 
 
@@ -110,7 +134,7 @@ export function Products() {
     try {
       setErr(null);
       if (demo) { setRows((xs) => xs.map((x) => x.id === p.id ? { ...x, status: on ? 'PUBLISHED' : 'UNPUBLISHED' } : x)); return; }
-      if (on && p.fromSourcing && !hasSellingPrice(p)) {
+      if (on && needsSellingPrice(p)) {
         setErr(SOURCE_PRICE_MSG);
         setEdit(p);
         return;
@@ -161,7 +185,7 @@ export function Products() {
               <tr key={p.id} className="border-t border-ink-100 dark:border-ink-800">
                 <td className="px-4 py-3">
                   <div className="font-medium text-ink-900 dark:text-white">{p.title}</div>
-                  <div className="text-xs text-ink-500">{p.category?.name || p.categoryName}{p.isSample ? ' · Sample' : ''}{p.pinned ? ' · Trending' : ''}{p.clearance ? ' · Clearance' : ''}{p.fromSourcing ? ' · From sourcing request' : ''}{p.sourceUpdatePending ? ' · Price updated — review' : ''}</div>
+                  <div className="text-xs text-ink-500">{p.category?.name || p.categoryName}{p.isSample ? ' · Sample' : ''}{p.pinned ? ' · Trending' : ''}{p.clearance ? ' · Clearance' : ''}{p.fromSourcing ? ' · From sourcing request' : ''}{p.sourceUpdatePending ? ' · Updated from sourcing — review' : ''}{p.catalogSupplier?.name ? ` · ${p.catalogSupplier.name}` : ''}</div>
                 </td>
                 <td className="text-ink-600">{p.status}{p.deletedAt ? ' (deleted)' : ''}</td>
                 <td>{p.moq ?? '—'} {p.unit || ''}</td>
@@ -316,7 +340,8 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [photoErr, setPhotoErr] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string; catalogConsent?: boolean; publicRegion?: string | null; publicYears?: number | null; publicVerified?: boolean }[]>([]);
+  const [suppliers, setSuppliers] = useState<StaffSupplier[]>([]);
+  const linkedSupplier = suppliers.find((s) => s.id === f.supplierId) || (product?.catalogSupplier?.id === f.supplierId ? product.catalogSupplier : null);
   const [newSup, setNewSup] = useState({ name: '', publicRegion: '', publicYears: '', publicAbout: '', catalogConsent: false, publicVerified: false });
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
   useEffect(() => {
@@ -355,7 +380,7 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
   const submit = (e: { preventDefault(): void }, opts?: { publish?: boolean }) => {
     e.preventDefault();
     setFormErr(null);
-    if (opts?.publish && product?.fromSourcing && !formHasSellingPrice()) {
+    if (opts?.publish && f.priceMode !== 'GET_QUOTE' && !formHasSellingPrice()) {
       setFormErr(SOURCE_PRICE_MSG);
       return;
     }
@@ -420,7 +445,7 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
             {product.referenceCost && product.referenceCost.amount != null && (
               <p className="mt-2 font-medium text-ink-800">China quoted cost (internal only): {product.referenceCost.currency || ''} {product.referenceCost.amount}</p>
             )}
-            <p className="mt-1 text-xs text-ink-500">Set a selling price in at least one currency (USD, RMB or INR). Values are stored as entered and never converted. The China factory cost is never shown on the public marketplace.</p>
+            <p className="mt-1 text-xs text-ink-500">You can publish this as Get quote with no selling price, or choose a fixed price and enter at least one currency (USD, RMB or INR). Values are stored as entered and never converted. The China factory cost is never shown on the public marketplace.</p>
             {sourcePending && product.id && (
               <p className="mt-2 text-amber-800">The China quote was updated after this draft was edited.
                 <button type="button" className="ml-2 underline" onClick={() => void staffReq('POST', `/api/products/${product.id}/ack-source-update`, {}).then(() => setSourcePending(false))}>Mark as reviewed</button>
@@ -692,10 +717,11 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
             <section data-testid="product-supplier">
               <h3 className="mb-2 text-sm font-semibold text-ink-700">Linked supplier</h3>
               <p className="mb-2 text-xs text-ink-500">Company, location, years and verified status are shown on the product page only to paid members, and only if the supplier has consented. Factory cost is never shown.</p>
-              <select className="input" value={f.supplierId} onChange={(e) => set('supplierId', e.target.value)}>
+              <select className="input" value={f.supplierId} onChange={(e) => set('supplierId', e.target.value)} data-testid="product-supplier-select">
                 <option value="">No supplier linked</option>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.catalogConsent ? ' · consented' : ''}{s.publicRegion ? ` · ${s.publicRegion}` : ''}</option>)}
+                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.catalogConsent ? ' · consented' : ''}{s.city || s.publicRegion ? ` · ${s.city || s.publicRegion}` : ''}</option>)}
               </select>
+              {linkedSupplier && <SupplierDetails s={linkedSupplier} />}
               <div className="mt-3 grid gap-2 rounded-xl border border-ink-100 p-3 sm:grid-cols-2">
                 <input className="input" placeholder="New supplier company" value={newSup.name} onChange={(e) => setNewSup((x) => ({ ...x, name: e.target.value }))} />
                 <input className="input" placeholder="Public location" value={newSup.publicRegion} onChange={(e) => setNewSup((x) => ({ ...x, publicRegion: e.target.value }))} />

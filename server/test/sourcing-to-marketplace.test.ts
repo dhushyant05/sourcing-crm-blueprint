@@ -50,7 +50,10 @@ describe('sourcing quotes become unpublished marketplace drafts', () => {
     expect(draft.priceMode).toBe('GET_QUOTE');
     const blob = JSON.stringify(draft);
     expect(blob).not.toMatch(/Secret Customer|Priya Secret|enquiryMessage/i);
-    expect(draft.supplierId ?? null).toBeNull();
+    expect(draft.supplierId).toBe(q.supplierId);
+    expect(draft.catalogSupplier?.name).toBe('Secret Factory TEST');
+    expect(draft.catalogSupplier?.contact).toBe('Mr Wang');
+    expect(draft.catalogSupplier?.city).toBe('Ningbo');
 
     // Idempotent: quoting again does not create a second draft.
     expect((await call('cs', 'PATCH', `/api/records/leads/${lead.id}`, { status: 'QUOTED' })).statusCode).toBe(200);
@@ -62,10 +65,16 @@ describe('sourcing quotes become unpublished marketplace drafts', () => {
     const pubList = (await app.inject({ method: 'GET', url: '/api/public/catalog/products?q=TEST+QA+sourced&limit=48' })).json();
     expect((pubList.data ?? []).some((p: any) => p.id === draft.id)).toBe(false);
 
-    // Cannot publish without a selling price.
-    const blocked = await mt('POST', `/api/products/${draft.id}/publish`, {});
-    expect(blocked.statusCode).toBe(400);
-    expect(blocked.json().error).toMatch(/selling price/i);
+    // Get quote (the default for sourced drafts) can be published with no selling price.
+    const asQuote = await mt('POST', `/api/products/${draft.id}/publish`, {});
+    expect(asQuote.statusCode).toBe(200);
+    const liveQuote = (await app.inject({ method: 'GET', url: `/api/public/catalog/products/${draft.slug}` })).json().data;
+    expect(liveQuote.price.mode).toBe('GET_QUOTE');
+    expect(liveQuote.price.amounts).toBeNull();
+    expect(liveQuote).not.toHaveProperty('referenceCost');
+    expect(liveQuote).not.toHaveProperty('supplierId');
+    expect(JSON.stringify(liveQuote)).not.toMatch(/4\.2|Mr Wang|wx_secret|Secret Factory|Secret Customer|Priya Secret|referenceCost/i);
+    expect((await mt('POST', `/api/products/${draft.id}/unpublish`, {})).statusCode).toBe(200);
 
     // A later China price update before the team edits refreshes the reference cost.
     expect((await call('cs', 'PATCH', `/api/quotes/${q.id}`, { unitPrice: 4.8 })).statusCode).toBe(200);

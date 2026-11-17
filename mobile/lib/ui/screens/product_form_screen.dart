@@ -334,6 +334,40 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       rows.where((r) => r.key.trim().isNotEmpty && r.value.trim().isNotEmpty)
           .map((r) => {'key': r.key.trim(), 'value': r.value.trim()}).toList();
 
+  Map<String, dynamic>? _linkedSupplier() {
+    if (_supplierId == null) return null;
+    for (final s in _suppliers) {
+      if ('${s['id']}' == _supplierId) return s;
+    }
+    final cur = _product?['catalogSupplier'];
+    if (cur is Map && '${cur['id']}' == _supplierId) return Map<String, dynamic>.from(cur);
+    return null;
+  }
+
+  Widget _supplierDetails(Map<String, dynamic> s) {
+    final name = '${s['name'] ?? ''}';
+    final location = '${s['city'] ?? s['publicRegion'] ?? ''}'.trim();
+    final rows = <String>[];
+    if ('${s['contact'] ?? ''}'.trim().isNotEmpty) rows.add('Contact: ${s['contact']}');
+    if ('${s['phone'] ?? ''}'.trim().isNotEmpty) rows.add('Phone: ${s['phone']}');
+    if ('${s['wechat'] ?? ''}'.trim().isNotEmpty) rows.add('WeChat: ${s['wechat']}');
+    if (location.isNotEmpty) rows.add('Location: $location');
+    if ('${s['notes'] ?? ''}'.trim().isNotEmpty) rows.add('Notes: ${s['notes']}');
+    final consent = s['catalogConsent'] == true;
+    return Container(
+      key: const Key('product-supplier-details'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(12), color: const Color(0xFFF8FAFC)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (name.isNotEmpty) Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        for (final row in rows) Text(row, style: const TextStyle(color: Color(0xFF475569))),
+        const SizedBox(height: 4),
+        Text(consent ? 'Catalog consent given — public details are shown only to paid members.' : 'Has not consented to public catalog display.', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+      ]),
+    );
+  }
+
   bool _formHasSellingPrice() {
     if (_priceUsd.text.trim().isNotEmpty || _priceCny.text.trim().isNotEmpty || _priceInr.text.trim().isNotEmpty || _priceMin.text.trim().isNotEmpty) return true;
     if (_priceMode == 'TIERS' && _tiers.any((x) => x.unitPrice.trim().isNotEmpty || x.priceUsd.trim().isNotEmpty || x.priceCny.trim().isNotEmpty || x.priceInr.trim().isNotEmpty)) return true;
@@ -345,8 +379,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Title is required.')));
       return;
     }
-    if (publish && _product?['fromSourcing'] == true && !_formHasSellingPrice()) {
-      const msg = 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a product from a sourcing request. The China factory cost is never shown publicly.';
+    if (publish && _priceMode != 'GET_QUOTE' && !_formHasSellingPrice()) {
+      const msg = 'Set a selling price in at least one currency (USD, RMB or INR), then save, before publishing a fixed-price product. One currency is enough. Or switch the pricing mode to Get quote. The China factory cost is never shown publicly.';
       setState(() => _err = msg);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(msg)));
       return;
@@ -534,7 +568,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         ),
                       const Padding(
                         padding: EdgeInsets.only(top: 4),
-                        child: Text('Set a selling price in at least one currency (USD, RMB or INR). Values are stored as entered and never converted. The China factory cost is never shown on the public marketplace.', style: TextStyle(fontSize: 12)),
+                        child: Text('You can publish this as Get quote with no selling price, or choose a fixed price and enter at least one currency (USD, RMB or INR). Values are stored as entered and never converted. The China factory cost is never shown on the public marketplace.', style: TextStyle(fontSize: 12)),
                       ),
                       if (_product?['sourceUpdatePending'] == true)
                         TextButton(
@@ -746,6 +780,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     ],
                     onChanged: (v) => setState(() => _supplierId = v),
                   ),
+                  if (_linkedSupplier() != null) _supplierDetails(_linkedSupplier()!),
                   const SizedBox(height: 12),
                   const Text('Add and link a new supplier', style: TextStyle(fontWeight: FontWeight.w600)),
                   TextField(controller: _newSupName, decoration: const InputDecoration(labelText: 'New supplier company')),

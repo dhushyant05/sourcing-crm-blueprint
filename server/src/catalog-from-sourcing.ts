@@ -193,6 +193,117 @@ export async function isolateSourcingPhotos(deps: CatalogDeps, productId: string
 }
 
 
+
+export type LinkSupplierAction = 'linked' | 'filled' | 'already_linked' | 'flagged' | 'no_supplier';
+
+/** Case-insensitive name match, preferring the same city when one is given. Creates a supplier only when none exists. Never sets catalog consent. */
+export async function matchOrCreateSupplier(db: CatalogDeps['db'], fields: { name?: string | null; contact?: string | null; phone?: string | null; wechat?: string | null; city?: string | null; notes?: string | null }, by: string | null): Promise<string | null> {
+  const name = String(fields.name ?? '').trim().slice(0, 120);
+  if (!name) return null;
+  const city = fields.city ? String(fields.city).trim().slice(0, 80) || null : null;
+  if (city) {
+    const sameCity = await db.get<{ id: string }>('SELECT id FROM suppliers WHERE lower(name) = lower(?) AND lower(coalesce(city, \'\')) = lower(?) ORDER BY created_at, id LIMIT 1', name, city);
+    if (sameCity) return sameCity.id;
+  }
+  const byName = await db.get<{ id: string }>('SELECT id FROM suppliers WHERE lower(name) = lower(?) ORDER BY created_at, id LIMIT 1', name);
+  if (byName) return byName.id;
+  const quotes = new QuoteStore(db);
+  const created = await quotes.addSupplier({ name, contact: fields.contact, phone: fields.phone, wechat: fields.wechat, city, notes: fields.notes }, by ?? 'system');
+  if (city) await db.run('UPDATE suppliers SET public_region = coalesce(public_region, ?) WHERE id = ?', city, created.id);
+  return created.id;
+}
+
+/** Prefer the quote's existing supplier row; otherwise match or create from factory/supplier fields. */
+export async function resolveQuoteSupplierId(db: CatalogDeps['db'], quote: Quote, by: string | null): Promise<string | null> {
+  if (quote.supplierId) {
+    const row = await db.get<{ id: string }>('SELECT id FROM suppliers WHERE id = ?', quote.supplierId);
+    if (row) return row.id;
+  }
+  return null;
+}
+
+export async function applyDraftSupplierLink(db: CatalogDeps['db'], product: any, quote: Quote, by: string | null, opts: { dryRun?: boolean } = {}): Promise<LinkSupplierAction> {
+  const sid = await resolveQuoteSupplierId(db, quote, by);
+  if (!sid) return 'no_supplier';
+  if (product.supplier_id === sid) return 'already_linked';
+  const teamEdited = !!product.source_team_edited_at;
+  const published = product.status === 'PUBLISHED';
+  if (!product.supplier_id) {
+    if (!opts.dryRun) {
+      await db.run('UPDATE products SET supplier_id = ?, updated_at = now() WHERE id = ?', sid, product.id);
+    }
+    return teamEdited || published ? 'filled' : 'linked';
+  }
+  if (teamEdited || published) {
+    if (!opts.dryRun) {
+      await db.run('UPDATE products SET source_update_pending = true, updated_at = now() WHERE id = ?', product.id);
+    }
+    return 'flagged';
+  }
+  if (!opts.dryRun) {
+    await db.run('UPDATE products SET supplier_id = ?, updated_at = now() WHERE id = ?', sid, product.id);
+  }
+  return 'linked';
+}
+
+export type SupplierLinkItem = { leadRef: string | null; quoteId: string; title: string; productId?: string; slug?: string; status?: string; action: LinkSupplierAction; supplierId?: string | null };
+export type SupplierLinkResult = {
+  linked: SupplierLinkItem[];
+  filled: SupplierLinkItem[];
+  flagged: SupplierLinkItem[];
+  alreadyLinked: SupplierLinkItem[];
+  skipped: SupplierLinkItem[];
+  counts: { candidates: number; linked: number; filled: number; flagged: number; alreadyLinked: number; noSupplier: number; discarded: number };
+};
+
+/**
+ * Attach each sourced draft to the supplier on its China quote.
+ * Fills a missing link even on team-edited drafts; if the team already chose a different supplier, flags and does not overwrite.
+ */
+export async function linkSourcingDraftSuppliers(deps: CatalogDeps, by: string | null, opts: { dryRun?: boolean } = {}): Promise<SupplierLinkResult> {
+  const quotes = new QuoteStore(deps.db);
+  const rows = await deps.db.all<any>(
+    `SELECT id, slug, title, status, supplier_id, source_lead_id, source_quote_id, source_lead_ref,
+            source_team_edited_at, source_discarded_at, deleted_at
+       FROM products
+      WHERE source_quote_id IS NOT NULL AND deleted_at IS NULL
+      ORDER BY source_lead_ref NULLS LAST, created_at, id`,
+  );
+  const linked: SupplierLinkItem[] = [];
+  const filled: SupplierLinkItem[] = [];
+  const flagged: SupplierLinkItem[] = [];
+  const alreadyLinked: SupplierLinkItem[] = [];
+  const skipped: SupplierLinkItem[] = [];
+  let discarded = 0;
+  let noSupplier = 0;
+  for (const row of rows) {
+    const itemBase = { leadRef: row.source_lead_ref ?? null, quoteId: row.source_quote_id, title: row.title, productId: row.id, slug: row.slug, status: row.status, supplierId: row.supplier_id ?? null };
+    if (row.source_discarded_at) { skipped.push({ ...itemBase, action: 'no_supplier' }); discarded += 1; continue; }
+    const quote = await quotes.get(row.source_quote_id);
+    if (!quote) { skipped.push({ ...itemBase, action: 'no_supplier' }); noSupplier += 1; continue; }
+    const action = await applyDraftSupplierLink(deps.db, row, quote, by, { dryRun: !!opts.dryRun });
+    const sid = action === 'no_supplier' ? row.supplier_id ?? null : (await resolveQuoteSupplierId(deps.db, quote, by));
+    const item: SupplierLinkItem = { ...itemBase, action, supplierId: sid };
+    if (action === 'linked') linked.push(item);
+    else if (action === 'filled') filled.push(item);
+    else if (action === 'flagged') flagged.push(item);
+    else if (action === 'already_linked') alreadyLinked.push(item);
+    else { skipped.push(item); noSupplier += 1; }
+  }
+  return {
+    linked, filled, flagged, alreadyLinked, skipped,
+    counts: {
+      candidates: rows.length,
+      linked: linked.length,
+      filled: filled.length,
+      flagged: flagged.length,
+      alreadyLinked: alreadyLinked.length,
+      noSupplier,
+      discarded,
+    },
+  };
+}
+
 async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string | null) {
   const store = new CatalogStore(deps.db);
   const existing = await store.db.get<any>(
@@ -228,6 +339,8 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
     );
     await store.audit(id, by, 'SOURCE_DRAFT', null, { sourceLeadId: lead.id, sourceQuoteId: quote.id, sourceLeadRef: ref });
     await copyImages(deps, id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
+    const created = await store.get(id);
+    if (created) await applyDraftSupplierLink(deps.db, created, quote, by);
     return store.get(id);
   }
 
@@ -240,6 +353,8 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
       quote.unitPrice, quote.currency, ref, existing.id,
     );
     await store.audit(existing.id, by, 'SOURCE_UPDATE_FLAGGED', { sourceUnitPrice: existing.source_unit_price, sourceCurrency: existing.source_currency }, { sourceUnitPrice: quote.unitPrice, sourceCurrency: quote.currency });
+    const flagged = await store.get(existing.id);
+    if (flagged) await applyDraftSupplierLink(deps.db, flagged, quote, by);
     return store.get(existing.id);
   }
 
@@ -254,6 +369,8 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
   await store.audit(existing.id, by, 'SOURCE_REFRESH', { title: existing.title }, { title, sourceUnitPrice: quote.unitPrice, sourceCurrency: quote.currency });
   const imgs = await store.images(existing.id);
   if (!imgs.length) await copyImages(deps, existing.id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
+  const refreshed = await store.get(existing.id);
+  if (refreshed) await applyDraftSupplierLink(deps.db, refreshed, quote, by);
   return store.get(existing.id);
 }
 
@@ -359,6 +476,7 @@ export type RepairResult = {
   repaired: RepairItem[];
   skipped: (BackfillItem & { reason: RepairSkipReason })[];
   counts: { candidates: number; repaired: number; merged: number; skipped: number; teamEdited: number; alreadyClean: number };
+  suppliers?: SupplierLinkResult;
 };
 
 /**
@@ -396,6 +514,7 @@ export async function repairSourcingDrafts(deps: CatalogDeps, by: string | null,
   }
   const teamEdited = skipped.filter((s) => s.reason === 'team_edited').length;
   const alreadyClean = skipped.filter((s) => s.reason === 'already_clean').length;
+  const suppliers = await linkSourcingDraftSuppliers(deps, by, opts);
   return {
     repaired,
     skipped,
@@ -407,6 +526,7 @@ export async function repairSourcingDrafts(deps: CatalogDeps, by: string | null,
       teamEdited,
       alreadyClean,
     },
+    suppliers,
   };
 }
 
