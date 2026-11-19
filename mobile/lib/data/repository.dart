@@ -163,6 +163,11 @@ class SourceEasyRepository {
   Future<List<int>> quoteFileBytes(String id, LeadAttachment a) => api.getBytes('/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(a.id)}');
   ({Uri uri, Map<String, String> headers}) quoteFileStream(String id, LeadAttachment a) => api.authed('/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(a.id)}');
   Future<void> deleteQuoteFile(String id, String fid) => api.send('DELETE', '/api/quotes/${Uri.encodeComponent(id)}/files/${Uri.encodeComponent(fid)}');
+  Future<LeadQuote> reorderQuoteFiles(String id, {List<String>? order, String? cover}) async =>
+      LeadQuote.fromJson(_d(await api.send('PATCH', '/api/quotes/${Uri.encodeComponent(id)}/files', body: {
+        if (order != null) 'order': order,
+        if (cover != null) 'cover': cover,
+      })));
   Map<String, dynamic> _d(dynamic r) => ((r as Map<String, dynamic>)['data'] as Map).cast<String, dynamic>();
   Future<List<LeadQuote>> allQuotes({String? status, String? office, bool mine = false}) async {
     final q = [if (status != null) 'status=$status', if (office != null) 'office=$office', if (mine) 'mine=1'].join('&');

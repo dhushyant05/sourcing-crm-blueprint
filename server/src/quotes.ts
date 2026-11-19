@@ -5,6 +5,7 @@
  */
 import type { Db } from './db.js';
 import { randomUUID } from 'node:crypto';
+import { parseCarton, cartonTotals, cartonHasValues, type CartonInput } from './carton.js';
 
 export const CURRENCIES = ['USD', 'CNY', 'INR'] as const;
 export type Currency = (typeof CURRENCIES)[number];
@@ -16,6 +17,8 @@ export interface Quote {
   createdBy: string; createdAt: string; updatedAt: string;
   // China-side shipping (supplier quote), in its own currency
   shipCost: number | null; shipCurrency: Currency | null; shipTerm: string | null; shipMode: string | null; shipPort: string | null; shipTransit: string | null;
+  cartonLengthCm: number | null; cartonWidthCm: number | null; cartonHeightCm: number | null;
+  cartonUnits: number | null; cartonGrossKg: number | null; cartonNetKg: number | null;
   // India-side customer quote
   cq: CustomerQuote | null; status: QuoteStatus; sentAt: string | null; decidedAt: string | null; rejectReason: string | null; pdfToken: string | null;
   revision: number; revRequest: { note: string; at: string; by: string | null } | null;
@@ -44,6 +47,15 @@ const oneOf = (v: unknown, list: readonly string[], what: string) => {
   const t = String(v).toUpperCase(); if (!list.includes(t)) throw new BadQuote(`${what} must be one of ${list.join(', ')}`); return t;
 };
 const s = (v: unknown, max = 500) => { const t = typeof v === 'string' ? v.trim() : v == null ? '' : String(v); return t ? t.slice(0, max) : null; };
+
+export function quoteCarton(q: Quote) {
+  const input: CartonInput = {
+    lengthCm: q.cartonLengthCm, widthCm: q.cartonWidthCm, heightCm: q.cartonHeightCm,
+    unitsPerCarton: q.cartonUnits, grossKg: q.cartonGrossKg, netKg: q.cartonNetKg,
+  };
+  if (!cartonHasValues(input)) return null;
+  return cartonTotals(input, q.moq);
+}
 export class BadQuote extends Error { status = 400; }
 
 export class QuoteStore {
@@ -55,6 +67,9 @@ export class QuoteStore {
     moq: r.moq, leadTime: r.lead_time, validity: r.validity, notes: r.notes, clientPrice: r.client_price, clientCurrency: r.client_currency,
     clientNotes: r.client_notes, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
     shipCost: r.ship_cost, shipCurrency: r.ship_currency, shipTerm: r.ship_term, shipMode: r.ship_mode, shipPort: r.ship_port, shipTransit: r.ship_transit,
+    cartonLengthCm: r.carton_length_cm == null ? null : Number(r.carton_length_cm), cartonWidthCm: r.carton_width_cm == null ? null : Number(r.carton_width_cm),
+    cartonHeightCm: r.carton_height_cm == null ? null : Number(r.carton_height_cm), cartonUnits: r.carton_units == null ? null : Number(r.carton_units),
+    cartonGrossKg: r.carton_gross_kg == null ? null : Number(r.carton_gross_kg), cartonNetKg: r.carton_net_kg == null ? null : Number(r.carton_net_kg),
     cq: this.cqOf(r), status: r.status ?? 'DRAFT', sentAt: r.sent_at, decidedAt: r.decided_at, rejectReason: r.reject_reason, pdfToken: r.pdf_token,
     revision: r.revision ?? 0, revRequest: r.rev_at ? { note: r.rev_note ?? '', at: r.rev_at, by: r.rev_by ?? null } : null });
   private static SEL = `SELECT q.*, c.qty cq_qty, c.unit_price cq_unit_price, c.gst_pct cq_gst_pct, c.ship_cost cq_ship_cost, c.ship_term cq_ship_term, c.ship_mode cq_ship_mode,
@@ -139,20 +154,29 @@ export class QuoteStore {
       shipTerm: has('shipTerm') ? oneOf(b.shipTerm, INCOTERMS, 'Shipping term') : cur?.shipTerm ?? null,
       shipMode: has('shipMode') ? oneOf(b.shipMode, SHIP_MODES, 'Shipping mode') : cur?.shipMode ?? null,
       shipPort: has('shipPort') ? s(b.shipPort, 120) : cur?.shipPort ?? null, shipTransit: has('shipTransit') ? s(b.shipTransit, 60) : cur?.shipTransit ?? null };
-    return { product, unitPrice, currency, supplierId, moq: pick('moq', 60), leadTime: pick('leadTime', 60), validity: pick('validity', 60), notes: pick('notes', 2000), ...ship };
+    const curCarton: CartonInput | undefined = cur ? {
+      lengthCm: cur.cartonLengthCm, widthCm: cur.cartonWidthCm, heightCm: cur.cartonHeightCm,
+      unitsPerCarton: cur.cartonUnits, grossKg: cur.cartonGrossKg, netKg: cur.cartonNetKg,
+    } : undefined;
+    const carton = parseCarton(b, curCarton);
+    return { product, unitPrice, currency, supplierId, moq: pick('moq', 60), leadTime: pick('leadTime', 60), validity: pick('validity', 60), notes: pick('notes', 2000), ...ship, carton };
   }
   async create(leadId: string, b: Record<string, unknown>, by: string): Promise<Quote> {
     const c = await this.china(b); const id = randomUUID(), at = new Date().toISOString();
     await this.db.run(`INSERT INTO quotes (id, lead_id, supplier_id, product, unit_price, currency, moq, lead_time, validity, notes, created_by, created_at, updated_at,
-      ship_cost, ship_currency, ship_term, ship_mode, ship_port, ship_transit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      id, leadId, c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, by, at, at, c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit);
+      ship_cost, ship_currency, ship_term, ship_mode, ship_port, ship_transit,
+      carton_length_cm, carton_width_cm, carton_height_cm, carton_units, carton_gross_kg, carton_net_kg) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      id, leadId, c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, by, at, at, c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit,
+      c.carton.lengthCm, c.carton.widthCm, c.carton.heightCm, c.carton.unitsPerCarton, c.carton.grossKg, c.carton.netKg);
     return (await this.get(id))!;
   }
   async update(id: string, b: Record<string, unknown>): Promise<Quote> {
     const cur = (await this.get(id))!; const c = await this.china(b, cur);
     await this.db.run(`UPDATE quotes SET supplier_id=?, product=?, unit_price=?, currency=?, moq=?, lead_time=?, validity=?, notes=?, updated_at=?,
-      ship_cost=?, ship_currency=?, ship_term=?, ship_mode=?, ship_port=?, ship_transit=? WHERE id=?`,
-      c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, new Date().toISOString(), c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit, id);
+      ship_cost=?, ship_currency=?, ship_term=?, ship_mode=?, ship_port=?, ship_transit=?,
+      carton_length_cm=?, carton_width_cm=?, carton_height_cm=?, carton_units=?, carton_gross_kg=?, carton_net_kg=? WHERE id=?`,
+      c.supplierId, c.product, c.unitPrice, c.currency, c.moq, c.leadTime, c.validity, c.notes, new Date().toISOString(), c.shipCost, c.shipCurrency, c.shipTerm, c.shipMode, c.shipPort, c.shipTransit,
+      c.carton.lengthCm, c.carton.widthCm, c.carton.heightCm, c.carton.unitsPerCarton, c.carton.grossKg, c.carton.netKg, id);
     return (await this.get(id))!;
   }
   /** India's customer-facing selling price on a quote (INR by default). */

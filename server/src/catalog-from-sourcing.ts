@@ -9,6 +9,8 @@ import type { CatalogDeps } from './catalog.js';
 import { CatalogStore, normalizeSpecs, ownerKey, processProductImage, saveProductPhoto, slugify } from './catalog.js';
 import { QuoteStore, type Quote } from './quotes.js';
 import { LeadStore, type Rec } from './leads.js';
+import { packingFromCarton } from './carton.js';
+import { normalizeMerchandising, parseMerchandising } from './merchandising.js';
 
 const PRICE_RE = /^(\d+(?:\.\d+)?)/;
 
@@ -71,20 +73,40 @@ async function matchCategory(store: CatalogStore, title: string): Promise<string
   return null;
 }
 
+async function existingPhotoHashes(deps: CatalogDeps, productId: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  const key = ownerKey('p', productId);
+  for (const meta of deps.uploads.list(key)) {
+    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(meta.mime || '')) continue;
+    const file = deps.uploads.read(key, meta.id);
+    if (file?.data) out.add(sha256(file.data));
+  }
+  return out;
+}
+
+function quotePhotos(list: { id: string; mime: string; sort?: number; isCover?: boolean; createdAt: string }[]) {
+  return list.filter((m) => /^image\/(jpeg|jpg|png|webp)$/i.test(m.mime || '')).sort((a, b) => {
+    if (a.isCover && !b.isCover) return -1;
+    if (!a.isCover && b.isCover) return 1;
+    return (a.sort ?? 9999) - (b.sort ?? 9999) || a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
 async function copyImages(deps: CatalogDeps, productId: string, keys: string[], alt: string) {
-  const existing = await deps.db.all<{ n: number }>('SELECT count(distinct coalesce(group_id, file_id))::int AS n FROM product_images WHERE product_id = ?', productId);
-  let sort = Number(existing?.[0] ? 0 : 0);
   const groups = (await deps.db.all<{ n: number }>('SELECT count(*)::int AS n FROM (SELECT coalesce(group_id, file_id) FROM product_images WHERE product_id = ? GROUP BY 1) x', productId))?.[0];
-  sort = groups?.n ?? 0;
+  let sort = groups?.n ?? 0;
   let added = 0;
+  const seen = await existingPhotoHashes(deps, productId);
   for (const key of keys) {
-    for (const meta of deps.uploads.list(key)) {
+    for (const meta of quotePhotos(deps.uploads.list(key))) {
       if (sort + added >= 15) return;
-      if (!/^image\/(jpeg|jpg|png|webp)$/i.test(meta.mime || '')) continue;
       const file = deps.uploads.read(key, meta.id);
       if (!file?.data) continue;
       try {
         const processed = await processProductImage(file.data);
+        const hash = sha256(processed.original);
+        if (seen.has(hash)) continue;
+        seen.add(hash);
         await saveProductPhoto(deps, productId, processed, alt.slice(0, 200), sort + added, sort + added === 0);
         added += 1;
         await deps.mediaSync?.(ownerKey('p', productId), deps.uploads.list(ownerKey('p', productId)));
@@ -93,6 +115,17 @@ async function copyImages(deps: CatalogDeps, productId: string, keys: string[], 
       }
     }
   }
+}
+
+async function applyDraftPacking(deps: CatalogDeps, productId: string, quote: Quote) {
+  const row = await deps.db.get<{ merchandising: unknown }>('SELECT merchandising FROM products WHERE id = ?', productId);
+  const merch = parseMerchandising(row?.merchandising);
+  const showPublic = merch.packing?.showPublic !== false;
+  merch.packing = packingFromCarton({
+    lengthCm: quote.cartonLengthCm, widthCm: quote.cartonWidthCm, heightCm: quote.cartonHeightCm,
+    unitsPerCarton: quote.cartonUnits, grossKg: quote.cartonGrossKg, netKg: quote.cartonNetKg,
+  }, quote.moq, showPublic);
+  await deps.db.run('UPDATE products SET merchandising = ?::jsonb, updated_at = now() WHERE id = ?', JSON.stringify(normalizeMerchandising(merch)), productId);
 }
 
 function qKey(id: string) { return `q_${id.replace(/-/g, '')}`.slice(0, 64); }
@@ -339,6 +372,7 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
     );
     await store.audit(id, by, 'SOURCE_DRAFT', null, { sourceLeadId: lead.id, sourceQuoteId: quote.id, sourceLeadRef: ref });
     await copyImages(deps, id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
+    await applyDraftPacking(deps, id, quote);
     const created = await store.get(id);
     if (created) await applyDraftSupplierLink(deps.db, created, quote, by);
     return store.get(id);
@@ -367,8 +401,8 @@ async function upsertOne(deps: CatalogDeps, lead: Rec, quote: Quote, by: string 
     categoryId, lead.id, ref, quote.unitPrice, quote.currency, existing.id,
   );
   await store.audit(existing.id, by, 'SOURCE_REFRESH', { title: existing.title }, { title, sourceUnitPrice: quote.unitPrice, sourceCurrency: quote.currency });
-  const imgs = await store.images(existing.id);
-  if (!imgs.length) await copyImages(deps, existing.id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
+  await copyImages(deps, existing.id, await imageKeysForQuote(deps, String(lead.id), quote.id), title);
+  await applyDraftPacking(deps, existing.id, quote);
   const refreshed = await store.get(existing.id);
   if (refreshed) await applyDraftSupplierLink(deps.db, refreshed, quote, by);
   return store.get(existing.id);

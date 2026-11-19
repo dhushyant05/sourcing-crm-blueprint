@@ -31,7 +31,7 @@ export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
 export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY'; office: Office; byName: string | null; createdAt: string; read: boolean }
-export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null; kind?: string | null }
+export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null; kind?: string | null; sort?: number; isCover?: boolean }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
   /** Supplier cost (China side) in its own currency. */
@@ -81,6 +81,13 @@ export interface LeadQuote {
   files: Attachment[]; createdAt: string; updatedAt?: string;
   revision?: number; revRequest?: { note: string; at: string; byName: string | null } | null;
   shipCost?: number | null; shipCurrency?: QuoteCurrency | null; shipTerm?: string | null; shipMode?: string | null; shipPort?: string | null; shipTransit?: string | null;
+  cartonLengthCm?: number | null; cartonWidthCm?: number | null; cartonHeightCm?: number | null;
+  cartonUnits?: number | null; cartonGrossKg?: number | null; cartonNetKg?: number | null;
+  packing?: {
+    lengthCm: number | null; widthCm: number | null; heightCm: number | null; unitsPerCarton: number | null;
+    grossKg: number | null; netKg: number | null; cbmPerCarton: number | null; cartonCount: number | null;
+    totalCbm: number | null; totalGrossKg: number | null; totalNetKg: number | null;
+  } | null;
   status?: QuoteStatus; sentAt?: string | null; decidedAt?: string | null; rejectReason?: string | null; orderId?: string | null;
   cq?: CustomerQuote | null; cqTotals?: { subtotal: number; taxable: number; gst: number; total: number } | null; pdfUrl?: string | null;
   // only on the all-quotes list
@@ -101,7 +108,7 @@ export interface Order {
   agreedPrice?: number; advance?: number; paymentStatus?: string; total?: number; customer?: string | null; assignedToName?: string | null;
   supplier?: QuoteSupplier | null; unitPrice?: number | null; currency?: string | null; shipCost?: number | null; shipCurrency?: string | null;
 }
-export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId' | 'shipTerm' | 'shipMode' | 'shipPort' | 'shipTransit' | 'shipCurrency'>> & { shipCost?: number | string | null } & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
+export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId' | 'shipTerm' | 'shipMode' | 'shipPort' | 'shipTransit' | 'shipCurrency'>> & { shipCost?: number | string | null; cartonLengthCm?: number | string | null; cartonWidthCm?: number | string | null; cartonHeightCm?: number | string | null; cartonUnits?: number | string | null; cartonGrossKg?: number | string | null; cartonNetKg?: number | string | null } & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
 export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string; avatarUrl?: string | null }
 export interface BackupLink { label: string; url: string }
 

@@ -1,5 +1,5 @@
 import { QuoteSendBack } from './SendBack';
-import { Download, Pencil, Play, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Pencil, Play, Plus, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../lib/store';
@@ -7,6 +7,7 @@ import { INCOTERMS, SHIP_MODES, type Attachment, type Lead, type LeadQuote, type
 import { CustomerQuote, QuoteStatusChip } from './CustomerQuote';
 import { FileIcon, fmtSize, isVideoName } from './EnquiryForm';
 import { FilePicker } from '../pages/Leads';
+import { cartonMath, fmtCbm, packingLines } from '../lib/carton';
 
 const CUR: { v: QuoteCurrency; label: string; sym: string }[] = [{ v: 'USD', label: 'USD', sym: '$' }, { v: 'CNY', label: 'RMB', sym: '¥' }, { v: 'INR', label: 'INR', sym: '₹' }];
 const money = (n: number | null | undefined, c?: string | null) => n == null ? '—' : `${CUR.find((x) => x.v === c)?.sym ?? ''}${n.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${CUR.find((x) => x.v === c)?.label ?? c ?? ''}`;
@@ -64,6 +65,10 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
             </dl>
             {(q.shipCost != null || q.shipTerm || q.shipMode || q.shipPort || q.shipTransit) && <div data-testid="quote-ship" className="mt-2 rounded-lg bg-ink-50 p-2 text-xs text-ink-700 dark:bg-ink-800 dark:text-ink-200">
               <b>{t('lq.shipFrom')}:</b> {[q.shipCost != null && `${money(q.shipCost, q.shipCurrency ?? q.currency)}`, q.shipTerm && t(`ship.terms.${q.shipTerm}`), q.shipMode && t(`ship.modes.${q.shipMode}`), q.shipPort, q.shipTransit].filter(Boolean).join(' · ')}</div>}
+            {packingLines(q).length > 0 && <div data-testid="quote-packing" className="mt-2 rounded-lg bg-ink-50 p-2 text-xs text-ink-700 dark:bg-ink-800 dark:text-ink-200">
+              <b>{t('lq.packing')}:</b>
+              <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3">{packingLines(q).map((r) => <div key={r.label}><dt className="text-ink-400">{r.label}</dt><dd className="text-ink-800 dark:text-ink-100">{r.value}</dd></div>)}</dl>
+            </div>}
             {q.notes && <p className="mt-2 whitespace-pre-wrap text-xs text-ink-600 dark:text-ink-300">{q.notes}</p>}
             {china && q.supplier && <div data-testid="quote-supplier" className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
               <b>{t('lq.supplier')}:</b> {q.supplier.name}{q.supplier.contact && ` · ${q.supplier.contact}`}{q.supplier.phone && ` · ${q.supplier.phone}`}{q.supplier.wechat && ` · WeChat ${q.supplier.wechat}`}{q.supplier.city && ` · ${q.supplier.city}`}
@@ -85,7 +90,9 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
   const [sups, setSups] = useState<QuoteSupplier[]>([]);
   const [supId, setSupId] = useState(quote?.supplierId ?? ''), [ns, setNs] = useState({ name: '', contact: '', phone: '', wechat: '', city: '' });
   const [f, setF] = useState({ product: quote?.product ?? '', unitPrice: quote?.unitPrice?.toString() ?? '', currency: (quote?.currency ?? 'USD') as QuoteCurrency, moq: quote?.moq ?? '', leadTime: quote?.leadTime ?? '', validity: quote?.validity ?? '', notes: quote?.notes ?? '',
-    shipCost: quote?.shipCost?.toString() ?? '', shipCurrency: (quote?.shipCurrency ?? quote?.currency ?? 'USD') as QuoteCurrency, shipTerm: quote?.shipTerm ?? '', shipMode: quote?.shipMode ?? '', shipPort: quote?.shipPort ?? '', shipTransit: quote?.shipTransit ?? '' });
+    shipCost: quote?.shipCost?.toString() ?? '', shipCurrency: (quote?.shipCurrency ?? quote?.currency ?? 'USD') as QuoteCurrency, shipTerm: quote?.shipTerm ?? '', shipMode: quote?.shipMode ?? '', shipPort: quote?.shipPort ?? '', shipTransit: quote?.shipTransit ?? '',
+    cartonLengthCm: quote?.cartonLengthCm?.toString() ?? '', cartonWidthCm: quote?.cartonWidthCm?.toString() ?? '', cartonHeightCm: quote?.cartonHeightCm?.toString() ?? '',
+    cartonUnits: quote?.cartonUnits?.toString() ?? '', cartonGrossKg: quote?.cartonGrossKg?.toString() ?? '', cartonNetKg: quote?.cartonNetKg?.toString() ?? '' });
   const [files, setFiles] = useState<File[]>([]), [err, setErr] = useState<string | null>(null), [busy, setBusy] = useState(false), [pct, setPct] = useState<number | null>(null);
   useEffect(() => { api.quoteSuppliers().then(setSups).catch(() => setSups([])); }, [api]);
   const isNew = supId === '__new';
@@ -95,7 +102,11 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
     if (f.unitPrice.trim() === '' || !(Number(f.unitPrice) >= 0)) return setErr(t('lq.errPrice'));
     if (isNew && !ns.name.trim()) return setErr(t('lq.errSupplier'));
     if (f.shipCost.trim() !== '' && !(Number(f.shipCost) >= 0)) return setErr(t('lq.errPrice'));
-    const body: QuoteInput = { ...f, unitPrice: f.unitPrice.trim(), shipCost: f.shipCost.trim() === '' ? null : f.shipCost.trim(), shipCurrency: f.shipCost.trim() === '' ? null : f.shipCurrency, shipTerm: f.shipTerm || null, shipMode: f.shipMode || null, ...(isNew ? { newSupplier: ns } : { supplierId: supId || null }) };
+    const numOrNull = (v: string) => v.trim() === '' ? null : v.trim();
+    const body: QuoteInput = { ...f, unitPrice: f.unitPrice.trim(), shipCost: f.shipCost.trim() === '' ? null : f.shipCost.trim(), shipCurrency: f.shipCost.trim() === '' ? null : f.shipCurrency, shipTerm: f.shipTerm || null, shipMode: f.shipMode || null,
+      cartonLengthCm: numOrNull(f.cartonLengthCm), cartonWidthCm: numOrNull(f.cartonWidthCm), cartonHeightCm: numOrNull(f.cartonHeightCm),
+      cartonUnits: numOrNull(f.cartonUnits), cartonGrossKg: numOrNull(f.cartonGrossKg), cartonNetKg: numOrNull(f.cartonNetKg),
+      ...(isNew ? { newSupplier: ns } : { supplierId: supId || null }) };
     setBusy(true);
     try {
       let q = quote ? await api.updateQuote(quote.id, body) : await api.createQuote(leadId, body);
@@ -127,6 +138,19 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
       <div><label className="label" htmlFor="qf-term">{t('ship.term')}</label><select id="qf-term" data-testid="qf-shipTerm" className="input" value={f.shipTerm} onChange={(e) => setF({ ...f, shipTerm: e.target.value })}><option value="">{t('ship.none')}</option>{INCOTERMS.map((o) => <option key={o} value={o}>{t(`ship.terms.${o}`)}</option>)}</select></div>
       <div><label className="label" htmlFor="qf-mode">{t('ship.mode')}</label><select id="qf-mode" data-testid="qf-shipMode" className="input" value={f.shipMode} onChange={(e) => setF({ ...f, shipMode: e.target.value })}><option value="">{t('ship.none')}</option>{SHIP_MODES.map((o) => <option key={o} value={o}>{t(`ship.modes.${o}`)}</option>)}</select></div>
       {inp('shipPort', t('ship.port'), 'Ningbo')}{inp('shipTransit', t('ship.transit'), '20 days')}</div>
+    <div className="text-xs font-medium uppercase tracking-wide text-ink-400">{t('lq.packing')}</div>
+    <div className="grid grid-cols-3 gap-2">
+      {inp('cartonLengthCm', t('lq.cartonL'), '50')}{inp('cartonWidthCm', t('lq.cartonW'), '40')}{inp('cartonHeightCm', t('lq.cartonH'), '30')}
+      {inp('cartonUnits', t('lq.cartonUnits'), '20')}{inp('cartonGrossKg', t('lq.cartonGross'), '12.5')}{inp('cartonNetKg', t('lq.cartonNet'), '11')}
+    </div>
+    {(() => { const m = cartonMath(f); if (m.cbmPerCarton == null && m.cartonCount == null && m.totalGrossKg == null) return null;
+      return <div data-testid="qf-carton-math" className="rounded-lg bg-white/80 p-2 text-xs text-ink-700 dark:bg-ink-900/40 dark:text-ink-200">
+        {m.cbmPerCarton != null && <div>{t('lq.cbmPer')}: <b>{fmtCbm(m.cbmPerCarton)}</b></div>}
+        {m.cartonCount != null && <div>{t('lq.cartonCount')}: <b>{m.cartonCount}</b></div>}
+        {m.totalCbm != null && <div>{t('lq.totalCbm')}: <b>{fmtCbm(m.totalCbm)}</b></div>}
+        {m.totalGrossKg != null && <div>{t('lq.totalGross')}: <b>{m.totalGrossKg} kg</b></div>}
+        {m.totalNetKg != null && <div>{t('lq.totalNet')}: <b>{m.totalNetKg} kg</b></div>}
+      </div>; })()}
     <div><label className="label" htmlFor="qf-notes">{t('lq.notes')}</label><textarea id="qf-notes" className="input min-h-[60px]" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></div>
     <div><div className="label">{t('lq.media')}</div><FilePicker onPick={(fs) => setFiles((x) => [...x, ...fs])} onError={setErr} />
       {files.length > 0 && <ul className="mt-1 text-xs text-ink-600 dark:text-ink-300">{files.map((x, i) => <li key={i}>{x.name} · {fmtSize(x.size)} <button className="text-rose-600" onClick={() => setFiles(files.filter((_, j) => j !== i))}>×</button></li>)}</ul>}</div>
@@ -137,8 +161,8 @@ function QuoteForm({ leadId, quote, onDone }: { leadId: string; quote: LeadQuote
 }
 
 function QuoteFiles({ quote, canEdit, onChange }: { quote: LeadQuote; canEdit: boolean; onChange: (q: LeadQuote) => void }) {
-  const { api, session } = useApp(); const { t } = useTranslation();
-  const canDel = (_a: Attachment) => !!session;
+  const { api } = useApp(); const { t } = useTranslation();
+  const canDel = (_a: Attachment) => canEdit;
   const [thumbs, setThumbs] = useState<Record<string, string>>({}), [videos, setVideos] = useState<Record<string, string>>({});
   const [pct, setPct] = useState<number | null>(null), [err, setErr] = useState<string | null>(null);
   const files = quote.files ?? [];
@@ -158,14 +182,23 @@ function QuoteFiles({ quote, canEdit, onChange }: { quote: LeadQuote; canEdit: b
   const play = async (a: Attachment) => { setVideos((v) => ({ ...v, [a.id]: 'loading' })); try { const u = await api.quoteFileUrl(quote.id, a); setVideos((v) => ({ ...v, [a.id]: u })); } catch (e) { setErr((e as Error).message); } };
   const upload = async (fs: File[]) => { setPct(0); setErr(null); try { onChange(await api.uploadQuoteFiles(quote.id, fs, setPct)); } catch (e) { setErr((e as Error).message); } finally { setPct(null); } };
   const del = async (a: Attachment) => { if (!confirm(t('leads.deleteFile', { name: a.name }))) return; try { await api.deleteQuoteFile(quote.id, a.id); onChange({ ...quote, files: files.filter((x) => x.id !== a.id) }); } catch (e) { setErr((e as Error).message); } };
+  const isImg = (a: Attachment) => /^image\/(jpeg|jpg|png|webp)$/i.test(a.mime);
+  const patchFiles = async (body: { order?: string[]; cover?: string | null }) => { setErr(null); try { onChange(await api.reorderQuoteFiles(quote.id, body)); } catch (e) { setErr((e as Error).message); } };
+  const move = (i: number, dir: -1 | 1) => { const j = i + dir; if (j < 0 || j >= files.length) return; const order = files.map((x) => x.id); const [item] = order.splice(i, 1); order.splice(j, 0, item); void patchFiles({ order }); };
+  const setCover = (a: Attachment) => { if (isImg(a) && !a.isCover) void patchFiles({ cover: a.id }); };
   return (<div className="mt-2">
-    {files.length > 0 && <ul className="grid grid-cols-3 gap-2">{files.map((a) => (
+    {files.length > 0 && <ul className="grid grid-cols-3 gap-2">{files.map((a, i) => (
       <li key={a.id} data-testid="quote-file" className="overflow-hidden rounded-lg border border-ink-100 dark:border-ink-800">
         {a.mime.startsWith('video/') || isVideoName(a.name) ? (videos[a.id] && videos[a.id] !== 'loading'
           ? <video src={videos[a.id]} controls playsInline className="h-20 w-full bg-black object-contain" />
           : <button className="grid h-20 w-full place-items-center bg-ink-900 text-white" onClick={() => void play(a)}><Play size={22} /></button>)
           : <button className="block w-full" onClick={() => void open(a, false)}>{thumbs[a.id] ? <img src={thumbs[a.id]} alt={a.name} className="h-20 w-full object-cover" /> : <span className="grid h-20 place-items-center bg-ink-50 dark:bg-ink-800"><FileIcon name={a.name} className="h-8 w-8" /></span>}</button>}
-        <div className="flex items-center gap-1 px-1.5 py-1"><span className="min-w-0 flex-1 truncate text-[10px] text-ink-600 dark:text-ink-300">{a.name}</span>
+        <div className="flex items-center gap-1 px-1.5 py-1"><span className="min-w-0 flex-1 truncate text-[10px] text-ink-600 dark:text-ink-300">{a.isCover ? `${t('lq.cover')} · ` : ''}{a.name}</span>
+          {canEdit && <>
+            <button type="button" data-testid="quote-file-left" aria-label={t('lq.moveLeft')} disabled={i === 0} onClick={() => move(i, -1)} className="text-ink-400 disabled:opacity-30"><ChevronLeft size={12} /></button>
+            <button type="button" data-testid="quote-file-right" aria-label={t('lq.moveRight')} disabled={i === files.length - 1} onClick={() => move(i, 1)} className="text-ink-400 disabled:opacity-30"><ChevronRight size={12} /></button>
+            {isImg(a) && <button type="button" data-testid="quote-file-cover" aria-label={t('lq.setCover')} onClick={() => setCover(a)} className={a.isCover ? 'text-amber-500' : 'text-ink-400'}><Star size={12} fill={a.isCover ? 'currentColor' : 'none'} /></button>}
+          </>}
           <button aria-label={`${t('leads.download')} ${a.name}`} onClick={() => void open(a, true)} className="text-ink-400"><Download size={12} /></button>
           {canDel(a) && <button data-testid="quote-file-delete" aria-label={`${t('common.remove')} ${a.name}`} onClick={() => void del(a)} className="text-ink-400 hover:text-rose-600"><Trash2 size={12} /></button>}</div>
       </li>))}</ul>}

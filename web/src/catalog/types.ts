@@ -14,7 +14,13 @@ export type LeadTimeTier = { minQty: number; maxQty: number | null; time: string
 export type AttrRow = { key: string; value: string };
 export type SamplePrice = { amount: number; currency: Currency; leadTime?: string | null };
 export type ShippingEstimate = { origin?: string | null; estimate?: string | null; note?: string | null };
-export type PackingDetail = { sellingUnits?: string | null; singlePackageSize?: string | null; grossWeight?: string | null; packageType?: string | null };
+export type PackingDetail = {
+  sellingUnits?: string | null; singlePackageSize?: string | null; grossWeight?: string | null; packageType?: string | null;
+  cartonLengthCm?: number | null; cartonWidthCm?: number | null; cartonHeightCm?: number | null;
+  unitsPerCarton?: number | null; grossWeightKg?: number | null; netWeightKg?: number | null;
+  cbmPerCarton?: number | null; cartonCount?: number | null; totalCbm?: number | null; totalGrossKg?: number | null; totalNetKg?: number | null;
+  showPublic?: boolean;
+};
 export type Protection = { title: string; text: string };
 export type Merchandising = {
   variations?: ProductVariation[];
