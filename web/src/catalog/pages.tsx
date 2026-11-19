@@ -537,6 +537,12 @@ export function ProductPage({ slug }: { slug: string }) {
             {packing?.singlePackageSize && <PackFact label="Single package size" value={packing.singlePackageSize} />}
             {packing?.grossWeight && <PackFact label="Single gross weight" value={packing.grossWeight} />}
             {packing?.packageType && <PackFact label="Package type" value={packing.packageType} />}
+            {packing?.unitsPerCarton != null && <PackFact label="Units per carton" value={String(packing.unitsPerCarton)} />}
+            {packing?.netWeightKg != null && <PackFact label="Net weight / carton" value={`${packing.netWeightKg} kg`} />}
+            {packing?.cbmPerCarton != null && <PackFact label="CBM per carton" value={`${packing.cbmPerCarton} m³`} />}
+            {packing?.cartonCount != null && <PackFact label="Cartons for MOQ" value={String(packing.cartonCount)} />}
+            {packing?.totalCbm != null && <PackFact label="Total CBM (MOQ)" value={`${packing.totalCbm} m³`} />}
+            {packing?.totalGrossKg != null && <PackFact label="Total gross (MOQ)" value={`${packing.totalGrossKg} kg`} />}
           </dl>
           <p className="mt-4 max-w-3xl whitespace-pre-line leading-relaxed text-ink-700">{p.packaging || (!packing ? 'Packaging and delivery details will be confirmed with your quote.' : '')}</p>
         </section>

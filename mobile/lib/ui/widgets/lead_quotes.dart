@@ -15,6 +15,58 @@ import '../../l10n/web_strings.dart';
 import '../screens/customer_quote_screen.dart';
 
 const quoteCurrencies = [('USD', r'$', 'USD'), ('CNY', '¥', 'RMB'), ('INR', '₹', 'INR')];
+
+num? _n(dynamic v) {
+  if (v is num) return v;
+  if (v is String && v.trim().isNotEmpty) return num.tryParse(v.trim());
+  return null;
+}
+
+List<(String, String)> packingLines(LeadQuote q) {
+  final p = q.packing;
+  final length = _n(p?['lengthCm']) ?? q.cartonLengthCm;
+  final width = _n(p?['widthCm']) ?? q.cartonWidthCm;
+  final height = _n(p?['heightCm']) ?? q.cartonHeightCm;
+  final units = _n(p?['unitsPerCarton']) ?? q.cartonUnits;
+  final gross = _n(p?['grossKg']) ?? q.cartonGrossKg;
+  final net = _n(p?['netKg']) ?? q.cartonNetKg;
+  final cbm = _n(p?['cbmPerCarton']);
+  final count = _n(p?['cartonCount']);
+  final totalCbm = _n(p?['totalCbm']);
+  final totalGross = _n(p?['totalGrossKg']);
+  final totalNet = _n(p?['totalNetKg']);
+  final rows = <(String, String)>[];
+  if (length != null && width != null && height != null) {
+    rows.add(('Carton size', '$length × $width × $height cm'));
+  }
+  if (units != null) rows.add(('Units / carton', '$units'));
+  if (gross != null) rows.add(('Gross / carton', '$gross kg'));
+  if (net != null) rows.add(('Net / carton', '$net kg'));
+  if (cbm != null) rows.add(('CBM / carton', '$cbm m³'));
+  if (count != null) rows.add(('Cartons for MOQ', '$count'));
+  if (totalCbm != null) rows.add(('Total CBM (MOQ)', '$totalCbm m³'));
+  if (totalGross != null) rows.add(('Total gross (MOQ)', '$totalGross kg'));
+  if (totalNet != null) rows.add(('Total net (MOQ)', '$totalNet kg'));
+  return rows;
+}
+
+Map<String, num?> cartonMath({required String l, required String w, required String h, required String units, required String gross, required String net, required String moq}) {
+  final length = num.tryParse(l.trim()), width = num.tryParse(w.trim()), height = num.tryParse(h.trim());
+  final u = num.tryParse(units.trim()), g = num.tryParse(gross.trim()), n = num.tryParse(net.trim());
+  final moqN = num.tryParse(RegExp(r'^\d+(?:\.\d+)?').stringMatch(moq.replaceAll(',', '').trim()) ?? '');
+  final cbm = (length != null && width != null && height != null && length > 0 && width > 0 && height > 0)
+      ? ((length * width * height) / 1000000 * 1000000).round() / 1000000
+      : null;
+  final count = (u != null && u >= 1 && moqN != null && moqN > 0) ? (moqN / u).ceil() : null;
+  return {
+    'cbm': cbm,
+    'count': count,
+    'totalCbm': cbm != null && count != null ? ((cbm * count) * 1000000).round() / 1000000 : null,
+    'totalGross': g != null && count != null ? ((g * count) * 1000).round() / 1000 : null,
+    'totalNet': n != null && count != null ? ((n * count) * 1000).round() / 1000 : null,
+  };
+}
+
 String quoteMoney(double? n, String? c) {
   if (n == null) return '—';
   final cur = quoteCurrencies.where((x) => x.$1 == c).firstOrNull;
@@ -152,6 +204,10 @@ class _LeadQuotesSectionState extends State<LeadQuotesSection> {
       Row(children: [kv(l.lqMoq, q.moq), kv(l.lqLeadTime, q.leadTime), kv(l.lqValidity, q.validity)]),
       if (q.shipCost != null || q.shipTerm != null || q.shipMode != null || q.shipPort != null || q.shipTransit != null) Padding(padding: const EdgeInsets.only(top: 6),
           child: Text('${l.shipTitle}: ${[if (q.shipCost != null) quoteMoney(q.shipCost, q.shipCurrency ?? q.currency), if (q.shipTerm != null) seCode(l, 'term', q.shipTerm), if (q.shipMode != null) seCode(l, 'mode', q.shipMode), q.shipPort, q.shipTransit].whereType<String>().where((x) => x.isNotEmpty).join(' · ')}', key: const Key('quote-ship'), style: t.textTheme.bodySmall)),
+      if (packingLines(q).isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Column(key: const Key('quote-packing'), crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Shipping dimensions', style: t.textTheme.labelSmall?.copyWith(color: t.hintColor)),
+        for (final row in packingLines(q)) Text('${row.$1}: ${row.$2}', style: t.textTheme.bodySmall),
+      ])),
       if ((q.notes ?? '').isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(q.notes!, style: t.textTheme.bodySmall)),
       if (china && q.supplier != null) Container(
         margin: const EdgeInsets.only(top: 8), padding: const EdgeInsets.all(8), width: double.infinity,
@@ -185,8 +241,26 @@ class QuoteFilesStrip extends StatefulWidget {
 
 class _QuoteFilesStripState extends State<QuoteFilesStrip> {
   final _gone = <String>{};
+  List<LeadAttachment> _files = [];
+
+  bool get _canEdit => widget.quote.canEdit;
+
+  @override
+  void initState() {
+    super.initState();
+    _files = List.of(widget.quote.files);
+  }
+
+  @override
+  void didUpdateWidget(QuoteFilesStrip old) {
+    super.didUpdateWidget(old);
+    if (old.quote.id != widget.quote.id || old.quote.files.length != widget.quote.files.length) {
+      _files = List.of(widget.quote.files);
+    }
+  }
 
   Future<void> _delete(LeadAttachment a) async {
+    if (!_canEdit) return;
     final l = context.l10n;
     final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(title: Text(l.deleteFileQ(a.name)), actions: [
       TextButton(onPressed: () => Navigator.pop(d, false), child: Text(l.cancel)),
@@ -196,9 +270,28 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
     try { await context.read<Session>().repo.deleteQuoteFile(widget.quote.id, a.id); if (mounted) setState(() => _gone.add(a.id)); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
   }
-  @override
-  void initState() {
-    super.initState();
+
+  Future<void> _move(LeadAttachment a, int dir) async {
+    if (!_canEdit) return;
+    final list = _files.where((x) => !_gone.contains(x.id)).toList();
+    final i = list.indexWhere((x) => x.id == a.id);
+    final j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    final order = [for (final x in list) x.id];
+    final item = order.removeAt(i);
+    order.insert(j, item);
+    try {
+      final q = await context.read<Session>().repo.reorderQuoteFiles(widget.quote.id, order: order);
+      if (mounted) setState(() => _files = q.files);
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
+  }
+
+  Future<void> _cover(LeadAttachment a) async {
+    if (!_canEdit || !a.isImage || a.isCover) return;
+    try {
+      final q = await context.read<Session>().repo.reorderQuoteFiles(widget.quote.id, cover: a.id);
+      if (mounted) setState(() => _files = q.files);
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
   }
 
   String _key(LeadAttachment a) => 'quote/${widget.quote.id}/${a.id}';
@@ -211,7 +304,7 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => VideoViewer(a: a, uri: s.uri, headers: s.headers)));
       return;
     }
-    final imgs = widget.quote.files.where((x) => x.isImage && !_gone.contains(x.id)).toList();
+    final imgs = _files.where((x) => x.isImage && !_gone.contains(x.id)).toList();
     if (!a.isImage) {
       try {
         final b = await MediaCache.I.get(_key(a), _fetch(a));
@@ -227,12 +320,14 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final files = _files.where((x) => !_gone.contains(x.id)).toList();
     return Wrap(spacing: 6, runSpacing: 6, children: [
-      for (final a in widget.quote.files.where((x) => !_gone.contains(x.id)))
+      for (final a in files)
+        Column(mainAxisSize: MainAxisSize.min, children: [
         InkWell(
           key: Key('qfile-${a.id}'),
           onTap: () => _open(a),
-          onLongPress: () => _delete(a),
+          onLongPress: _canEdit ? () => _delete(a) : null,
           child: Container(
             width: 84, height: 84, clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: t.colorScheme.surfaceContainerHighest),
@@ -243,12 +338,19 @@ class _QuoteFilesStripState extends State<QuoteFilesStrip> {
                     Icon(a.isVideo ? Icons.play_circle_outline : a.mime.contains('pdf') ? Icons.picture_as_pdf_outlined : a.isImage ? Icons.image_outlined : Icons.description_outlined),
                     Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.labelSmall)),
                   ]),
-              Positioned(top: 2, right: 2, child: GestureDetector(key: Key('qfile-del-${a.id}'), onTap: () => _delete(a),
+              if (a.isCover) Positioned(top: 2, left: 2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), decoration: BoxDecoration(color: Colors.amber.shade700, borderRadius: BorderRadius.circular(4)), child: const Text('Cover', style: TextStyle(color: Colors.white, fontSize: 9)))),
+              if (_canEdit) Positioned(top: 2, right: 2, child: GestureDetector(key: Key('qfile-del-${a.id}'), onTap: () => _delete(a),
                   child: Container(padding: const EdgeInsets.all(3), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                       child: const Icon(Icons.delete_outline, size: 16, color: Colors.white)))),
             ]),
           ),
         ),
+        if (_canEdit) Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(key: Key('qfile-left-${a.id}'), visualDensity: VisualDensity.compact, iconSize: 16, onPressed: () => _move(a, -1), icon: const Icon(Icons.chevron_left)),
+          if (a.isImage) IconButton(key: Key('qfile-cover-${a.id}'), visualDensity: VisualDensity.compact, iconSize: 16, onPressed: () => _cover(a), icon: Icon(a.isCover ? Icons.star : Icons.star_border, color: a.isCover ? Colors.amber : null)),
+          IconButton(key: Key('qfile-right-${a.id}'), visualDensity: VisualDensity.compact, iconSize: 16, onPressed: () => _move(a, 1), icon: const Icon(Icons.chevron_right)),
+        ]),
+        ]),
     ]);
   }
 }
@@ -265,7 +367,7 @@ class QuoteFormScreen extends StatefulWidget {
 
 class _QuoteFormScreenState extends State<QuoteFormScreen> {
   late final _c = {
-    for (final k in ['product', 'unitPrice', 'moq', 'leadTime', 'validity', 'notes', 'shipCost', 'shipPort', 'shipTransit', 'sName', 'sContact', 'sPhone', 'sWechat', 'sCity']) k: TextEditingController(),
+    for (final k in ['product', 'unitPrice', 'moq', 'leadTime', 'validity', 'notes', 'shipCost', 'shipPort', 'shipTransit', 'sName', 'sContact', 'sPhone', 'sWechat', 'sCity', 'cartonLengthCm', 'cartonWidthCm', 'cartonHeightCm', 'cartonUnits', 'cartonGrossKg', 'cartonNetKg']) k: TextEditingController(),
   };
   List<QuoteSupplier> _sups = [];
   String _sup = '', _cur = 'USD', _shipCur = 'USD', _term = '', _mode = '';
@@ -284,6 +386,9 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
       _sup = q.supplierId ?? ''; _cur = q.currency; _existing = q.files;
       _c['shipCost']!.text = q.shipCost?.toString() ?? ''; _c['shipPort']!.text = q.shipPort ?? ''; _c['shipTransit']!.text = q.shipTransit ?? '';
       _shipCur = q.shipCurrency ?? q.currency; _term = q.shipTerm ?? ''; _mode = q.shipMode ?? '';
+      _c['cartonLengthCm']!.text = q.cartonLengthCm?.toString() ?? ''; _c['cartonWidthCm']!.text = q.cartonWidthCm?.toString() ?? '';
+      _c['cartonHeightCm']!.text = q.cartonHeightCm?.toString() ?? ''; _c['cartonUnits']!.text = q.cartonUnits?.toString() ?? '';
+      _c['cartonGrossKg']!.text = q.cartonGrossKg?.toString() ?? ''; _c['cartonNetKg']!.text = q.cartonNetKg?.toString() ?? '';
     }
     if (widget.suppliers != null) { _sups = widget.suppliers!; } else {
       context.read<Session>().repo.quoteSuppliers().then((s) { if (mounted) setState(() => _sups = s); }).catchError((_) {});
@@ -301,6 +406,12 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
       'validity': _c['validity']!.text.trim(), 'notes': _c['notes']!.text.trim(),
       'shipCost': _c['shipCost']!.text.trim().isEmpty ? null : _c['shipCost']!.text.trim(), 'shipCurrency': _shipCur, 'shipTerm': _term.isEmpty ? null : _term,
       'shipMode': _mode.isEmpty ? null : _mode, 'shipPort': _c['shipPort']!.text.trim(), 'shipTransit': _c['shipTransit']!.text.trim(),
+      'cartonLengthCm': _c['cartonLengthCm']!.text.trim().isEmpty ? null : _c['cartonLengthCm']!.text.trim(),
+      'cartonWidthCm': _c['cartonWidthCm']!.text.trim().isEmpty ? null : _c['cartonWidthCm']!.text.trim(),
+      'cartonHeightCm': _c['cartonHeightCm']!.text.trim().isEmpty ? null : _c['cartonHeightCm']!.text.trim(),
+      'cartonUnits': _c['cartonUnits']!.text.trim().isEmpty ? null : _c['cartonUnits']!.text.trim(),
+      'cartonGrossKg': _c['cartonGrossKg']!.text.trim().isEmpty ? null : _c['cartonGrossKg']!.text.trim(),
+      'cartonNetKg': _c['cartonNetKg']!.text.trim().isEmpty ? null : _c['cartonNetKg']!.text.trim(),
       if (_sup == '__new') 'newSupplier': {'name': _c['sName']!.text.trim(), 'contact': _c['sContact']!.text.trim(), 'phone': _c['sPhone']!.text.trim(), 'wechat': _c['sWechat']!.text.trim(), 'city': _c['sCity']!.text.trim()}
       else 'supplierId': _sup.isEmpty ? null : _sup,
     };
@@ -333,7 +444,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
     final l = context.l10n, t = Theme.of(context);
     Widget f(String k, String label, {String? hint, TextInputType? kb, int lines = 1}) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: TextField(key: Key('qf-$k'), controller: _c[k], keyboardType: kb, maxLines: lines, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder(), isDense: true)));
+        child: TextField(key: Key('qf-$k'), controller: _c[k], keyboardType: kb, maxLines: lines, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder(), isDense: true)));
     return Scaffold(
       appBar: AppBar(title: Text(widget.quote == null ? l.lqAdd : l.lqEdit)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
@@ -382,11 +493,50 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
           Expanded(child: seDropdown('qf-mode', l.shipMode, _mode, shipModes, (o) => seCode(l, 'mode', o), (v) => setState(() => _mode = v))),
         ]),
         Row(children: [Expanded(child: f('shipPort', l.shipPort, hint: 'Ningbo')), const SizedBox(width: 8), Expanded(child: f('shipTransit', l.shipTransit, hint: '20 days'))]),
+        const SizedBox(height: 6),
+        Text('Shipping dimensions', style: t.textTheme.titleSmall), const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: f('cartonLengthCm', 'Length (cm)', hint: '50', kb: const TextInputType.numberWithOptions(decimal: true))), const SizedBox(width: 8),
+          Expanded(child: f('cartonWidthCm', 'Width (cm)', hint: '40', kb: const TextInputType.numberWithOptions(decimal: true))), const SizedBox(width: 8),
+          Expanded(child: f('cartonHeightCm', 'Height (cm)', hint: '30', kb: const TextInputType.numberWithOptions(decimal: true))),
+        ]),
+        Row(children: [
+          Expanded(child: f('cartonUnits', 'Units / carton', hint: '20', kb: TextInputType.number)), const SizedBox(width: 8),
+          Expanded(child: f('cartonGrossKg', 'Gross kg / carton', hint: '12.5', kb: const TextInputType.numberWithOptions(decimal: true))), const SizedBox(width: 8),
+          Expanded(child: f('cartonNetKg', 'Net kg / carton', hint: '11', kb: const TextInputType.numberWithOptions(decimal: true))),
+        ]),
+        Builder(builder: (_) {
+          final m = cartonMath(l: _c['cartonLengthCm']!.text, w: _c['cartonWidthCm']!.text, h: _c['cartonHeightCm']!.text, units: _c['cartonUnits']!.text, gross: _c['cartonGrossKg']!.text, net: _c['cartonNetKg']!.text, moq: _c['moq']!.text);
+          if (m.values.every((v) => v == null)) return const SizedBox.shrink();
+          return Padding(padding: const EdgeInsets.only(bottom: 10), child: Text([
+            if (m['cbm'] != null) 'CBM / carton: ${m['cbm']} m³',
+            if (m['count'] != null) 'Cartons for MOQ: ${m['count']}',
+            if (m['totalCbm'] != null) 'Total CBM: ${m['totalCbm']} m³',
+            if (m['totalGross'] != null) 'Total gross: ${m['totalGross']} kg',
+          ].join(' · '), key: const Key('qf-carton-math')));
+        }),
         f('notes', l.lqNotes, lines: 3),
         Text(l.lqMedia, style: t.textTheme.titleSmall),
         const SizedBox(height: 6),
-        for (final a in _existing) ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.attach_file), title: Text(a.name), subtitle: Text(fileSize(a.size)),
-            trailing: IconButton(key: Key('qf-del-${a.id}'), tooltip: context.l10n.delete, icon: const Icon(Icons.delete_outline), onPressed: () => _removeExisting(a))),
+        for (final a in _existing) ListTile(dense: true, contentPadding: EdgeInsets.zero,
+            leading: Icon(a.isCover ? Icons.star : Icons.attach_file, color: a.isCover ? Colors.amber : null),
+            title: Text(a.isCover ? 'Cover · ${a.name}' : a.name), subtitle: Text(fileSize(a.size)),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(key: Key('qf-left-${a.id}'), icon: const Icon(Icons.chevron_left), onPressed: () async {
+                final i = _existing.indexWhere((x) => x.id == a.id); if (i <= 0) return;
+                final order = [for (final x in _existing) x.id]..removeAt(i)..insert(i - 1, a.id);
+                try { final q = await context.read<Session>().repo.reorderQuoteFiles(widget.quote!.id, order: order); setState(() => _existing = q.files); } catch (e) { setState(() => _err = '$e'); }
+              }),
+              if (a.isImage) IconButton(key: Key('qf-cover-${a.id}'), icon: Icon(a.isCover ? Icons.star : Icons.star_border), onPressed: () async {
+                try { final q = await context.read<Session>().repo.reorderQuoteFiles(widget.quote!.id, cover: a.id); setState(() => _existing = q.files); } catch (e) { setState(() => _err = '$e'); }
+              }),
+              IconButton(key: Key('qf-right-${a.id}'), icon: const Icon(Icons.chevron_right), onPressed: () async {
+                final i = _existing.indexWhere((x) => x.id == a.id); if (i < 0 || i >= _existing.length - 1) return;
+                final order = [for (final x in _existing) x.id]..removeAt(i)..insert(i + 1, a.id);
+                try { final q = await context.read<Session>().repo.reorderQuoteFiles(widget.quote!.id, order: order); setState(() => _existing = q.files); } catch (e) { setState(() => _err = '$e'); }
+              }),
+              IconButton(key: Key('qf-del-${a.id}'), tooltip: context.l10n.delete, icon: const Icon(Icons.delete_outline), onPressed: () => _removeExisting(a)),
+            ])),
         for (final p in _paths) ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.upload_file), title: Text(p.split('/').last),
             trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _paths.remove(p)))),
         Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(key: const Key('qf-media'), onPressed: () async {

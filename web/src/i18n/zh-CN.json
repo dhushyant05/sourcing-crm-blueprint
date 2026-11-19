@@ -580,7 +580,23 @@
     "errProduct": "请填写产品 / 型号。",
     "errPrice": "请填写有效单价。",
     "errSupplier": "请填写新供应商名称。",
-    "shipFrom": "供应商运输"
+    "shipFrom": "供应商运输",
+    "packing": "装箱尺寸",
+    "cartonL": "纸箱长（厘米）",
+    "cartonW": "纸箱宽（厘米）",
+    "cartonH": "纸箱高（厘米）",
+    "cartonUnits": "每箱数量",
+    "cartonGross": "每箱毛重（公斤）",
+    "cartonNet": "每箱净重（公斤）",
+    "cbmPer": "每箱体积（CBM）",
+    "cartonCount": "按起订量箱数",
+    "totalCbm": "起订量总体积",
+    "totalGross": "起订量总毛重",
+    "totalNet": "起订量总净重",
+    "cover": "封面",
+    "setCover": "设为封面图",
+    "moveLeft": "左移图片",
+    "moveRight": "右移图片"
   },
   "ship": {
     "all": "全部",
@@ -612,7 +628,13 @@
     "markShipped": "标记为已发货",
     "needForShip": "需要运单号或柜号 + 预计离港日期",
     "shippedNote": "已发货 — 运输和交付由印度处理",
-    "indiaLocked": "中国标记订单已发货后，运输和交付操作才会解锁。"
+    "indiaLocked": "中国标记订单已发货后，运输和交付操作才会解锁。",
+    "title": "运输",
+    "cost": "运费",
+    "term": "贸易条款",
+    "none": "—",
+    "terms": {},
+    "modes": {}
   },
   "qs": {
     "DRAFT": "草稿",

@@ -580,7 +580,23 @@
     "errProduct": "Enter the product / model.",
     "errPrice": "Enter a valid unit price.",
     "errSupplier": "Enter the new supplier's name.",
-    "shipFrom": "Supplier shipping"
+    "shipFrom": "Supplier shipping",
+    "packing": "Shipping dimensions",
+    "cartonL": "Carton length (cm)",
+    "cartonW": "Carton width (cm)",
+    "cartonH": "Carton height (cm)",
+    "cartonUnits": "Units per carton",
+    "cartonGross": "Gross weight / carton (kg)",
+    "cartonNet": "Net weight / carton (kg)",
+    "cbmPer": "CBM per carton",
+    "cartonCount": "Cartons for MOQ",
+    "totalCbm": "Total CBM for MOQ",
+    "totalGross": "Total gross weight for MOQ",
+    "totalNet": "Total net weight for MOQ",
+    "cover": "Cover",
+    "setCover": "Set as cover photo",
+    "moveLeft": "Move photo left",
+    "moveRight": "Move photo right"
   },
   "ship": {
     "all": "All",
@@ -612,7 +628,13 @@
     "markShipped": "Mark shipped",
     "needForShip": "Needs tracking or container no. + ETD",
     "shippedNote": "Shipped — India now handles transit and delivery",
-    "indiaLocked": "Transit and delivery unlock once China marks the order Shipped."
+    "indiaLocked": "Transit and delivery unlock once China marks the order Shipped.",
+    "title": "Shipping",
+    "cost": "Shipping cost",
+    "term": "Incoterm",
+    "none": "—",
+    "terms": {},
+    "modes": {}
   },
   "qs": {
     "DRAFT": "Draft",

@@ -106,6 +106,7 @@ export interface Api {
   uploadQuoteFiles(id: string, files: File[], onProgress?: (pct: number) => void): Promise<LeadQuote>;
   quoteFileUrl(id: string, a: Attachment): Promise<string>;
   deleteQuoteFile(id: string, fid: string): Promise<void>;
+  reorderQuoteFiles(id: string, body: { order?: string[]; cover?: string | null }): Promise<LeadQuote>;
   quoteSuppliers(): Promise<QuoteSupplier[]>;
   /** Every quote across the leads this user can read (role-filtered on the server). */
   allQuotes(f?: { status?: string; office?: string; mine?: boolean }): Promise<LeadQuote[]>;
@@ -354,6 +355,7 @@ export class ServerApi implements Api {
     return URL.createObjectURL(await res.blob());
   }
   async deleteQuoteFile(id: string, fid: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}/files/${encodeURIComponent(fid)}`); }
+  reorderQuoteFiles(id: string, body: { order?: string[]; cover?: string | null }) { return this.req<LeadQuote>('PATCH', `/quotes/${encodeURIComponent(id)}/files`, body); }
   quoteSuppliers() { return this.req<QuoteSupplier[]>('GET', '/suppliers'); }
   allQuotes(f: { status?: string; office?: string; mine?: boolean } = {}) {
     const p = new URLSearchParams(); if (f.status) p.set('status', f.status); if (f.office) p.set('office', f.office); if (f.mine) p.set('mine', '1');
@@ -462,6 +464,15 @@ export class DemoApi implements Api {
   }
   async quoteFileUrl() { return ''; }
   async deleteQuoteFile(id: string, fid: string) { const q = this.dq.find((x) => x.id === id); if (q) q.files = q.files.filter((f) => f.id !== fid); }
+  async reorderQuoteFiles(id: string, body: { order?: string[]; cover?: string | null }) {
+    const q = this.dq.find((x) => x.id === id)!;
+    if (body.order) {
+      const map = new Map(q.files.map((f) => [f.id, f]));
+      q.files = [...body.order.map((x) => map.get(x)!).filter(Boolean), ...q.files.filter((f) => !body.order!.includes(f.id))];
+    }
+    if (body.cover) q.files = q.files.map((f) => ({ ...f, isCover: f.id === body.cover }));
+    return structuredClone(q);
+  }
   async quoteSuppliers() { return structuredClone(this.ds); }
   async attachmentUrl(_leadId: string, a: Attachment) { return demo.files[a.id] ?? ''; }
   async deleteLead(id: string) { demo.leads = demo.leads.filter((x) => x.id !== id); }

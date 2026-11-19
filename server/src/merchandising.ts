@@ -13,6 +13,19 @@ export type PackingDetail = {
   singlePackageSize: string | null;
   grossWeight: string | null;
   packageType: string | null;
+  cartonLengthCm?: number | null;
+  cartonWidthCm?: number | null;
+  cartonHeightCm?: number | null;
+  unitsPerCarton?: number | null;
+  grossWeightKg?: number | null;
+  netWeightKg?: number | null;
+  cbmPerCarton?: number | null;
+  cartonCount?: number | null;
+  totalCbm?: number | null;
+  totalGrossKg?: number | null;
+  totalNetKg?: number | null;
+  /** When false, packing dims and weight are hidden on the public product page. Default true. */
+  showPublic?: boolean;
 };
 export type Protection = { title: string; text: string };
 export type Merchandising = {
@@ -166,8 +179,26 @@ export function normalizeMerchandising(raw: unknown): Merchandising {
     const singlePackageSize = clip(pk.singlePackageSize, 120) || null;
     const grossWeight = clip(pk.grossWeight, 80) || null;
     const packageType = clip(pk.packageType, 200) || null;
-    if (sellingUnits || singlePackageSize || grossWeight || packageType) {
-      out.packing = { sellingUnits, singlePackageSize, grossWeight, packageType };
+    const pos = (v: unknown, min = 0) => {
+      const n = num(v);
+      return n != null && n >= min ? n : null;
+    };
+    const carton = {
+      cartonLengthCm: pos(pk.cartonLengthCm, 0.001),
+      cartonWidthCm: pos(pk.cartonWidthCm, 0.001),
+      cartonHeightCm: pos(pk.cartonHeightCm, 0.001),
+      unitsPerCarton: pos(pk.unitsPerCarton, 1) != null ? Math.floor(pos(pk.unitsPerCarton, 1)!) : null,
+      grossWeightKg: pos(pk.grossWeightKg, 0),
+      netWeightKg: pos(pk.netWeightKg, 0),
+      cbmPerCarton: pos(pk.cbmPerCarton, 0),
+      cartonCount: pos(pk.cartonCount, 1) != null ? Math.floor(pos(pk.cartonCount, 1)!) : null,
+      totalCbm: pos(pk.totalCbm, 0),
+      totalGrossKg: pos(pk.totalGrossKg, 0),
+      totalNetKg: pos(pk.totalNetKg, 0),
+    };
+    const hasCarton = Object.values(carton).some((v) => v != null);
+    if (sellingUnits || singlePackageSize || grossWeight || packageType || hasCarton) {
+      out.packing = { sellingUnits, singlePackageSize, grossWeight, packageType, ...carton, showPublic: pk.showPublic === false ? false : true };
     }
   }
 
@@ -184,5 +215,6 @@ export function parseMerchandising(raw: unknown): Merchandising {
 export function publicMerchandising(raw: unknown): Merchandising {
   const m = normalizeMerchandising(raw);
   if (!m.protections.length) m.protections = DEFAULT_SOURCE_EASY_PROTECTIONS.map((p) => ({ ...p }));
+  if (m.packing && m.packing.showPublic === false) m.packing = null;
   return m;
 }

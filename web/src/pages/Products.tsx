@@ -1,3 +1,4 @@
+import { cartonMath, fmtCbm } from '../lib/carton';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useApp } from '../lib/store';
 import { PageHeader } from '../components/ui';
@@ -332,6 +333,13 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
   const [packageSize, setPackageSize] = useState(merch.packing?.singlePackageSize ?? '');
   const [grossWeight, setGrossWeight] = useState(merch.packing?.grossWeight ?? '');
   const [packageType, setPackageType] = useState(merch.packing?.packageType ?? '');
+  const [cartonLengthCm, setCartonLengthCm] = useState(merch.packing?.cartonLengthCm?.toString() ?? '');
+  const [cartonWidthCm, setCartonWidthCm] = useState(merch.packing?.cartonWidthCm?.toString() ?? '');
+  const [cartonHeightCm, setCartonHeightCm] = useState(merch.packing?.cartonHeightCm?.toString() ?? '');
+  const [unitsPerCarton, setUnitsPerCarton] = useState(merch.packing?.unitsPerCarton?.toString() ?? '');
+  const [grossWeightKg, setGrossWeightKg] = useState(merch.packing?.grossWeightKg?.toString() ?? '');
+  const [netWeightKg, setNetWeightKg] = useState(merch.packing?.netWeightKg?.toString() ?? '');
+  const [showPackingPublic, setShowPackingPublic] = useState(merch.packing?.showPublic !== false);
   const [longDescription, setLongDescription] = useState(merch.description ?? '');
   const [reviewsNote, setReviewsNote] = useState(merch.reviewsNote ?? '');
   const [protections, setProtections] = useState<{ title: string; text: string }[]>(
@@ -405,9 +413,16 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
       shipping: (shipOrigin || shipEstimate || shipNote) ? { origin: shipOrigin || null, estimate: shipEstimate || null, note: shipNote || null } : null,
       industryAttributes: industryAttrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() })),
       otherAttributes: otherAttrs.filter((a) => a.key.trim() && a.value.trim()).map((a) => ({ key: a.key.trim(), value: a.value.trim() })),
-      packing: (sellingUnits || packageSize || grossWeight || packageType) ? {
-        sellingUnits: sellingUnits || null, singlePackageSize: packageSize || null, grossWeight: grossWeight || null, packageType: packageType || null,
-      } : null,
+      packing: (sellingUnits || packageSize || grossWeight || packageType || cartonLengthCm || cartonWidthCm || cartonHeightCm || unitsPerCarton || grossWeightKg || netWeightKg) ? (() => {
+        const m = cartonMath({ cartonLengthCm, cartonWidthCm, cartonHeightCm, cartonUnits: unitsPerCarton, cartonGrossKg: grossWeightKg, cartonNetKg: netWeightKg, moq: f.moq });
+        return {
+        sellingUnits: sellingUnits || null, singlePackageSize: packageSize || (m.lengthCm && m.widthCm && m.heightCm ? `${m.lengthCm} × ${m.widthCm} × ${m.heightCm} cm` : null),
+        grossWeight: grossWeight || (m.grossKg != null ? `${m.grossKg} kg / carton` : null), packageType: packageType || null,
+        cartonLengthCm: m.lengthCm, cartonWidthCm: m.widthCm, cartonHeightCm: m.heightCm,
+        unitsPerCarton: m.unitsPerCarton != null ? Math.floor(m.unitsPerCarton) : null, grossWeightKg: m.grossKg, netWeightKg: m.netKg,
+        cbmPerCarton: m.cbmPerCarton, cartonCount: m.cartonCount, totalCbm: m.totalCbm, totalGrossKg: m.totalGrossKg, totalNetKg: m.totalNetKg,
+        showPublic: showPackingPublic,
+      }; })() : null,
       description: longDescription.trim() || null,
       reviewsNote: reviewsNote.trim() || null,
       protections: protections.filter((x) => x.title.trim() && x.text.trim()).map((x) => ({ title: x.title.trim(), text: x.text.trim() })),
@@ -682,7 +697,20 @@ function ProductEditor({ product, canPrice, canLink, canPromote, canPublish, bus
               <input className="input" placeholder="Single package size (e.g. 8 × 8 × 25 cm)" value={packageSize} onChange={(e) => setPackageSize(e.target.value)} />
               <input className="input" placeholder="Single gross weight (e.g. 0.35 kg)" value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} />
               <input className="input" placeholder="Package type" value={packageType} onChange={(e) => setPackageType(e.target.value)} />
+              <input className="input" placeholder="Carton length (cm)" data-testid="pack-carton-l" value={cartonLengthCm} onChange={(e) => setCartonLengthCm(e.target.value)} />
+              <input className="input" placeholder="Carton width (cm)" data-testid="pack-carton-w" value={cartonWidthCm} onChange={(e) => setCartonWidthCm(e.target.value)} />
+              <input className="input" placeholder="Carton height (cm)" data-testid="pack-carton-h" value={cartonHeightCm} onChange={(e) => setCartonHeightCm(e.target.value)} />
+              <input className="input" placeholder="Units per carton" data-testid="pack-carton-units" value={unitsPerCarton} onChange={(e) => setUnitsPerCarton(e.target.value)} />
+              <input className="input" placeholder="Gross weight / carton (kg)" data-testid="pack-carton-gross" value={grossWeightKg} onChange={(e) => setGrossWeightKg(e.target.value)} />
+              <input className="input" placeholder="Net weight / carton (kg)" data-testid="pack-carton-net" value={netWeightKg} onChange={(e) => setNetWeightKg(e.target.value)} />
             </div>
+            {(() => { const m = cartonMath({ cartonLengthCm, cartonWidthCm, cartonHeightCm, cartonUnits: unitsPerCarton, cartonGrossKg: grossWeightKg, cartonNetKg: netWeightKg, moq: f.moq });
+              if (m.cbmPerCarton == null && m.totalGrossKg == null) return null;
+              return <p className="mt-2 text-xs text-ink-500" data-testid="pack-carton-math">{m.cbmPerCarton != null ? `CBM / carton: ${fmtCbm(m.cbmPerCarton)}` : ''}{m.cartonCount != null ? ` · Cartons for MOQ: ${m.cartonCount}` : ''}{m.totalCbm != null ? ` · Total CBM: ${fmtCbm(m.totalCbm)}` : ''}{m.totalGrossKg != null ? ` · Total gross: ${m.totalGrossKg} kg` : ''}</p>; })()}
+            <label className="mt-3 flex items-start gap-2 text-sm text-ink-700">
+              <input type="checkbox" className="mt-1" data-testid="pack-show-public" checked={showPackingPublic} onChange={(e) => setShowPackingPublic(e.target.checked)} />
+              <span>Show packaging dimensions and weight on the public product page</span>
+            </label>
             <label className="mt-3 block text-sm">Packaging notes<textarea className="input mt-1 min-h-[80px]" value={f.packaging} onChange={(e) => set('packaging', e.target.value)} /></label>
           </section>
 

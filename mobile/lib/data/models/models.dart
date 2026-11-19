@@ -111,16 +111,19 @@ class Lead {
 
 /// A photo/document a client attached to a website enquiry. Bytes are fetched with the staff token.
 class LeadAttachment {
-  LeadAttachment({required this.id, required this.name, required this.mime, required this.size, this.createdAt, this.uploadedBy});
+  LeadAttachment({required this.id, required this.name, required this.mime, required this.size, this.createdAt, this.uploadedBy, this.sort, this.isCover = false});
   final String id, name, mime;
   final String? uploadedBy;
   final int size;
   final DateTime? createdAt;
+  final int? sort;
+  final bool isCover;
   bool get isImage => RegExp(r'^image/(jpeg|png|webp)$').hasMatch(mime);
   bool get isVideo => mime.startsWith('video/') || RegExp(r'\.(mp4|m4v|mov|3gp|webm|mkv)$', caseSensitive: false).hasMatch(name);
   factory LeadAttachment.fromJson(Map<String, dynamic> j) => LeadAttachment(
         id: j['id'] as String, name: (j['name'] as String?) ?? 'file', mime: (j['mime'] as String?) ?? 'application/octet-stream',
-        size: (j['size'] as num?)?.toInt() ?? 0, createdAt: _date(j['createdAt']), uploadedBy: j['uploadedBy'] as String?);
+        size: (j['size'] as num?)?.toInt() ?? 0, createdAt: _date(j['createdAt']), uploadedBy: j['uploadedBy'] as String?,
+        sort: (j['sort'] as num?)?.toInt(), isCover: j['isCover'] == true);
 }
 
 class SourcingRequest {
@@ -342,13 +345,15 @@ class LeadQuote {
       this.validity, this.notes, this.clientPrice, this.clientCurrency, this.clientNotes, this.supplierId, this.supplier, this.createdByName,
       this.canEdit = false, this.files = const [], this.status = 'DRAFT', this.sentAt, this.decidedAt, this.rejectReason, this.shipCost, this.shipCurrency,
       this.shipTerm, this.shipMode, this.shipPort, this.shipTransit, this.cq, this.cqTotals, this.pdfUrl, this.leadId, this.leadRef, this.leadStatus,
-      this.assignedToName, this.ownerOffice, this.orderId, this.revision = 0, this.revRequest});
+      this.assignedToName, this.ownerOffice, this.orderId, this.revision = 0, this.revRequest,
+      this.cartonLengthCm, this.cartonWidthCm, this.cartonHeightCm, this.cartonUnits, this.cartonGrossKg, this.cartonNetKg, this.packing});
   final int revision;
   final Map<String, dynamic>? revRequest;
   final String id, product, currency, status;
   final String? sentAt, decidedAt, rejectReason, shipCurrency, shipTerm, shipMode, shipPort, shipTransit, pdfUrl, leadId, leadRef, leadStatus, assignedToName, ownerOffice, orderId;
   final double? shipCost;
-  final Map<String, dynamic>? cq, cqTotals;
+  final Map<String, dynamic>? cq, cqTotals, packing;
+  final double? cartonLengthCm, cartonWidthCm, cartonHeightCm, cartonUnits, cartonGrossKg, cartonNetKg;
   final double unitPrice;
   final String? label, moq, leadTime, validity, notes, clientCurrency, clientNotes, supplierId, createdByName;
   final double? clientPrice;
@@ -368,7 +373,10 @@ class LeadQuote {
         cq: (j['cq'] as Map?)?.cast<String, dynamic>(), cqTotals: (j['cqTotals'] as Map?)?.cast<String, dynamic>(), pdfUrl: j['pdfUrl'] as String?,
         leadId: j['leadId'] as String?, leadRef: j['leadRef'] as String?, leadStatus: j['leadStatus'] as String?, assignedToName: j['assignedToName'] as String?,
         ownerOffice: j['ownerOffice'] as String?, orderId: j['orderId'] as String?,
-        revision: (j['revision'] as num?)?.toInt() ?? 0, revRequest: (j['revRequest'] as Map?)?.cast<String, dynamic>());
+        revision: (j['revision'] as num?)?.toInt() ?? 0, revRequest: (j['revRequest'] as Map?)?.cast<String, dynamic>(),
+        cartonLengthCm: _num(j['cartonLengthCm']), cartonWidthCm: _num(j['cartonWidthCm']), cartonHeightCm: _num(j['cartonHeightCm']),
+        cartonUnits: _num(j['cartonUnits']), cartonGrossKg: _num(j['cartonGrossKg']), cartonNetKg: _num(j['cartonNetKg']),
+        packing: (j['packing'] as Map?)?.cast<String, dynamic>());
 }
 
 /// An order created from an accepted customer quote. Fields the caller may not see are null (server-redacted).

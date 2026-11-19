@@ -8,7 +8,7 @@ import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import { RefCounter } from './refs.js';
 import { diskOf, FILE_RE, inventory, KEY_RE, type StoredFile } from './storage.js';
-import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, kindFromField, isVideo, type Staged, type Attachment, type FileKind } from './uploads.js';
+import { MAX_FILES, MAX_STAFF_FILES, MAX_VIDEO_BYTES, UploadStore, kindFromField, isVideo, stripImageMetadata, type Staged, type Attachment, type FileKind } from './uploads.js';
 import { capabilities, isRole, manageableRoles, sides, type Role } from './roles.js';
 import { PermStore, PERMISSIONS } from './permissions.js';
 import { canRead, CHINA_LEAD_STATUSES, FILTERABLE, Forbidden, PLURAL_TO_OBJECT, readFilter, writeCheck, type Ctx, type ObjectName, type Rec } from './policy.js';
@@ -17,7 +17,7 @@ import type { Bus } from './bus.js';
 import { LeadStore } from './leads.js';
 import { CustomerStore, BadCustomer, NO_STATS } from './customers.js';
 import type { UserStore, User } from './users.js';
-import { QuoteStore, QUOTE_STATUSES, cqTotals, type Quote } from './quotes.js';
+import { QuoteStore, QUOTE_STATUSES, cqTotals, quoteCarton, type Quote } from './quotes.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
 import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
@@ -708,6 +708,7 @@ export async function buildApp(o: AppOptions) {
       'POST /api/leads/:id/quotes': () => ['quotes.create'],
       'DELETE /api/quotes/:qid': () => ['quotes.create'],
       'POST /api/quotes/:qid/files': () => ['quotes.create'],
+      'PATCH /api/quotes/:qid/files': () => ['quotes.create'],
       'PATCH /api/quotes/:qid': (u) => (sides(u.role).china ? ['quotes.create'] : ['quotes.customer', 'prices.inr']),
       'PUT /api/quotes/:qid/customer': () => ['quotes.customer', 'prices.inr'],
       'POST /api/quotes/:qid/pdf': () => ['quotes.customer', 'prices.inr'],
@@ -861,9 +862,12 @@ export async function buildApp(o: AppOptions) {
       const role = u.role;
       const s = sides(role), names = userNames();
       const files = uploads.list(qKey(q.id));
+      const packing = quoteCarton(q);
       const base = { id: q.id, leadId: q.leadId, product: q.product, unitPrice: q.unitPrice, currency: q.currency, moq: q.moq, leadTime: q.leadTime,
         validity: q.validity, notes: q.notes, createdAt: q.createdAt, updatedAt: q.updatedAt,
         shipCost: q.shipCost, shipCurrency: q.shipCurrency, shipTerm: q.shipTerm, shipMode: q.shipMode, shipPort: q.shipPort, shipTransit: q.shipTransit,
+        cartonLengthCm: q.cartonLengthCm, cartonWidthCm: q.cartonWidthCm, cartonHeightCm: q.cartonHeightCm,
+        cartonUnits: q.cartonUnits, cartonGrossKg: q.cartonGrossKg, cartonNetKg: q.cartonNetKg, packing,
         status: q.status, sentAt: q.sentAt, decidedAt: q.decidedAt, rejectReason: q.rejectReason, revision: q.revision,
         revRequest: q.revRequest ? { note: q.revRequest.note, at: q.revRequest.at, byName: (q.revRequest.by && names.get(q.revRequest.by)) || null } : null, orderId: (await orders.byQuote(q.id))?.id ?? null };
       const client = { clientPrice: q.clientPrice, clientCurrency: q.clientCurrency, clientNotes: q.clientNotes, cq: q.cq, cqTotals: q.cq ? cqTotals(q.cq) : null,
@@ -928,7 +932,9 @@ export async function buildApp(o: AppOptions) {
       const m = await readMultipart(req, MAX_STAFF_FILES);
       if (m.err) return reply.code(m.err.status).send({ error: m.err.error, code: m.err.code });
       if (uploads.list(qKey(q.id)).length + m.files.length > 30) { uploads.discard(m.files); return reply.code(413).send({ error: 'Up to 30 files per quote', code: 'count' }); }
+      await stripImageMetadata(m.files);
       await mediaSync(qKey(q.id), uploads.commit(qKey(q.id), m.files, req.user!.id));
+      await syncFromSourcing(q.leadId, req.user!.id, { quoteId: q.id });
       const list = await quotes.list(q.leadId);
       return reply.code(201).send({ data: await viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(q.leadId)) });
     });
@@ -943,11 +949,23 @@ export async function buildApp(o: AppOptions) {
     });
     api.delete<{ Params: { qid: string; fid: string } }>('/api/quotes/:qid/files/:fid', async (req, reply) => {
       const q = await quoteOf(req);
+      if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can delete files');
       const u = req.user!, meta = uploads.list(qKey(q.id)).find((f) => f.id === req.params.fid); if (!meta) return reply.code(404).send({ error: 'Not found' });
       const rest = uploads.remove(qKey(q.id), req.params.fid)!;
       await mediaSync(qKey(q.id), rest);
       await ev(q.leadId, 'MEDIA_REMOVED', u, { quote: true });
+      await syncFromSourcing(q.leadId, req.user!.id, { quoteId: q.id });
       return reply.code(204).send();
+    });
+    api.patch<{ Params: { qid: string }; Body: { order?: string[]; cover?: string | null } }>('/api/quotes/:qid/files', async (req, reply) => {
+      const q = await quoteOf(req);
+      if (!canEditQuote(req.user!.role, req.user!.id, q)) throw new Forbidden('Only the China staff who added this quote (or a China admin) can reorder files');
+      const b = req.body ?? {};
+      if (!Array.isArray(b.order) && b.cover === undefined) return reply.code(400).send({ error: 'order or cover is required' });
+      await mediaSync(qKey(q.id), uploads.reorder(qKey(q.id), { order: Array.isArray(b.order) ? b.order.map(String) : undefined, cover: b.cover === undefined ? undefined : (b.cover ? String(b.cover) : null) }));
+      await syncFromSourcing(q.leadId, req.user!.id, { quoteId: q.id });
+      const list = await quotes.list(q.leadId);
+      return { data: await viewQuote(req.user!, q, list.findIndex((x) => x.id === q.id), await leadRefOf(q.leadId)) };
     });
     // ---- All quotes across leads (role-filtered) ----
     const readableLeads = async (u: User) => {
