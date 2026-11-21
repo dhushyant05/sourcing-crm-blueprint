@@ -10,6 +10,7 @@ import { DeleteLeadDialog } from '../components/DeleteLead';
 import { BigSla, PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
 import { LeadQuotes } from '../components/LeadQuotes';
 import { LeadChat } from '../components/LeadChat';
+import { openChatDock } from '../lib/chat-dock';
 import { PIPELINE, type Attachment, type Currency, type Customer, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import i18n, { fmtDate } from '../i18n';
@@ -312,7 +313,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.unassignedIndia && <UnassignedBadge />}{lead.rejection?.actionNeeded && <RejChip />}{lead.sendBack && <SbChip side={lead.sendBack.side} />}{lead.priority && <PriorityBadge />}<span>{lead.productInterest}</span>{lead.sla && <div className="basis-full"><BigSla sla={lead.sla} /></div>}</div>}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.can('quotes.view') && <button type="button" className="btn-outline" data-testid="lead-chat-open" onClick={() => document.getElementById('lead-chat')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><MessageSquare size={15} />{t('chat.button')}</button>}{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline !border-rose-300 !text-rose-600 hover:!bg-rose-50" data-testid="lead-delete" disabled={busy} onClick={() => setDelOpen(true)}><Trash2 size={15} />{t('del.button')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.can('quotes.view') && <button type="button" className="btn-outline" data-testid="lead-chat-open" onClick={() => lead && openChatDock({ leadId: lead.id, quoteId: chatQuoteId })}><MessageSquare size={15} />{t('chat.button')}</button>}{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline !border-rose-300 !text-rose-600 hover:!bg-rose-50" data-testid="lead-delete" disabled={busy} onClick={() => setDelOpen(true)}><Trash2 size={15} />{t('del.button')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
         {!mode && canSend && <button className="btn-primary" data-testid="assign-china" onClick={() => openPicker('CHINA')}><Send size={15} />{t('assign.sendChina')}</button>}</>}>
@@ -373,7 +374,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
           <LostActions lead={lead} onChange={(l) => setLead({ ...lead, ...l })} openLead={(l) => setLead(l)} />
           <LeadSendBack lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
           <RejectionPanel lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
-          <LeadQuotes leadId={lead.id} lead={lead} onAttachQuote={(id) => { setChatQuoteId(id); document.getElementById('lead-chat')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
+          <LeadQuotes leadId={lead.id} lead={lead} onAttachQuote={(id) => { setChatQuoteId(id); openChatDock({ leadId: lead.id, quoteId: id }); }} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
           <div id="lead-chat"><LeadChat leadId={lead.id} preferredQuoteId={chatQuoteId} onOpenQuote={(id) => { setChatQuoteId(id); document.getElementById(`quote-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }} /></div>
           <WorkflowPanel lead={lead} onPriority={(on) => setLead({ ...lead, priority: on })} />
         </>

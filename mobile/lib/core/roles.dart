@@ -76,7 +76,7 @@ class Permissions {
   // Shared
   bool get canViewQuotes => can('quotes.view');
   bool get canViewShipping => true;
-  bool get canChat => true;
+  bool get canChat => role != Role.supplier && (can('chat.view_own') || can('chat.view_team') || can('chat.view_all'));
   bool get canViewReports => can('reports.view');
 
   // Admin

@@ -189,7 +189,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const tag = req.body?.quoteId ? suggestedQuoteId(list, String(req.body.quoteId)) : null;
     const m = await chat.post(conv.id, u.id, content, 'text', tag);
     await chat.markRead(conv.id, u.id, m.id);
-    live(conv.leadId, conv.id, 'message', { messageId: m.id });
+    live(conv.leadId, conv.id, 'message', { messageId: m.id, leadRef: await leadRefOf(conv.leadId), preview: content.slice(0, 140), userId: u.id });
     await notifyChat(conv, u, content);
     const ref = await leadRefOf(conv.leadId);
     return { data: await presentMessage(u, ref, list, { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind }) };
@@ -212,7 +212,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       uploads.commit(chatFileKey(msg.id), mpart.files, u.id);
       // Rename in manifest is already redacted at read time.
       await chat.markRead(conv.id, u.id, msg.id);
-      live(conv.leadId, conv.id, 'message', { messageId: msg.id });
+      live(conv.leadId, conv.id, 'message', { messageId: msg.id, leadRef: ref, preview: (content || 'Attachment').slice(0, 140), userId: u.id });
       await notifyChat(conv, u, content || 'Attachment');
       const row = { ...msg, sender_id: msg.senderId, body: msg.body, created_at: msg.createdAt, quote_id: msg.quoteId, kind: msg.kind };
       return { data: await presentMessage(u, ref, list, row) };
@@ -241,7 +241,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     if (!card) throw Object.assign(new Error('Quote not found'), { status: 404 });
     const m = await chat.post(conv.id, u.id, formatSafe(card), 'quote_reference', qid);
     await chat.markRead(conv.id, u.id, m.id);
-    live(conv.leadId, conv.id, 'message', { messageId: m.id });
+    live(conv.leadId, conv.id, 'message', { messageId: m.id, leadRef: ref, preview: `Quote reference: ${card.quoteLabel}`, userId: u.id });
     await notifyChat(conv, u, `Quote reference: ${card.quoteLabel}`);
     return { data: await presentMessage(u, ref, list, { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind }) };
   };

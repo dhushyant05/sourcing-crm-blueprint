@@ -20,6 +20,7 @@ import 'screens/quotes_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/products_screen.dart';
+import 'widgets/floating_chat_button.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -67,6 +68,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       final idx = _i.clamp(0, pages.length - 1);
       return Scaffold(
         body: IndexedStack(index: idx, children: pages),
+        floatingActionButton: s.perms.canChat ? const FloatingChatButton() : null,
         bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [NavigationBar(
           selectedIndex: idx,
           onDestinationSelected: (i) => setState(() => _i = i),
@@ -93,6 +95,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
         Expanded(child: IndexedStack(index: idx, children: pages)),
       ]),
+      floatingActionButton: s.perms.canChat ? const FloatingChatButton() : null,
       bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [NavigationBar(
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: idx,

@@ -57,6 +57,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get teamInboxes => '团队收件箱';
 
   @override
+  String get openChat => '打开聊天';
+
+  @override
   String get addYourChatwootAccessTokenIn => '请在设置中添加 Chatwoot 访问令牌以使用聊天。';
 
   @override
