@@ -11,6 +11,7 @@ import { Customers } from './pages/Customers';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Team } from './pages/Team';
+import { ChatPage } from './pages/Chat';
 import { Greetings } from './pages/Greetings';
 import { Landing } from './pages/Landing';
 import { Marketplace } from './catalog/Marketplace';
@@ -24,7 +25,7 @@ import { DownloadPage } from './pages/Download';
 import { Portal } from './portal/Portal';
 import type { Lead } from './lib/types';
 
-const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'greetings', 'products', 'banners', 'applications', 'users', 'settings'];
+const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'greetings', 'products', 'banners', 'applications', 'chat', 'users', 'settings'];
 const hashRoute = () => location.hash.replace(/^#\/?/, '').split('?')[0];
 const hashQuery = () => new URLSearchParams(location.hash.split('?')[1] || '');
 const fromHash = (fallback: Route = 'dashboard'): Route => (routes.find((r) => r === hashRoute()) ?? fallback);
@@ -52,7 +53,7 @@ function Shell() {
   }, [api]);
   useEffect(() => {
     if (isSupplier && !['products', 'settings'].includes(route)) go('products');
-    else if (catalogOnly && !['products', 'banners', 'applications', 'settings'].includes(route)) go('products');
+    else if (catalogOnly && !['products', 'banners', 'applications', 'chat', 'settings'].includes(route)) go('products');
   }, [catalogOnly, isSupplier, route]);
   if (!session) return <Login />;
   return (
@@ -68,6 +69,7 @@ function Shell() {
       {route === 'products' && perms.can('catalog.edit') && (supplierReady ? <Products /> : <SupplierStatus />)}
       {route === 'banners' && perms.can('catalog.banners') && <Banners />}
       {route === 'applications' && canReviewSuppliers && <SupplierApplications />}
+      {route === 'chat' && session?.role !== 'SUPPLIER' && <ChatPage openLead={setLead} />}
       {route === 'users' && perms.manageUsers && <Team />}
       {route === 'settings' && <Settings />}
       <LeadPanel lead={lead} onClose={() => setLead(null)} />

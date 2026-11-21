@@ -1,4 +1,4 @@
-import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff, ShippingRequestChina, GreetingStaff } from './types';
+import type { Attachment, BackupLink, Currency, Lead, LeadStatus, Shipment, Supplier, SupplierDetail, Customer, CustomerDetail, User , AppNotification, StaffLite, Office, LeadQuote, QuoteInput, QuoteSupplier, Order, CustomerQuote, Timeline, Sla, SlaSettings, SlaReport, PermMatrix, PortalLogin, PortalLoginRequest, PortalLeadShare, ShippingRequestStaff, ShippingRequestChina, GreetingStaff, LeadChat, LeadChatMessage, ChatInbox, ChatThread, CustomRole, TeamInboxAdmin, CannedReply } from './types';
 import type { Role } from './roles';
 import { demo } from './demo';
 
@@ -100,6 +100,35 @@ export interface Api {
   attachments(leadId: string): Promise<Attachment[]>;
   /** Supplier quotes on a lead (China adds; India sees them without supplier identity). */
   quotes(leadId: string): Promise<LeadQuote[]>;
+  /** Native India↔China staff chat (always on when the user has a chat permission). */
+  chatStatus?(): Promise<{ enabled: boolean }>;
+  leadChat?(leadId: string): Promise<LeadChat>;
+  openLeadChat?(leadId: string): Promise<LeadChat>;
+  sendLeadChat?(leadId: string, content: string, quoteId?: string): Promise<LeadChatMessage>;
+  attachQuoteReference?(leadId: string, quoteId?: string): Promise<LeadChatMessage>;
+  chatInboxes?(): Promise<ChatInbox[]>;
+  inboxConversations?(inboxId: string): Promise<ChatThread[]>;
+  conversation?(id: string): Promise<LeadChat>;
+  sendConversationMessage?(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[] }): Promise<LeadChatMessage>;
+  markChatRead?(id: string): Promise<void>;
+  sendTyping?(id: string): Promise<void>;
+  assignConversation?(id: string, userId: string | null): Promise<void>;
+  addChatParticipant?(id: string, userId: string): Promise<void>;
+  searchChat?(q: string): Promise<ChatThread[]>;
+  cannedReplies?(): Promise<CannedReply[]>;
+  createCanned?(title: string, body: string): Promise<CannedReply>;
+  updateCanned?(id: string, patch: { title?: string; body?: string }): Promise<CannedReply>;
+  deleteCanned?(id: string): Promise<void>;
+  customRoles?(): Promise<CustomRole[]>;
+  createCustomRole?(name: string, description?: string, permissions?: Record<string, boolean>): Promise<CustomRole>;
+  updateCustomRole?(id: string, patch: { name?: string; description?: string | null }): Promise<CustomRole>;
+  deleteCustomRole?(id: string): Promise<void>;
+  setCustomRolePermissions?(id: string, permissions: Record<string, boolean>): Promise<CustomRole>;
+  assignCustomRole?(userId: string, roleId: string | null): Promise<void>;
+  teamInboxes?(): Promise<TeamInboxAdmin[]>;
+  setTeamInboxMembers?(id: string, userIds: string[]): Promise<void>;
+  chatFileUrl?(conversationId: string, messageId: string, fileId: string): Promise<string>;
+
   createQuote(leadId: string, q: QuoteInput): Promise<LeadQuote>;
   updateQuote(id: string, q: QuoteInput | { clientPrice?: number | string | null; clientCurrency?: string; clientNotes?: string }): Promise<LeadQuote>;
   deleteQuote(id: string): Promise<void>;
@@ -344,6 +373,52 @@ export class ServerApi implements Api {
     await this.req('PATCH', `/records/leads/${id}`, { assignedOffice: 'CHINA', status: 'ASSIGNED', ...(agent ? { assignedChinaAgent: agent } : {}) });
   }
   quotes(leadId: string) { return this.req<LeadQuote[]>('GET', `/leads/${encodeURIComponent(leadId)}/quotes`); }
+  chatStatus() { return this.req<{ enabled: boolean }>('GET', '/chat/status'); }
+  leadChat(leadId: string) { return this.req<LeadChat>('GET', `/leads/${encodeURIComponent(leadId)}/chat`); }
+  openLeadChat(leadId: string) { return this.req<LeadChat>('POST', `/leads/${encodeURIComponent(leadId)}/chat`, {}); }
+  sendLeadChat(leadId: string, content: string, quoteId?: string) { return this.req<LeadChatMessage>('POST', `/leads/${encodeURIComponent(leadId)}/chat/messages`, { content, ...(quoteId ? { quoteId } : {}) }); }
+  attachQuoteReference(leadId: string, quoteId?: string) { return this.req<LeadChatMessage>('POST', `/leads/${encodeURIComponent(leadId)}/chat/quote-reference`, { quoteId }); }
+  chatInboxes() { return this.req<ChatInbox[]>('GET', '/chat/inboxes'); }
+  inboxConversations(inboxId: string) { return this.req<ChatThread[]>('GET', `/chat/inboxes/${encodeURIComponent(inboxId)}/conversations`); }
+  conversation(id: string) { return this.req<LeadChat>('GET', `/chat/conversations/${encodeURIComponent(id)}`); }
+  async sendConversationMessage(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[] }) {
+    if (body.files?.length) {
+      const fd = new FormData();
+      if (body.content) fd.append('content', body.content);
+      if (body.quoteId) fd.append('quoteId', body.quoteId);
+      if (body.cannedId) fd.append('cannedId', body.cannedId);
+      for (const f of body.files) fd.append('files', f, f.name);
+      const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', headers: { authorization: `Bearer ${this.token}` }, body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (res.status === 401) this.onAuthError();
+      if (!res.ok) throw new HttpError((j as any).error ?? `HTTP ${res.status}`, res.status);
+      return (j as any).data as LeadChatMessage;
+    }
+    return this.req<LeadChatMessage>('POST', `/chat/conversations/${encodeURIComponent(id)}/messages`, { content: body.content, quoteId: body.quoteId, cannedId: body.cannedId });
+  }
+  async markChatRead(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/read`, {}); }
+  async sendTyping(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/typing`, {}); }
+  async assignConversation(id: string, userId: string | null) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/assign`, { userId }); }
+  async addChatParticipant(id: string, userId: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/participants`, { userId }); }
+  searchChat(q: string) { return this.req<ChatThread[]>('GET', `/chat/search?q=${encodeURIComponent(q)}`); }
+  cannedReplies() { return this.req<CannedReply[]>('GET', '/chat/canned'); }
+  createCanned(title: string, body: string) { return this.req<CannedReply>('POST', '/chat/canned', { title, body }); }
+  updateCanned(id: string, patch: { title?: string; body?: string }) { return this.req<CannedReply>('PATCH', `/chat/canned/${encodeURIComponent(id)}`, patch); }
+  async deleteCanned(id: string) { await this.req('DELETE', `/chat/canned/${encodeURIComponent(id)}`); }
+  customRoles() { return this.req<CustomRole[]>('GET', '/chat/roles'); }
+  createCustomRole(name: string, description?: string, permissions?: Record<string, boolean>) { return this.req<CustomRole>('POST', '/chat/roles', { name, description, permissions }); }
+  updateCustomRole(id: string, patch: { name?: string; description?: string | null }) { return this.req<CustomRole>('PATCH', `/chat/roles/${encodeURIComponent(id)}`, patch); }
+  async deleteCustomRole(id: string) { await this.req('DELETE', `/chat/roles/${encodeURIComponent(id)}`); }
+  setCustomRolePermissions(id: string, permissions: Record<string, boolean>) { return this.req<CustomRole>('POST', `/chat/roles/${encodeURIComponent(id)}/permissions`, permissions); }
+  async assignCustomRole(userId: string, roleId: string | null) { await this.req('POST', `/users/${encodeURIComponent(userId)}/custom-role`, { roleId }); }
+  teamInboxes() { return this.req<TeamInboxAdmin[]>('GET', '/chat/team-inboxes'); }
+  async setTeamInboxMembers(id: string, userIds: string[]) { await this.req('POST', `/chat/team-inboxes/${encodeURIComponent(id)}/members`, { userIds }); }
+  async chatFileUrl(conversationId: string, messageId: string, fileId: string) {
+    const res = await fetch(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/files/${encodeURIComponent(fileId)}`, { headers: { authorization: `Bearer ${this.token}` } });
+    if (res.status === 401) this.onAuthError();
+    if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
+    return URL.createObjectURL(await res.blob());
+  }
   createQuote(leadId: string, q: QuoteInput) { return this.req<LeadQuote>('POST', `/leads/${encodeURIComponent(leadId)}/quotes`, q); }
   updateQuote(id: string, q: object) { return this.req<LeadQuote>('PATCH', `/quotes/${encodeURIComponent(id)}`, q); }
   async deleteQuote(id: string) { await this.req('DELETE', `/quotes/${encodeURIComponent(id)}`); }
@@ -434,6 +509,33 @@ export class DemoApi implements Api {
   async attachments(leadId: string) { return structuredClone(demo.attachments[leadId] ?? []); }
   private dq: LeadQuote[] = []; private ds: QuoteSupplier[] = [{ id: 'ds1', name: 'Yiwu Hardware Co.', contact: 'Ms Li', phone: '+86 139 0000 0000', wechat: 'yiwu_hw', city: 'Yiwu' }];
   async quotes(leadId: string) { return structuredClone(this.dq.filter((q) => q.leadId === leadId)); }
+  async chatStatus() { return { enabled: false }; }
+  async leadChat(_leadId: string): Promise<LeadChat> { return { enabled: false, conversationId: null, messages: [], quotes: [], suggestedQuoteId: null }; }
+  async openLeadChat(leadId: string) { return this.leadChat(leadId); }
+  async sendLeadChat(): Promise<LeadChatMessage> { throw new Error('Chat is not available in the demo'); }
+  async attachQuoteReference(): Promise<LeadChatMessage> { throw new Error('Chat is not available in the demo'); }
+  async chatInboxes() { return []; }
+  async inboxConversations() { return []; }
+  async conversation(): Promise<LeadChat> { return { enabled: false, conversationId: null, messages: [], quotes: [], suggestedQuoteId: null }; }
+  async sendConversationMessage(): Promise<LeadChatMessage> { throw new Error('Chat is not available in the demo'); }
+  async markChatRead() {}
+  async sendTyping() {}
+  async assignConversation() {}
+  async addChatParticipant() {}
+  async searchChat() { return []; }
+  async cannedReplies() { return []; }
+  async createCanned(): Promise<CannedReply> { throw new Error('Chat is not available in the demo'); }
+  async updateCanned(): Promise<CannedReply> { throw new Error('Chat is not available in the demo'); }
+  async deleteCanned() {}
+  async customRoles() { return []; }
+  async createCustomRole(): Promise<CustomRole> { throw new Error('Not available in the demo'); }
+  async updateCustomRole(): Promise<CustomRole> { throw new Error('Not available in the demo'); }
+  async deleteCustomRole() {}
+  async setCustomRolePermissions(): Promise<CustomRole> { throw new Error('Not available in the demo'); }
+  async assignCustomRole() {}
+  async teamInboxes() { return []; }
+  async setTeamInboxMembers() {}
+  async chatFileUrl(_c?: string, _m?: string, _f?: string): Promise<string> { throw new Error('Chat is not available in the demo'); }
   async allQuotes() { return structuredClone(this.dq.map((q) => ({ ...q, status: q.status ?? 'DRAFT', leadRef: demo.leads.find((l) => l.id === q.leadId)?.leadRef ?? null }))); }
   async saveCustomerQuote(id: string, c: any) { const q = this.dq.find((x) => x.id === id)!; const n = (k: string) => Number(c[k] ?? 0); q.cq = { qty: n('qty'), unitPrice: n('unitPrice'), gstPct: n('gstPct'), shipCost: n('shipCost'), otherCharges: n('otherCharges'), shipTerm: c.shipTerm ?? null, shipMode: c.shipMode ?? null, port: c.port ?? null, transit: c.transit ?? null, otherLabel: c.otherLabel ?? null, validity: c.validity ?? null, terms: c.terms ?? null };
     const sub = q.cq.qty * q.cq.unitPrice, tx = sub + q.cq.shipCost + q.cq.otherCharges; q.cqTotals = { subtotal: sub, taxable: tx, gst: tx * q.cq.gstPct / 100, total: tx * (1 + q.cq.gstPct / 100) }; q.clientPrice = q.cq.unitPrice; return structuredClone(q); }

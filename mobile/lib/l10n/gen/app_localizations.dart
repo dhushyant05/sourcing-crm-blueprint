@@ -164,6 +164,36 @@ abstract class AppLocalizations {
   /// **'India ⇄ China chat'**
   String get indiaChinaChat;
 
+  /// No description provided for @chatUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat is not available for your account.'**
+  String get chatUnavailable;
+
+  /// No description provided for @attachQuoteReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach quote reference'**
+  String get attachQuoteReference;
+
+  /// No description provided for @quoteToAttach.
+  ///
+  /// In en, this message translates to:
+  /// **'Quote to attach'**
+  String get quoteToAttach;
+
+  /// No description provided for @myInbox.
+  ///
+  /// In en, this message translates to:
+  /// **'My inbox'**
+  String get myInbox;
+
+  /// No description provided for @teamInboxes.
+  ///
+  /// In en, this message translates to:
+  /// **'Team inboxes'**
+  String get teamInboxes;
+
   /// No description provided for @addYourChatwootAccessTokenIn.
   ///
   /// In en, this message translates to:

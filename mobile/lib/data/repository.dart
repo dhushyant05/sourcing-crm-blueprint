@@ -312,6 +312,17 @@ class SourceEasyRepository {
         'chatwootThreadUrl': {'primaryLinkUrl': url},
       }, id: sourcingRequestId);
 
+  Future<bool> chatEnabled() => api.chatEnabled();
+
+  Future<Map<String, dynamic>> leadChat(String leadId, {bool open = false}) => api.leadChat(leadId, open: open);
+
+  Future<Map<String, dynamic>> sendLeadChat(String leadId, String content, {String? quoteId}) => api.sendLeadChat(leadId, content, quoteId: quoteId);
+
+  Future<Map<String, dynamic>> attachQuoteReference(String leadId, {String? quoteId}) =>
+      api.attachQuoteReference(leadId, quoteId: quoteId);
+  Future<List<Map<String, dynamic>>> chatInboxes() => api.chatInboxes();
+  Future<List<Map<String, dynamic>>> inboxConversations(String inboxId) => api.inboxConversations(inboxId);
+
   Future<List<Supplier>> suppliers({String? sourcingRequestId}) async {
     if (!perms.canSeeSupplierDetails) return const [];
     final rows = await _read('suppliers:$sourcingRequestId', 'suppliers', Supplier.gqlFields,

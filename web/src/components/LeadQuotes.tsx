@@ -13,7 +13,7 @@ const CUR: { v: QuoteCurrency; label: string; sym: string }[] = [{ v: 'USD', lab
 const money = (n: number | null | undefined, c?: string | null) => n == null ? '—' : `${CUR.find((x) => x.v === c)?.sym ?? ''}${n.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${CUR.find((x) => x.v === c)?.label ?? c ?? ''}`;
 
 /** Supplier quotes on a lead. China adds/edits (with supplier + media); India sees product/price/media only and adds its INR selling price. */
-export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lead?: Lead | null; onLeadStatus?: (s: string) => void }) {
+export function LeadQuotes({ leadId, lead, onLeadStatus, onAttachQuote }: { leadId: string; lead?: Lead | null; onLeadStatus?: (s: string) => void; onAttachQuote?: (quoteId: string) => void }) {
   const { api, perms } = useApp();
   const { t } = useTranslation();
   const china = perms.suppliers, india = perms.customers;
@@ -50,15 +50,18 @@ export function LeadQuotes({ leadId, lead, onLeadStatus }: { leadId: string; lea
     {!list ? <p className="mt-2 text-sm text-ink-400">{t('leads.loadingFiles')}</p> : list.length === 0 ? <p className="mt-2 text-sm text-ink-400">{china ? t('lq.noneChina') : t('lq.none')}</p> : (
       <ul className="mt-3 space-y-3">
         {list.map((q, i) => (
-          <li key={q.id} data-testid="quote-card" className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
+          <li key={q.id} id={`quote-${q.id}`} data-testid="quote-card" className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-[11px] font-mono text-ink-400">{q.label ?? `Q${i + 1}`}{!!q.revision && <span data-testid="quote-rev" className="rounded bg-ink-100 px-1 text-ink-600 dark:bg-ink-800 dark:text-ink-300">{t('sb.rev', { n: q.revision })}</span>}<QuoteStatusChip s={q.status} /></div>
                 <div className="font-medium text-ink-900 dark:text-white">{q.product}</div>
                 <div className="mt-0.5 text-lg font-semibold text-brand-700 dark:text-brand-300">{money(q.unitPrice, q.currency)} <span className="text-xs font-normal text-ink-400">/ {t('lq.unit')}</span></div>
               </div>
-              {canEdit(q) && <><button aria-label={t('common.edit')} onClick={() => setForm(q)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"><Pencil size={15} /></button>
+              <div className="flex shrink-0 items-center gap-1">
+                {onAttachQuote && <button type="button" data-testid="quote-chat-ref" className="rounded-lg px-2 py-1 text-xs text-brand-700 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10" onClick={() => onAttachQuote(q.id)}>{t('chat.attachQuote')}</button>}
+                {canEdit(q) && <><button aria-label={t('common.edit')} onClick={() => setForm(q)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"><Pencil size={15} /></button>
                 <button aria-label={t('common.remove')} onClick={() => void del(q)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button></>}
+              </div>
             </div>
             <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
               {([['lq.moq', q.moq], ['lq.leadTime', q.leadTime], ['lq.validity', q.validity]] as const).map(([k, v]) => <div key={k}><dt className="text-ink-400">{t(k)}</dt><dd className="text-ink-800 dark:text-ink-100">{v || '—'}</dd></div>)}

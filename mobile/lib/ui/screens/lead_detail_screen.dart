@@ -294,6 +294,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with LiveRefresh {
                   label: Text(context.l10n.shipping),
                   onPressed: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ShippingScreen(leadId: l.id))),
                 ),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  label: Text(context.l10n.chat),
+                  onPressed: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ChatScreen(leadId: l.id, leadRef: l.leadRef, title: l.productInterest ?? l.name))),
+                ),
                 if (p.canCreateLead && !['WON', 'LOST'].contains(l.status)) ...[
                   OutlinedButton(onPressed: () => _close(l, true), child: Text(context.l10n.closeWon)),
                   OutlinedButton(onPressed: () => _close(l, false), child: Text(context.l10n.closeLost)),
@@ -307,14 +312,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> with LiveRefresh {
                       title: Text([r.leadRef, r.productDescription ?? r.name].whereType<String>().join(' · ')),
                       subtitle: Text(context.l10n.samplesStatus(codeLabel(context, r.sampleStatus)) +
                           (r.deadline != null ? ' · ${context.l10n.deadlineOn(dateFmt.format(r.deadline!))}' : '')),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        IconButton(
-                          tooltip: context.l10n.chatThread,
-                          icon: const Icon(Icons.chat_bubble_outline),
-                          onPressed: () => Navigator.push(c, MaterialPageRoute(builder: (_) => ChatScreen(request: r))),
-                        ),
-                        const Icon(Icons.chevron_right),
-                      ]),
+                      trailing: const Icon(Icons.chevron_right),
                       onTap: () async {
                         await Navigator.push(c, MaterialPageRoute(builder: (_) => QuotationScreen(lead: l, request: r)));
                         _reload();

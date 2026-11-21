@@ -304,11 +304,52 @@ class TimelineEvent {
 }
 
 class ChatMessage {
-  ChatMessage({required this.id, required this.content, required this.outgoing, required this.sender, required this.at});
-  final int id;
+  ChatMessage({required this.id, required this.content, required this.outgoing, required this.sender, required this.at,
+      this.quoteLabel, this.quoteProduct, this.quoteMoq, this.quoteCarton});
+  final String id;
   final String content, sender;
   final bool outgoing;
   final DateTime at;
+  final String? quoteLabel, quoteProduct, quoteMoq, quoteCarton;
+  bool get isQuoteRef => quoteLabel != null && quoteLabel!.isNotEmpty;
+
+  factory ChatMessage.fromJson(Map<String, dynamic> j, {String? me}) {
+    final q = j['quoteReference'] is Map ? Map<String, dynamic>.from(j['quoteReference'] as Map) : null;
+    String? carton;
+    if (q?['carton'] is Map) {
+      final c = Map<String, dynamic>.from(q!['carton'] as Map);
+      final dims = (c['lengthCm'] != null && c['widthCm'] != null && c['heightCm'] != null)
+          ? '${c['lengthCm']} × ${c['widthCm']} × ${c['heightCm']} cm' : null;
+      final n = c['cartonCount'];
+      final cartons = n == null ? null : '$n carton${n == 1 ? '' : 's'}';
+      final cbm = c['totalCbm'] != null ? '${c['totalCbm']} CBM' : null;
+      final line = [dims, c['unitsPerCarton'] != null ? '${c['unitsPerCarton']}/carton' : null, cartons, cbm].whereType<String>().join(' · ');
+      if (line.isNotEmpty) carton = line;
+    }
+    final sender = (j['senderName'] as String?) ?? 'Staff';
+    return ChatMessage(
+      id: '${j['id']}',
+      content: (j['content'] as String?) ?? '',
+      outgoing: me != null ? sender == me : j['outgoing'] == true,
+      sender: sender,
+      at: DateTime.tryParse('${j['at'] ?? ''}') ?? DateTime.now(),
+      quoteLabel: q?['quoteLabel'] as String?,
+      quoteProduct: q?['product'] as String?,
+      quoteMoq: q?['moq'] as String?,
+      quoteCarton: carton,
+    );
+  }
+}
+
+class ChatQuoteOption {
+  ChatQuoteOption({required this.id, required this.label, this.product});
+  final String id, label;
+  final String? product;
+  factory ChatQuoteOption.fromJson(Map<String, dynamic> j) => ChatQuoteOption(
+        id: (j['quoteId'] as String?) ?? '',
+        label: (j['quoteLabel'] as String?) ?? '',
+        product: j['product'] as String?,
+      );
 }
 
 class StaffLite {

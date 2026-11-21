@@ -1765,7 +1765,7 @@ function bannerDto(r: any) {
 
 /** Routes a Marketplace Team login may call. Everything else is 403. */
 export function marketplaceTeamAllowed(url: string) {
-  return /^\/api\/me(\/|$)/.test(url) || /^\/api\/products(\/|$)/.test(url) || /^\/api\/catalog(\/|$)/.test(url) || /^\/api\/banners(\/|$)/.test(url) || /^\/api\/supplier(\/|$)/.test(url);
+  return /^\/api\/me(\/|$)/.test(url) || /^\/api\/products(\/|$)/.test(url) || /^\/api\/catalog(\/|$)/.test(url) || /^\/api\/banners(\/|$)/.test(url) || /^\/api\/supplier(\/|$)/.test(url) || /^\/api\/chat(\/|$)/.test(url) || /^\/api\/leads\/[^/]+\/chat/.test(url) || /^\/api\/quotes\/[^/]+\/files/.test(url) || /^\/api\/notifications(\/|$)/.test(url);
 }
 
 /** Suppliers may only use their own catalog and profile routes. */

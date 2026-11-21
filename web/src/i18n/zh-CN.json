@@ -24,7 +24,8 @@
     "greetings": "节日问候",
     "products": "产品",
     "banners": "横幅",
-    "applications": "供应商申请"
+    "applications": "供应商申请",
+    "chat": "聊天"
   },
   "header": {
     "search": "按参考编号、线索、产品搜索…",
@@ -545,7 +546,9 @@
     "SHIP_SLA_WARN_nobody": "{{ref}}：运输请求即将超时",
     "SHIP_SLA_BREACH_nobody": "{{ref}}：运输请求已超时",
     "SHIP_READY": "{{ref}}：运输请求可以订舱",
-    "SHIP_READY_nobody": "{{ref}}：运输请求可以订舱"
+    "SHIP_READY_nobody": "{{ref}}：运输请求可以订舱",
+    "CHAT_MESSAGE": "{{by}} 在 {{ref}} 发了一条消息",
+    "CHAT_MESSAGE_nobody": "{{ref}} 有新消息"
   },
   "lq": {
     "title": "供应商报价",
@@ -946,7 +949,8 @@
       "leads": "线索",
       "admin": "管理",
       "customers": "客户",
-      "catalog": "产品目录"
+      "catalog": "产品目录",
+      "chat": "聊天"
     },
     "k": {
       "suppliers.view": "查看供应商列表",
@@ -973,7 +977,16 @@
       "catalog.price": "设置售价",
       "catalog.publish": "发布产品",
       "catalog.delete": "删除产品",
-      "catalog.banners": "管理商城横幅"
+      "catalog.banners": "管理商城横幅",
+      "chat.view_own": "查看自己的聊天",
+      "chat.view_team": "查看团队收件箱",
+      "chat.view_all": "查看全部聊天",
+      "chat.start": "发起聊天",
+      "chat.reference_quotes": "引用报价",
+      "chat.send_attachments": "发送附件",
+      "chat.manage_canned": "管理快捷回复",
+      "chat.see_customer_fields": "在聊天中查看客户字段",
+      "chat.see_supplier_fields": "在聊天中查看供应商字段"
     }
   },
   "del": {
@@ -1599,5 +1612,46 @@
     "addExtra": "再加一个分类",
     "primary": "主分类（面包屑）",
     "duplicate": "同一层级下已有同名分类"
+  },
+  "chat": {
+    "title": "印度 ⇄ 中国 聊天",
+    "blurb": "这条线索的共享会话。附上报价后，双方都能确认在讨论哪一项。客户姓名、价格和供应商信息不会出现在这里。",
+    "empty": "还没有消息。先发一条，或附上报价参考。",
+    "quotePicker": "要附加的报价",
+    "attachQuote": "附加报价参考",
+    "placeholder": "输入消息…",
+    "send": "发送",
+    "button": "聊天",
+    "tagQuote": "用所选报价标记这条消息",
+    "attachFile": "添加附件",
+    "typing": "{{name}} 正在输入…",
+    "inboxBlurb": "个人收件箱只显示你参与或被授权的会话。团队收件箱由超级管理员分配成员。",
+    "myInbox": "我的收件箱",
+    "teamInboxes": "团队收件箱",
+    "search": "搜索消息…",
+    "noThreads": "此收件箱暂无会话。",
+    "thread": "线索聊天",
+    "pickThread": "请选择一个会话",
+    "openLead": "打开线索",
+    "assignedTo": "分配给",
+    "unassigned": "未分配",
+    "canned": "快捷回复",
+    "cannedTitle": "标题",
+    "cannedBody": "回复内容"
+  },
+  "roles": {
+    "title": "自定义角色与收件箱",
+    "hint": "创建命名角色来设置默认聊天权限。你仍可以为每个人单独勾选或取消权限，更改立即生效。中印隐私规则无法被覆盖。",
+    "name": "角色名称",
+    "description": "说明（可选）",
+    "create": "创建角色",
+    "members": "{{n}} 人",
+    "none": "还没有自定义角色。",
+    "deleteConfirm": "删除角色 {{name}}？人员仍保留其系统角色。",
+    "permHint": "这些是默认值。下方权限清单以及针对个人的勾选仍然有效，被锁定的隐私权限无法打开。",
+    "assignPeople": "把此角色分配给人员",
+    "noCustom": "无自定义角色",
+    "teamInboxes": "团队收件箱",
+    "teamHint": "选择每个团队收件箱的成员。个人收件箱仍只显示自己参与的会话。"
   }
 }

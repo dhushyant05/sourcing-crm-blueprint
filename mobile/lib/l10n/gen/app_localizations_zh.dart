@@ -42,6 +42,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get indiaChinaChat => '印度 ⇄ 中国 聊天';
 
   @override
+  String get chatUnavailable => '当前账号无法使用聊天。';
+
+  @override
+  String get attachQuoteReference => '附加报价参考';
+
+  @override
+  String get quoteToAttach => '要附加的报价';
+
+  @override
+  String get myInbox => '我的收件箱';
+
+  @override
+  String get teamInboxes => '团队收件箱';
+
+  @override
   String get addYourChatwootAccessTokenIn => '请在设置中添加 Chatwoot 访问令牌以使用聊天。';
 
   @override
