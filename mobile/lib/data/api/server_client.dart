@@ -177,4 +177,43 @@ class ServerClient {
 
   Future<Map<String, dynamic>> update(String singular, String id, Map<String, dynamic> data, String fields) async =>
       (await send('PATCH', '/api/records/${_plural(singular)}/$id', body: data) as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> _data(String method, String path, [Object? body]) async {
+    final j = await send(method, path, body: body) as Map<String, dynamic>;
+    return (j['data'] as Map).cast<String, dynamic>();
+  }
+
+  Future<bool> chatEnabled() async {
+    try {
+      final d = await _data('GET', '/api/chat/status');
+      return d['enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> leadChat(String leadId, {bool open = false}) =>
+      _data(open ? 'POST' : 'GET', '/api/leads/${Uri.encodeComponent(leadId)}/chat', open ? <String, dynamic>{} : null);
+
+  Future<Map<String, dynamic>> sendLeadChat(String leadId, String content, {String? quoteId}) =>
+      _data('POST', '/api/leads/${Uri.encodeComponent(leadId)}/chat/messages', {
+        'content': content,
+        if (quoteId != null) 'quoteId': quoteId,
+      });
+
+  Future<Map<String, dynamic>> attachQuoteReference(String leadId, {String? quoteId}) =>
+      _data('POST', '/api/leads/${Uri.encodeComponent(leadId)}/chat/quote-reference', {if (quoteId != null) 'quoteId': quoteId});
+
+  Future<List<Map<String, dynamic>>> _list(String method, String path) async {
+    final j = await send(method, path) as Map<String, dynamic>;
+    return ((j['data'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> chatInboxes() => _list('GET', '/api/chat/inboxes');
+
+  Future<List<Map<String, dynamic>>> inboxConversations(String inboxId) =>
+      _list('GET', '/api/chat/inboxes/${Uri.encodeComponent(inboxId)}/conversations');
 }

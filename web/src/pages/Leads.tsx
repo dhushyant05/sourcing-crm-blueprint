@@ -1,7 +1,7 @@
 import { LeadSendBack } from '../components/SendBack';
 import { RejectionPanel } from '../components/Rejection';
 import { clsx } from 'clsx';
-import { CornerDownLeft, UserCheck, Users, Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
+import { CornerDownLeft, MessageSquare, UserCheck, Users, Download, KanbanSquare, Pencil, Play, Plus, Rows3, Send, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ACCEPT, EXT, FileIcon, fmtSize, isVideoName, tooBig } from '../components/EnquiryForm';
 import { useApp, useLoad } from '../lib/store';
@@ -9,6 +9,7 @@ import { LostActions } from '../components/LostActions';
 import { DeleteLeadDialog } from '../components/DeleteLead';
 import { BigSla, PriorityBadge, SlaChip, WorkflowPanel } from '../components/Workflow';
 import { LeadQuotes } from '../components/LeadQuotes';
+import { LeadChat } from '../components/LeadChat';
 import { PIPELINE, type Attachment, type Currency, type Customer, type Lead, type LeadStatus, type Office, type StaffLite } from '../lib/types';
 import { useTranslation } from 'react-i18next';
 import i18n, { fmtDate } from '../i18n';
@@ -264,7 +265,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   const [mode, setMode] = useState<Office | null>(null), [busy, setBusy] = useState(false);
   const [staff, setStaff] = useState<StaffLite[] | null>(null), [pickTo, setPickTo] = useState('');
   const [editSum, setEditSum] = useState<string | null>(null), [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { setLead(initial); setMode(null); setEditSum(null); setMsg(null); }, [initial]);
+  useEffect(() => { setLead(initial); setMode(null); setEditSum(null); setMsg(null); setChatQuoteId(null); }, [initial]);
   // Live: refresh the open lead when the server reports a change on it.
   useEffect(() => {
     const id = initial?.id; if (!id) return;
@@ -292,6 +293,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   };
   const [newReq, setNewReq] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const [chatQuoteId, setChatQuoteId] = useState<string | null>(null);
   // Someone else deleted this lead: close the drawer (live).
   useEffect(() => {
     const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.deleted && lead && d.id === lead.id) { setMsg(t('del.goneLive')); setTimeout(onClose, 1500); } };
@@ -310,7 +312,7 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
   return (<>
     <SlideOver open={!!lead} onClose={onClose} title={lead && who(lead, perms.customers)}
       subtitle={lead && <div className="flex flex-wrap items-center gap-2"><RefTag v={lead.leadRef} /><Chip value={lead.status} />{lead.unassignedIndia && <UnassignedBadge />}{lead.rejection?.actionNeeded && <RejChip />}{lead.sendBack && <SbChip side={lead.sendBack.side} />}{lead.priority && <PriorityBadge />}<span>{lead.productInterest}</span>{lead.sla && <div className="basis-full"><BigSla sla={lead.sla} /></div>}</div>}
-      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline !border-rose-300 !text-rose-600 hover:!bg-rose-50" data-testid="lead-delete" disabled={busy} onClick={() => setDelOpen(true)}><Trash2 size={15} />{t('del.button')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
+      footer={<><button className="btn-outline" onClick={onClose}>{t('common.close')}</button>{perms.can('quotes.view') && <button type="button" className="btn-outline" data-testid="lead-chat-open" onClick={() => document.getElementById('lead-chat')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><MessageSquare size={15} />{t('chat.button')}</button>}{perms.customers && <button className="btn-outline" data-testid="lead-new-sourcing" onClick={() => setNewReq(true)}><Plus size={15} />{t('leads.newSourcing')}</button>}{perms.can('leads.delete') && <button className="btn-outline !border-rose-300 !text-rose-600 hover:!bg-rose-50" data-testid="lead-delete" disabled={busy} onClick={() => setDelOpen(true)}><Trash2 size={15} />{t('del.button')}</button>}{!mode && canTake && <button className="btn-outline" data-testid="assign-take" disabled={busy} onClick={() => void assign(owner, session!.id!)}><UserCheck size={15} />{t('assign.takeIt')}</button>}
         {!mode && canReassign && <button className="btn-outline" data-testid="assign-reassign" onClick={() => openPicker(owner)}><Users size={15} />{t('assign.reassign')}</button>}
         {!mode && canReturn && <button className="btn-primary" data-testid="assign-return" onClick={() => openPicker('INDIA')}><CornerDownLeft size={15} />{t('assign.returnIndia')}</button>}
         {!mode && canSend && <button className="btn-primary" data-testid="assign-china" onClick={() => openPicker('CHINA')}><Send size={15} />{t('assign.sendChina')}</button>}</>}>
@@ -371,7 +373,8 @@ export function LeadPanel({ lead: initial, onClose }: { lead: Lead | null; onClo
           <LostActions lead={lead} onChange={(l) => setLead({ ...lead, ...l })} openLead={(l) => setLead(l)} />
           <LeadSendBack lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
           <RejectionPanel lead={lead} onChange={(l) => setLead({ ...lead, ...l })} />
-          <LeadQuotes leadId={lead.id} lead={lead} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
+          <LeadQuotes leadId={lead.id} lead={lead} onAttachQuote={(id) => { setChatQuoteId(id); document.getElementById('lead-chat')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} onLeadStatus={(st) => { if (st === 'REJECTED') void api.lead(lead.id).then((l) => l && setLead({ ...lead, ...l })); else setLead({ ...lead, status: st as Lead['status'] }); }} />
+          <div id="lead-chat"><LeadChat leadId={lead.id} preferredQuoteId={chatQuoteId} onOpenQuote={(id) => { setChatQuoteId(id); document.getElementById(`quote-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }} /></div>
           <WorkflowPanel lead={lead} onPriority={(on) => setLead({ ...lead, priority: on })} />
         </>
       )}

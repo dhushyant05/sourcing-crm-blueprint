@@ -84,7 +84,7 @@ class ChatwootClient {
     return list
         .where((m) => (m['content'] as String?)?.isNotEmpty ?? false)
         .map((m) => ChatMessage(
-              id: (m['id'] as num).toInt(),
+              id: '${m['id']}',
               content: m['content'] as String,
               // message_type: 0 incoming, 1 outgoing, 2 activity
               outgoing: m['message_type'] == 1,

@@ -40,13 +40,6 @@ class SettingsScreen extends StatelessWidget {
             child: Text(context.l10n.syncNow),
           ),
         ),
-        ListTile(
-          leading: const Icon(Icons.chat_outlined),
-          title: Text(context.l10n.chatwootConnection),
-          subtitle: Text(s.config.chatwootToken.isEmpty ? context.l10n.notConfigured : '${s.config.chatwootUrl} · account ${s.config.chatwootAccountId}'),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatwootSettingsScreen())),
-        ),
-        const Divider(),
         const QuickUnlockSettings(),
         if (p.canDownloadBackups)
           ListTile(
@@ -74,51 +67,6 @@ class SettingsScreen extends StatelessWidget {
         FutureBuilder<PackageInfo>(
           future: PackageInfo.fromPlatform(),
           builder: (c, snap) => AboutListTile(applicationName: 'Source Easy', applicationLegalese: 'Source Easy — ${c.l10n.tagline}\nsourceeasy.in', applicationIcon: Image.asset('assets/brand/mark.png', height: 48), applicationVersion: snap.hasData ? '${snap.data!.version} (${snap.data!.buildNumber})' : '', icon: const Icon(Icons.info_outline)),
-        ),
-      ]),
-    );
-  }
-}
-
-class ChatwootSettingsScreen extends StatefulWidget {
-  const ChatwootSettingsScreen({super.key});
-  @override
-  State<ChatwootSettingsScreen> createState() => _ChatwootSettingsScreenState();
-}
-
-class _ChatwootSettingsScreenState extends State<ChatwootSettingsScreen> {
-  late final cfg = context.read<Session>().config;
-  late final _url = TextEditingController(text: cfg.chatwootUrl);
-  late final _acct = TextEditingController(text: '${cfg.chatwootAccountId}');
-  late final _inbox = TextEditingController(text: '${cfg.chatwootInboxId}');
-  late final _token = TextEditingController(text: cfg.chatwootToken);
-
-  @override
-  Widget build(BuildContext context) {
-    const gap = SizedBox(height: 12);
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.chatwoot)),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _url, decoration: InputDecoration(labelText: context.l10n.chatwootURL)),
-        gap,
-        TextField(controller: _acct, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.l10n.accountID)),
-        gap,
-        TextField(controller: _inbox, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.l10n.internalAPIInboxID)),
-        gap,
-        TextField(controller: _token, obscureText: true,
-            decoration: InputDecoration(labelText: context.l10n.yourAccessToken, helperText: context.l10n.chatwootProfileSettingsAccessToken)),
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: () async {
-            cfg
-              ..chatwootUrl = _url.text.trim()
-              ..chatwootAccountId = int.tryParse(_acct.text) ?? 1
-              ..chatwootInboxId = int.tryParse(_inbox.text) ?? 1
-              ..chatwootToken = _token.text.trim();
-            await context.read<Session>().saveConfig();
-            if (context.mounted) Navigator.pop(context);
-          },
-          child: Text(context.l10n.save),
         ),
       ]),
     );

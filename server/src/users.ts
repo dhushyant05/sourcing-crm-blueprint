@@ -4,12 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { isRole, type Role } from './roles.js';
 import type { Db } from './db.js';
 
-export interface User { id: string; email: string; name: string; role: Role; active: boolean; createdAt: string; language?: Language }
+export interface User { id: string; email: string; name: string; role: Role; active: boolean; createdAt: string; language?: Language; customRoleId?: string | null }
 export const LANGUAGES = ['en', 'zh-CN'] as const;
 export type Language = (typeof LANGUAGES)[number];
-interface Row { id: string; email: string; name: string; role: string; password_hash: string; active: boolean; created_at: string; token_version: number; language: string | null }
+interface Row { id: string; email: string; name: string; role: string; password_hash: string; active: boolean; created_at: string; token_version: number; language: string | null; custom_role_id?: string | null }
 
-const toUser = (r: Row): User => ({ id: r.id, email: r.email, name: r.name, role: r.role as Role, active: !!r.active, createdAt: r.created_at, ...(r.language ? { language: r.language as Language } : {}) });
+const toUser = (r: Row): User => ({ id: r.id, email: r.email, name: r.name, role: r.role as Role, active: !!r.active, createdAt: r.created_at, customRoleId: r.custom_role_id ?? null, ...(r.language ? { language: r.language as Language } : {}) });
 export const MIN_PASSWORD = 1; // any non-empty staff password is accepted
 const DUMMY = bcrypt.hashSync('not-a-real-password', 12);
 
@@ -87,6 +87,11 @@ export class UserStore {
   activeSuperAdmins() { return this.list().filter((u) => u.role === 'SUPER_ADMIN' && u.active).length; }
   /** Hard delete. Sessions die immediately because the auth check looks the user up on every request. */
   async remove(id: string) { const n = await this.db.run('DELETE FROM users WHERE id = ?', id); await this.changed(id); return n > 0; }
+  async setCustomRole(id: string, roleId: string | null) {
+    await this.db.run('UPDATE users SET custom_role_id = ? WHERE id = ?', roleId, id);
+    await this.changed(id);
+    return this.byId(id);
+  }
   /** Create the super admin from env on first boot (never overwrites an existing password). */
   async bootstrap(email?: string, password?: string, name = 'Super Admin') {
     if (!email || !password || this.row(email)) return false;

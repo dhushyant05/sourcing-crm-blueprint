@@ -38,15 +38,27 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'catalog.publish', group: 'catalog', side: 'ANY' },
   { key: 'catalog.delete', group: 'catalog', side: 'ANY' },
   { key: 'catalog.banners', group: 'catalog', side: 'ANY' },
+  { key: 'chat.view_own', group: 'chat', side: 'ANY' },
+  { key: 'chat.view_team', group: 'chat', side: 'ANY' },
+  { key: 'chat.view_all', group: 'chat', side: 'ANY' },
+  { key: 'chat.start', group: 'chat', side: 'ANY' },
+  { key: 'chat.reference_quotes', group: 'chat', side: 'ANY' },
+  { key: 'chat.send_attachments', group: 'chat', side: 'ANY' },
+  { key: 'chat.manage_canned', group: 'chat', side: 'ANY' },
+  // These only hide extra fields in chat. They can never override office privacy rules.
+  { key: 'chat.see_customer_fields', group: 'chat', side: 'INDIA' },
+  { key: 'chat.see_supplier_fields', group: 'chat', side: 'CHINA' },
 ];
 export type Perm = (typeof PERMISSIONS)[number]['key'];
 export const PERM_KEYS = PERMISSIONS.map((p) => p.key);
 const DEF = new Map(PERMISSIONS.map((p) => [p.key, p]));
 
-const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all'];
-const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all'];
-const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export'];
-const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish', 'catalog.price'];
+const CHAT_OWN = ['chat.view_own', 'chat.start', 'chat.reference_quotes', 'chat.send_attachments'];
+const CHAT_TEAM = [...CHAT_OWN, 'chat.view_team', 'chat.manage_canned'];
+const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all', ...CHAT_OWN, 'chat.see_customer_fields'];
+const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all', ...CHAT_OWN, 'chat.see_supplier_fields'];
+const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export', 'chat.view_team', 'chat.manage_canned'];
+const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish', 'catalog.price', 'chat.view_own', 'chat.view_team', 'chat.reference_quotes', 'chat.see_supplier_fields'];
 const SUPPLIER = ['catalog.edit', 'catalog.delete'];
 const INDIA_CATALOG = ['catalog.edit', 'catalog.price', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {
@@ -63,11 +75,17 @@ export const ROLE_DEFAULTS: Record<Role, string[]> = {
 export function allowedFor(role: Role, key: string): boolean {
   const d = DEF.get(key); if (!d) return false;
   const s = sides(role);
-  if (s.superAdmin || d.side === 'ANY') return true;
-  // Marketplace Team is catalog-only (not India staff) but may hold India-side catalog permissions such as selling prices.
-  if (role === 'MARKETPLACE_TEAM') return d.group === 'catalog' && d.side !== 'CHINA';
+  if (s.superAdmin) return true;
+  // Marketplace Team is catalog-only (not India staff) but may hold India-side catalog permissions such as selling prices,
+  // plus a limited set of chat permissions. They may never receive chat.view_all or customer fields.
+  if (role === 'MARKETPLACE_TEAM') {
+    if (d.group === 'catalog' && d.side !== 'CHINA') return true;
+    if (d.key === 'chat.see_supplier_fields') return true;
+    return d.group === 'chat' && d.side === 'ANY' && d.key !== 'chat.view_all';
+  }
   // Suppliers may only edit/delete their own catalog entries. Selling prices and publish stay with Source Easy.
   if (role === 'SUPPLIER') return d.group === 'catalog' && (d.key === 'catalog.edit' || d.key === 'catalog.delete');
+  if (d.side === 'ANY') return true;
   return d.side === 'INDIA' ? s.india : s.china;
 }
 
@@ -76,6 +94,8 @@ export interface AuditRow { id: number; userId: string; perm: string; before: bo
 
 export class PermStore {
   private cache = new Map<string, Map<string, boolean>>();
+  /** Optional custom-role default: undefined means fall through to the system role default. */
+  customDefault: (userId: string, key: string) => boolean | undefined = () => undefined;
   onChange: (userId: string) => void = () => {};
   constructor(private db: Db, private bus?: Bus) {}
   async load() {
@@ -89,14 +109,23 @@ export class PermStore {
     if (u.role === 'SUPER_ADMIN') return true;
     if (!allowedFor(u.role, key)) return false;
     const o = this.cache.get(u.id)?.get(key);
-    return o ?? ROLE_DEFAULTS[u.role].includes(key);
+    if (o !== undefined) return o;
+    const custom = this.customDefault(u.id, key);
+    if (custom !== undefined) return custom;
+    return ROLE_DEFAULTS[u.role].includes(key);
+  }
+  inheritedDefault(u: { id: string; role: Role }, key: string): boolean {
+    if (!allowedFor(u.role, key)) return false;
+    const custom = this.customDefault(u.id, key);
+    if (custom !== undefined) return custom;
+    return ROLE_DEFAULTS[u.role].includes(key);
   }
   effective(u: { id: string; role: Role }) { return PERM_KEYS.filter((k) => this.can(u, k)); }
   matrix(u: { id: string; role: Role }): PermRow[] {
     const ov = this.cache.get(u.id);
     return PERMISSIONS.map((p) => {
       const locked = u.role === 'SUPER_ADMIN' || !allowedFor(u.role, p.key);
-      return { key: p.key, group: p.group, side: p.side, default: allowedFor(u.role, p.key) && ROLE_DEFAULTS[u.role].includes(p.key),
+      return { key: p.key, group: p.group, side: p.side, default: allowedFor(u.role, p.key) && this.inheritedDefault(u, p.key),
         override: locked ? null : ov?.get(p.key) ?? null, effective: this.can(u, p.key), locked };
     });
   }
@@ -113,7 +142,7 @@ export class PermStore {
       for (const [k, v] of Object.entries(changes)) {
         const before = cur?.get(k) ?? null;
         // Same as the role default → store as "default" so a later role change re-derives it.
-        const after = v === null || v === ROLE_DEFAULTS[target.role].includes(k) ? null : v;
+        const after = v === null || v === this.inheritedDefault(target, k) ? null : v;
         if (before === after) continue;
         if (after === null) await t.run('DELETE FROM user_permissions WHERE user_id = ? AND perm = ?', target.id, k);
         else await t.run(`INSERT INTO user_permissions (user_id, perm, granted, updated_by, updated_at) VALUES (?,?,?,?,now())

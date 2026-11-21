@@ -24,7 +24,8 @@
     "greetings": "Greetings",
     "products": "Products",
     "banners": "Banners",
-    "applications": "Supplier applications"
+    "applications": "Supplier applications",
+    "chat": "Chat"
   },
   "header": {
     "search": "Search by reference, lead, product…",
@@ -545,7 +546,9 @@
     "SHIP_SLA_WARN_nobody": "{{ref}}: shipping request SLA almost due",
     "SHIP_SLA_BREACH_nobody": "{{ref}}: shipping request SLA breached",
     "SHIP_READY": "{{ref}}: shipping request ready to book",
-    "SHIP_READY_nobody": "{{ref}}: shipping request ready to book"
+    "SHIP_READY_nobody": "{{ref}}: shipping request ready to book",
+    "CHAT_MESSAGE": "{{by}} sent a message on {{ref}}",
+    "CHAT_MESSAGE_nobody": "New message on {{ref}}"
   },
   "lq": {
     "title": "Supplier quotes",
@@ -946,7 +949,8 @@
       "leads": "Leads",
       "admin": "Administration",
       "customers": "Customers",
-      "catalog": "Catalog"
+      "catalog": "Catalog",
+      "chat": "Chat"
     },
     "k": {
       "suppliers.view": "View suppliers list",
@@ -973,7 +977,16 @@
       "catalog.price": "Set selling prices",
       "catalog.publish": "Publish products",
       "catalog.delete": "Delete products",
-      "catalog.banners": "Manage marketplace banners"
+      "catalog.banners": "Manage marketplace banners",
+      "chat.view_own": "View own chats",
+      "chat.view_team": "View team inbox",
+      "chat.view_all": "View all chats",
+      "chat.start": "Start a chat",
+      "chat.reference_quotes": "Reference quotes",
+      "chat.send_attachments": "Send attachments",
+      "chat.manage_canned": "Manage canned replies",
+      "chat.see_customer_fields": "See customer fields in chat",
+      "chat.see_supplier_fields": "See supplier fields in chat"
     }
   },
   "del": {
@@ -1599,5 +1612,46 @@
     "addExtra": "Add another category",
     "primary": "Primary category (breadcrumb)",
     "duplicate": "A category with that name already exists here"
+  },
+  "chat": {
+    "title": "India ⇄ China chat",
+    "blurb": "A shared thread for this lead. Attach a quote so both offices can see which item you mean. Customer names, prices and supplier details are never posted here.",
+    "empty": "No messages yet. Start the conversation or attach a quote reference.",
+    "quotePicker": "Quote to attach",
+    "attachQuote": "Attach quote reference",
+    "placeholder": "Write a message…",
+    "send": "Send",
+    "button": "Chat",
+    "tagQuote": "Tag this message with the selected quote",
+    "attachFile": "Attach a file",
+    "typing": "{{name}} is typing…",
+    "inboxBlurb": "Your inbox lists only chats you take part in or have been granted. Team inboxes are shared with the people the super admin assigns.",
+    "myInbox": "My inbox",
+    "teamInboxes": "Team inboxes",
+    "search": "Search messages…",
+    "noThreads": "No conversations in this inbox yet.",
+    "thread": "Lead chat",
+    "pickThread": "Select a conversation",
+    "openLead": "Open lead",
+    "assignedTo": "Assigned to",
+    "unassigned": "Unassigned",
+    "canned": "Canned replies",
+    "cannedTitle": "Title",
+    "cannedBody": "Reply text"
+  },
+  "roles": {
+    "title": "Custom roles and inboxes",
+    "hint": "Create a named role to set default chat permissions. You can still tick or untick any permission for one person — that override applies immediately. China/India privacy rules can never be overridden.",
+    "name": "Role name",
+    "description": "Description (optional)",
+    "create": "Create role",
+    "members": "{{n}} people",
+    "none": "No custom roles yet.",
+    "deleteConfirm": "Delete the role {{name}}? People keep their system role.",
+    "permHint": "These are defaults. The checklist below (and any per-person tick) still applies, and locked privacy permissions stay locked.",
+    "assignPeople": "Assign this role to people",
+    "noCustom": "No custom role",
+    "teamInboxes": "Team inboxes",
+    "teamHint": "Choose who belongs to each team inbox. A person’s own inbox still only shows chats they take part in."
   }
 }

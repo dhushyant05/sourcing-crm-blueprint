@@ -18,6 +18,9 @@ import { LeadStore } from './leads.js';
 import { CustomerStore, BadCustomer, NO_STATS } from './customers.js';
 import type { UserStore, User } from './users.js';
 import { QuoteStore, QUOTE_STATUSES, cqTotals, quoteCarton, type Quote } from './quotes.js';
+import { ChatStore } from './chat.js';
+import { CustomRoleStore } from './custom-roles.js';
+import { registerStaffChat } from './chat-routes.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
 import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
@@ -84,7 +87,7 @@ export async function buildApp(o: AppOptions) {
   // ---- Lead ownership (raisedBy / assignedTo) + notifications ----
   const assign = new AssignStore(o.db, o.bus);
   const push = o.push ?? new PushStore(o.db);
-  const KIND_EN: Record<string, string> = { ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated', SHIP_SLA_WARN: 'Shipping request SLA warning', SHIP_SLA_BREACH: 'Shipping request SLA breached', SHIP_READY: 'Shipping request ready to book' };
+  const KIND_EN: Record<string, string> = { CHAT_MESSAGE: 'New chat message', ORDER_UPDATE: 'Order updated', ORDER_SHIPPED: 'Order shipped', SHIPMENT_UPDATE: 'Shipment updated', ORDER_NEW: 'New order', ASSIGNED: 'Lead assigned to you', QUEUE: 'New lead in queue', RETURNED: 'Lead returned', QUOTE_ACCEPTED: 'Quote accepted', QUOTE_REJECTED: 'Quote rejected', LEAD_CLOSED: 'Lead closed', LEAD_COMPLETED: 'Lead completed', FOLLOW_UP: 'Follow-up due', REVISE_REQUESTED: 'Revision requested', SENT_BACK: 'Sent back — needs info', INFO_PROVIDED: 'Info added — lead re-sent', QUOTE_REVISED: 'Quote revised', SLA_WARN: 'SLA warning', SLA_BREACH: 'SLA breached', PRIORITY: 'Priority changed', LOGIN_REQUEST: 'Customer portal login requested', PORTAL_REQUEST: 'New request from customer portal', SHIP_REQUEST: 'New shipping request', SHIP_REQUEST_UPDATE: 'Shipping request updated', SHIP_SLA_WARN: 'Shipping request SLA warning', SHIP_SLA_BREACH: 'Shipping request SLA breached', SHIP_READY: 'Shipping request ready to book' };
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
@@ -294,6 +297,7 @@ export async function buildApp(o: AppOptions) {
 
   // Per-user feature permissions (role defaults + super-admin overrides). Reloaded on every API process via Redis `se:perms`.
   const perms = await new PermStore(o.db, o.bus).load();
+  const customRoles = await new CustomRoleStore(o.db, perms, o.users).load();
   const can = (u: User, k: string) => perms.can(u, k);
   const need = (u: User, k: string) => { if (!perms.can(u, k)) throw new Forbidden(`You do not have permission: ${k}`); };
   o.bus.subscribe('se:perms', (m: { id: string; pid: number }) => { void (async () => {
@@ -795,7 +799,20 @@ export async function buildApp(o: AppOptions) {
       const sc = await scope(req.user!); if (sc && !sc.has(String(r.id))) throw Object.assign(new Error('Not found'), { status: 404 });
       return String(r.id);
     };
-    const hideInvoice = (u: User) => sides(u.role).china && u.role !== 'SUPER_ADMIN';
+
+    // ---- Native India↔China staff chat (inboxes, custom roles, quote references) ----
+    const chatStore = new ChatStore(o.db, perms, uploads, assign);
+    const canReadLead = async (u: User, leadId: string) => {
+      const r = await leadDb.get(leadId);
+      if (!r || !readFilter('lead', r, await ctxOf(u.role))) return false;
+      const sc = await scope(u); if (sc && !sc.has(String(r.id))) return false;
+      return true;
+    };
+    registerStaffChat(api, {
+      chat: chatStore, roles: customRoles, quotes, leads: leadDb, uploads, assign, users: o.users, perms,
+      attLead, need, liveData, canReadLead, readMultipart, stripImageMetadata, names: userNames,
+    });
+        const hideInvoice = (u: User) => sides(u.role).china && u.role !== 'SUPER_ADMIN';
     api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => {
       const list = uploads.list(await attLead(req));
       return { data: hideInvoice(req.user!) ? list.filter((a) => a.kind !== 'INVOICE') : list };

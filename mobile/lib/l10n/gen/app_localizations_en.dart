@@ -42,6 +42,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get indiaChinaChat => 'India ⇄ China chat';
 
   @override
+  String get chatUnavailable => 'Chat is not available for your account.';
+
+  @override
+  String get attachQuoteReference => 'Attach quote reference';
+
+  @override
+  String get quoteToAttach => 'Quote to attach';
+
+  @override
+  String get myInbox => 'My inbox';
+
+  @override
+  String get teamInboxes => 'Team inboxes';
+
+  @override
   String get addYourChatwootAccessTokenIn =>
       'Add your Chatwoot access token in Settings to use chat.';
 

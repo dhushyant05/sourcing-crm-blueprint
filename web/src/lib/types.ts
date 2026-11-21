@@ -30,7 +30,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY' | 'CHAT_MESSAGE'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null; kind?: string | null; sort?: number; isCover?: boolean }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -109,7 +109,7 @@ export interface Order {
   supplier?: QuoteSupplier | null; unitPrice?: number | null; currency?: string | null; shipCost?: number | null; shipCurrency?: string | null;
 }
 export type QuoteInput = Partial<Pick<LeadQuote, 'product' | 'moq' | 'leadTime' | 'validity' | 'notes' | 'supplierId' | 'shipTerm' | 'shipMode' | 'shipPort' | 'shipTransit' | 'shipCurrency'>> & { shipCost?: number | string | null; cartonLengthCm?: number | string | null; cartonWidthCm?: number | string | null; cartonHeightCm?: number | string | null; cartonUnits?: number | string | null; cartonGrossKg?: number | string | null; cartonNetKg?: number | string | null } & { unitPrice?: number | string; currency?: QuoteCurrency; newSupplier?: Omit<QuoteSupplier, 'id'> };
-export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string; avatarUrl?: string | null }
+export interface User { id: string; email: string; name: string; role: import('./roles').Role; active: boolean; createdAt: string; avatarUrl?: string | null; customRoleId?: string | null }
 export interface BackupLink { label: string; url: string }
 
 /** Closed = completed (delivered), lost, or closed permanently — never counted as open. WON = customer accepted, order still running. */
@@ -163,3 +163,47 @@ export interface GreetingStaff {
   createdByName: string | null; updatedByName: string | null; publishedByName: string | null; publishedAt: string | null; createdAt: string; updatedAt: string;
   preview: import('../greetings/Banner').Greeting; problems: string[]; problemCodes?: string[]; audit?: { at: string; action: string; by: string | null; detail: unknown }[];
 }
+
+/** Safe quote card posted into India↔China chat. No customer, prices, or supplier. */
+export interface QuoteReference {
+  leadRef: string;
+  quoteId: string;
+  quoteLabel: string;
+  product: string;
+  moq: string | null;
+  carton: {
+    lengthCm: number | null; widthCm: number | null; heightCm: number | null;
+    unitsPerCarton: number | null; cartonCount: number | null;
+    cbmPerCarton: number | null; totalCbm: number | null;
+  } | null;
+  hasCoverPhoto: boolean;
+  coverFileId?: string | null;
+}
+export interface ChatQuoteTag { quoteId: string; quoteLabel: string }
+export interface ChatAttachment { id: string; name: string; mime: string; size: number; createdAt?: string }
+export interface ChatParticipant { userId: string; name: string; lastReadAt: string | null; lastReadMessageId: string | null }
+export interface LeadChatMessage {
+  id: string; kind?: 'text' | 'quote_reference'; content: string;
+  quoteReference: QuoteReference | null; quoteTag?: ChatQuoteTag | null; quoteId?: string | null;
+  senderId?: string | null; senderName: string; at: string; attachments?: ChatAttachment[];
+}
+export interface LeadChat {
+  enabled?: boolean; id?: string; conversationId?: string | null; created?: boolean;
+  leadId?: string; leadRef?: string; product?: string | null; clientName?: string | null;
+  assignedTo?: string | null; assignedToName?: string | null;
+  participants?: ChatParticipant[];
+  messages: LeadChatMessage[]; quotes: QuoteReference[]; suggestedQuoteId: string | null;
+  canSeeSupplier?: boolean;
+}
+export interface ChatInbox { id: string; slug: string; name: string; kind: 'PERSONAL' | 'TEAM'; unread: number; memberIds?: string[] }
+export interface ChatThread {
+  id: string; leadId: string; leadRef: string | null; product: string | null;
+  lastBody: string | null; lastAt: string | null; unread: number;
+  assignedTo: string | null; assignedToName: string | null;
+}
+export interface CustomRole {
+  id: string; name: string; description: string | null; members: number;
+  permissions: Record<string, boolean>; createdAt?: string; updatedAt?: string;
+}
+export interface TeamInboxAdmin { id: string; slug: string; name: string; kind: string; memberIds: string[] }
+export interface CannedReply { id: string; title: string; body: string }
