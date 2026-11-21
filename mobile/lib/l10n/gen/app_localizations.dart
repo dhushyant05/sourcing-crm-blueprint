@@ -194,6 +194,12 @@ abstract class AppLocalizations {
   /// **'Team inboxes'**
   String get teamInboxes;
 
+  /// No description provided for @openChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Open chat'**
+  String get openChat;
+
   /// No description provided for @addYourChatwootAccessTokenIn.
   ///
   /// In en, this message translates to:

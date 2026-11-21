@@ -16,6 +16,7 @@
   "quoteToAttach": "要附加的报价",
   "myInbox": "我的收件箱",
   "teamInboxes": "团队收件箱",
+  "openChat": "打开聊天",
   "addYourChatwootAccessTokenIn": "请在设置中添加 Chatwoot 访问令牌以使用聊天。",
   "retry": "重试",
   "message": "消息",

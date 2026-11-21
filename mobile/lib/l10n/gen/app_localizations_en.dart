@@ -57,6 +57,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get teamInboxes => 'Team inboxes';
 
   @override
+  String get openChat => 'Open chat';
+
+  @override
   String get addYourChatwootAccessTokenIn =>
       'Add your Chatwoot access token in Settings to use chat.';
 

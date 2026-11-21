@@ -1637,7 +1637,10 @@
     "unassigned": "Unassigned",
     "canned": "Canned replies",
     "cannedTitle": "Title",
-    "cannedBody": "Reply text"
+    "cannedBody": "Reply text",
+    "minimize": "Minimize",
+    "expand": "Open full chat",
+    "backToInbox": "Back to inbox"
   },
   "roles": {
     "title": "Custom roles and inboxes",

@@ -1637,7 +1637,10 @@
     "unassigned": "未分配",
     "canned": "快捷回复",
     "cannedTitle": "标题",
-    "cannedBody": "回复内容"
+    "cannedBody": "回复内容",
+    "minimize": "最小化",
+    "expand": "打开完整聊天",
+    "backToInbox": "返回收件箱"
   },
   "roles": {
     "title": "自定义角色与收件箱",

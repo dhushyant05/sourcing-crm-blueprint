@@ -1,5 +1,6 @@
 import { clsx } from 'clsx';
 import { NotificationBell } from './NotificationBell';
+import { ChatDock } from './ChatDock';
 import { Menu, X, ChevronsLeft, ChevronsRight, FileText, LayoutDashboard, LogOut, Moon, Search, Settings, Ship, Sun, Users, Contact, Factory, UserCog, Package, PartyPopper, ShoppingBag, Images, ClipboardList, MessageSquare } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../lib/store';
@@ -133,6 +134,7 @@ export function Layout({ route, go, search, setSearch, children, openLeadId }: {
             <Menu size={20} />{t('nav.more')}
           </button>
         </nav>
+        <ChatDock route={route} go={go} openLeadId={openLeadId} />
       </div>
     </div>
   );
