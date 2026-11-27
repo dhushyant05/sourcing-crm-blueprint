@@ -1,4 +1,4 @@
-import { Paperclip, Send } from 'lucide-react';
+import { Mail, Paperclip, Send } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fmtDate } from '../i18n';
@@ -32,7 +32,8 @@ export function SupportThread({ conversationId, compact, onOpenLead }: { convers
 
   useEffect(() => { void load(); }, [conversationId, api]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (api.cannedReplies) void api.cannedReplies().then(setCanned).catch(() => {}); }, [api]);
-  useEffect(() => { void api.staff('INDIA').then(setStaff).catch(() => setStaff([])); }, [api]);
+  const supplierDesk = data?.kind === 'SUPPLIER_EMAIL';
+  useEffect(() => { void api.staff(supplierDesk ? 'CHINA' : 'INDIA').then(setStaff).catch(() => setStaff([])); }, [api, supplierDesk]);
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }); }, [data?.messages?.length]);
 
   useEffect(() => {
@@ -80,10 +81,18 @@ export function SupportThread({ conversationId, compact, onOpenLead }: { convers
   return (
     <div className={`flex h-full min-h-0 flex-col ${compact ? '' : 'gap-3'}`} data-testid="support-thread">
       <div className={`shrink-0 space-y-1 text-xs text-ink-600 ${compact ? 'mb-2' : ''}`}>
-        <div><span className="font-medium text-ink-800">{data.guestName || t('chat.guest')}</span>{data.customerId ? ` · ${t('chat.customer')}` : ` · ${t('chat.guest')}`}</div>
+        <div><span className="font-medium text-ink-800">{data.guestName || t('chat.guest')}</span>{supplierDesk ? ` · ${t('chat.supplierLabel')}` : data.customerId ? ` · ${t('chat.customer')}` : ` · ${t('chat.guest')}`}</div>
         {(data.guestEmail || data.guestPhone) && <div data-testid="support-contact">{[data.guestEmail, data.guestPhone].filter(Boolean).join(' · ')}</div>}
+        {data.channel === 'EMAIL' && (
+          <div className="flex items-center gap-1 text-ink-500" data-testid="support-email-header">
+            <Mail size={12} /> <span className="truncate">{data.emailSubject || t('chat.emailNoSubject')}</span>
+          </div>
+        )}
+        {data.channel === 'EMAIL' && data.emailReady === false && (
+          <div className="rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-200" data-testid="support-email-off">{t('chat.emailOff')}</div>
+        )}
         {data.product && <div>{t('chat.productAbout')}: {data.product}</div>}
-        {data.source && <div className="text-ink-400">via {data.source}</div>}
+        {data.source && data.channel !== 'EMAIL' && <div className="text-ink-400">via {data.source}</div>}
         {data.convertedLeadId && data.convertedLeadRef && (
           <button type="button" className="font-medium text-brand-700 hover:underline" onClick={() => onOpenLead(data.convertedLeadId!)}>{t('chat.converted', { ref: data.convertedLeadRef })}</button>
         )}
@@ -130,7 +139,7 @@ export function SupportThread({ conversationId, compact, onOpenLead }: { convers
           <button type="button" className="rounded-md p-2 text-ink-500 hover:bg-ink-50" aria-label={t('chat.attachFile')} onClick={() => fileRef.current?.click()}><Paperclip size={16} /></button>
           <input ref={fileRef} type="file" hidden multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 3))} />
           <textarea className="input min-h-[40px] flex-1 resize-none !py-2 text-sm" rows={2} value={draft}
-            placeholder={internal ? t('chat.internalPlaceholder', { defaultValue: 'Write an internal note…' }) : t('chat.placeholder')}
+            placeholder={internal ? t('chat.internalPlaceholder', { defaultValue: 'Write an internal note…' }) : data.channel === 'EMAIL' ? t('chat.emailPlaceholder') : t('chat.placeholder')}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} />
           <button type="submit" disabled={busy || (!draft.trim() && !files.length)} className="rounded-md bg-brand-600 p-2 text-white hover:bg-brand-700 disabled:opacity-50" aria-label={t('chat.send')}><Send size={16} /></button>
@@ -142,9 +151,10 @@ export function SupportThread({ conversationId, compact, onOpenLead }: { convers
 
 function SupportBubble({ m, conversationId }: { m: LeadChatMessage; conversationId: string }) {
   const { api } = useApp();
+  const { t } = useTranslation();
   const note = m.visibility === 'staff_only';
   const system = m.kind === 'system';
-  const guest = m.authorKind === 'guest' || m.authorKind === 'customer';
+  const guest = m.authorKind === 'guest' || m.authorKind === 'customer' || m.authorKind === 'supplier';
   return (
     <div className={`flex ${guest ? 'justify-start' : 'justify-end'}`}>
       <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
@@ -156,11 +166,17 @@ function SupportBubble({ m, conversationId }: { m: LeadChatMessage; conversation
         <div className="mb-0.5 text-[10px] font-medium opacity-80">
           {note ? 'Internal' : m.senderName || (guest ? 'Customer' : 'You')}
           {m.at && <span className="ml-2 font-normal opacity-70">{fmtDate(m.at)}</span>}
+          {guest && m.viaEmail && <span className="ml-2 font-normal opacity-70">· {t('chat.byEmail')}</span>}
         </div>
         {m.content?.trim() && <div className="whitespace-pre-wrap break-words">{m.content}</div>}
         {m.attachments?.map((f) => (
           <SupportFile key={f.id} api={api} conversationId={conversationId} messageId={m.id} file={f} light={!guest && !note && !system} />
         ))}
+        {!guest && !note && m.emailStatus && (
+          <div className="mt-1 text-[10px] opacity-80" data-testid="support-email-status">
+            {m.emailStatus === 'SENT' ? `✓ ${t('chat.emailSent')}` : m.emailStatus === 'FAILED' ? `⚠ ${t('chat.emailFailed')}${m.emailError ? `: ${m.emailError}` : ''}` : t('chat.emailNotSent')}
+          </div>
+        )}
       </div>
     </div>
   );

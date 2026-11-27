@@ -12,7 +12,9 @@ import type { CustomRoleStore } from './custom-roles.js';
 import {
   ChatError, ChatStore, presentQuoteCard, pickerItems, suggestedQuoteId, chatFileKey,
   redactedFileName, qUploadKey, pickCover, canAccessSupportInbox, isChinaRole,
+  convClass, canAccessDeskKind,
 } from './chat.js';
+import type { EmailChannel } from './email-channel.js';
 import { quoteCarton } from './quotes.js';
 import type { Rec } from './policy.js';
 
@@ -32,6 +34,8 @@ export interface ChatRouteDeps {
   readMultipart: (req: FastifyRequest, max: number) => Promise<any>;
   stripImageMetadata: (files: any[]) => Promise<void>;
   names: () => Map<string, string>;
+  /** Email channel (optional; replies on EMAIL conversations go out by email when configured). */
+  email?: EmailChannel;
 }
 
 export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
@@ -41,7 +45,10 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     if (!id) return 'support';
     return ((await leads.get(id))?.leadRef as string | undefined) ?? 'SE';
   };
-  const isSupportConv = (conv: { kind?: string; leadId?: string | null }) => conv.kind === 'CUSTOMER_SUPPORT' || !conv.leadId;
+  /** Desk conversation (customer support or supplier email), i.e. not a lead chat. */
+  const isSupportConv = (conv: { kind?: string; leadId?: string | null }) => convClass(conv) !== 'lead';
+  const deskKind = (conv: { kind?: string }) => (conv.kind === 'SUPPLIER_EMAIL' ? 'SUPPLIER_EMAIL' : 'CUSTOMER_SUPPORT') as 'SUPPLIER_EMAIL' | 'CUSTOMER_SUPPORT';
+  const deskAllowed = (u: User | undefined | null, conv: { kind?: string }) => canAccessDeskKind(u, deskKind(conv));
   const requireLeadId = (id: string | null | undefined) => {
     if (!id) throw Object.assign(new Error('Not found'), { status: 404 });
     return id;
@@ -57,7 +64,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const conv = await chat.get(conversationId);
     if (!conv) throw Object.assign(new Error('Not found'), { status: 404 });
     if (isSupportConv(conv)) {
-      if (!canAccessSupportInbox(u) || !(await chat.canAccessId(u, conv.id, null))) {
+      if (!deskAllowed(u, conv) || !(await chat.canAccessId(u, conv.id, null))) {
         throw Object.assign(new Error('Not found'), { status: 404 });
       }
       return conv;
@@ -83,15 +90,23 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       attachments: files,
       authorKind: m.author_kind ?? (m.sender_id ? 'staff' : 'guest'),
       visibility: m.visibility ?? 'customer',
+      emailStatus: m.email_status ?? null,
+      emailError: m.email_error ?? null,
+      viaEmail: !!m.email_message_id,
     };
   };
   const presentSupport = async (u: User, conv: any) => {
     const msgs = await chat.messages(conv.id);
     const parts = await chat.participants(conv.id);
     const convertedRef = conv.convertedLeadId ? await leadRefOf(conv.convertedLeadId) : null;
+    const kind = deskKind(conv);
     return {
       id: conv.id,
-      kind: 'CUSTOMER_SUPPORT' as const,
+      kind,
+      channel: conv.channel ?? 'CHAT',
+      emailAddress: conv.emailAddress ?? null,
+      emailSubject: conv.emailSubject ?? null,
+      emailReady: !!d.email?.status.outboundReady,
       leadId: conv.convertedLeadId ?? null,
       leadRef: (convertedRef && convertedRef !== 'SE' && convertedRef !== 'support') ? convertedRef : (conv.guestName ?? 'Support'),
       product: conv.productTitle ?? null,
@@ -106,12 +121,13 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       source: conv.source ?? null,
       assignedTo: conv.assignedTo,
       assignedToName: conv.assignedTo ? names().get(conv.assignedTo) ?? null : null,
-      canConvert: !conv.convertedLeadId,
+      canConvert: kind === 'CUSTOMER_SUPPORT' && !conv.convertedLeadId,
       quotes: [],
       suggestedQuoteId: null,
       participants: parts
         .filter((p: any) => {
           const member = users.byId(p.user_id);
+          if (kind === 'SUPPLIER_EMAIL') return !!member && canAccessDeskKind(member, kind);
           return !(member && isChinaRole(member.role));
         })
         .map((p: any) => ({
@@ -125,6 +141,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
           ...row,
           senderName: kind === 'system' ? 'Source Easy'
             : (kind === 'guest' || kind === 'customer') ? (conv.guestName || 'Customer')
+            : kind === 'supplier' ? (conv.guestName || 'Supplier')
             : row.senderName,
         };
       })),
@@ -166,11 +183,12 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       const ids = parts.map((p: any) => String(p.user_id)).filter((id: string) => {
         if (id === by.id) return false;
         const member = users.byId(id);
-        return !!member && canAccessSupportInbox(member);
+        return !!member && deskAllowed(member, conv);
       });
       if (!ids.length) return;
+      const sup = deskKind(conv) === 'SUPPLIER_EMAIL';
       await assign.notify(ids, {
-        leadId: null, leadRef: 'Support', product: null, kind: 'CHAT_MESSAGE', office: 'INDIA',
+        leadId: null, leadRef: sup ? 'Supplier email' : 'Support', product: null, kind: 'CHAT_MESSAGE', office: sup ? 'CHINA' : 'INDIA',
         byName: by.name, detail: preview.slice(0, 140), conversationId: conv.id,
       });
       return;
@@ -208,12 +226,12 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const out = [];
     for (const c of list) {
       if (isSupportConv(c)) {
-        if (!canAccessSupportInbox(req.user!)) continue;
+        if (!deskAllowed(req.user!, c)) continue;
         const last = (await chat.messages(c.id)).at(-1);
         out.push({
           ...c,
           leadRef: c.guestName || 'Support',
-          product: c.productTitle ?? null,
+          product: c.productTitle ?? (c.channel === 'EMAIL' ? c.emailSubject ?? null : null),
           lastBody: last ? String(last.body ?? '').slice(0, 140) : null,
           lastAt: last?.created_at ?? c.lastMessageAt,
           assignedToName: c.assignedTo ? names().get(c.assignedTo) ?? null : null,
@@ -267,6 +285,13 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     return { data: { enabled: true, conversationId: existing.id, ...(await presentConversation(u, existing)) } };
   });
 
+  /** Staff reply on an EMAIL conversation: send it by email (status is stored on the message). */
+  const emailOut = async (conv: any, m: { id: string; body: string }, u: User) => {
+    if (conv.channel !== 'EMAIL' || !d.email) return null;
+    const r = await d.email.sendReply(conv, m, u);
+    if (r.status !== 'NOT_EMAIL') live(null, conv.id, 'message', { messageId: m.id, kind: deskKind(conv), emailStatus: r.status });
+    return r;
+  };
   const postText = async (req: FastifyRequest<{ Params: { id: string }; Body?: { content?: string; quoteId?: string; cannedId?: string; internal?: boolean } }>, conversationId: string) => {
     const u = req.user!;
     const conv = await guard(u, conversationId);
@@ -281,9 +306,10 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       await chat.addParticipant(conv.id, u.id, u.id);
       const m = await chat.post(conv.id, u.id, content, 'text', null, { authorKind: 'staff', visibility: internal ? 'staff_only' : 'customer' });
       await chat.markRead(conv.id, u.id, m.id);
-      live(null, conv.id, 'message', { messageId: m.id, kind: 'CUSTOMER_SUPPORT', preview: content.slice(0, 140), userId: u.id, visibility: internal ? 'staff_only' : 'customer' });
+      live(null, conv.id, 'message', { messageId: m.id, kind: deskKind(conv), preview: content.slice(0, 140), userId: u.id, visibility: internal ? 'staff_only' : 'customer' });
       if (!internal) await notifyChat(conv, u, content);
-      return { data: await presentMessage(u, 'support', [], { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind, author_kind: m.authorKind, visibility: m.visibility }) };
+      const sent = !internal ? await emailOut(conv, m, u) : null;
+      return { data: await presentMessage(u, 'support', [], { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind, author_kind: m.authorKind, visibility: m.visibility, email_status: sent?.status ?? null, email_error: sent?.error ?? null }) };
     }
     const list = await quotes.list(requireLeadId(conv.leadId));
     const tag = req.body?.quoteId ? suggestedQuoteId(list, String(req.body.quoteId)) : null;
@@ -310,9 +336,10 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
         const msg = await chat.post(conv.id, u.id, content || ' ', 'text', null, { authorKind: 'staff', visibility: internal ? 'staff_only' : 'customer' });
         uploads.commit(chatFileKey(msg.id), mpart.files, u.id);
         await chat.markRead(conv.id, u.id, msg.id);
-        live(null, conv.id, 'message', { messageId: msg.id, kind: 'CUSTOMER_SUPPORT', preview: (content || 'Attachment').slice(0, 140), userId: u.id, visibility: internal ? 'staff_only' : 'customer' });
+        live(null, conv.id, 'message', { messageId: msg.id, kind: deskKind(conv), preview: (content || 'Attachment').slice(0, 140), userId: u.id, visibility: internal ? 'staff_only' : 'customer' });
         if (!internal) await notifyChat(conv, u, content || 'Attachment');
-        const row = { ...msg, sender_id: msg.senderId, body: msg.body, created_at: msg.createdAt, quote_id: msg.quoteId, kind: msg.kind, author_kind: msg.authorKind, visibility: msg.visibility };
+        const sent = !internal ? await emailOut(conv, msg, u) : null;
+        const row = { ...msg, sender_id: msg.senderId, body: msg.body, created_at: msg.createdAt, quote_id: msg.quoteId, kind: msg.kind, author_kind: msg.authorKind, visibility: msg.visibility, email_status: sent?.status ?? null, email_error: sent?.error ?? null };
         return { data: await presentMessage(u, 'support', [], row) };
       }
       const list = await quotes.list(requireLeadId(conv.leadId));
@@ -406,16 +433,16 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const conv = await guard(u, req.params.id);
     const uid = req.body?.userId ? String(req.body.userId) : null;
     if (uid && !users.byId(uid)) throw Object.assign(new Error('User not found'), { status: 404 });
-    if (uid && isSupportConv(conv) && !canAccessSupportInbox(users.byId(uid)!)) {
-      throw Object.assign(new Error('This person cannot be assigned to a customer support chat'), { status: 403 });
+    if (uid && isSupportConv(conv) && !deskAllowed(users.byId(uid)!, conv)) {
+      throw Object.assign(new Error(deskKind(conv) === 'SUPPLIER_EMAIL' ? 'This person cannot be assigned to a supplier email' : 'This person cannot be assigned to a customer support chat'), { status: 403 });
     }
     await chat.setAssigned(conv.id, uid);
-    live(conv.leadId, conv.id, 'assign', { userId: uid, ...(isSupportConv(conv) ? { kind: 'CUSTOMER_SUPPORT' } : {}) });
+    live(conv.leadId, conv.id, 'assign', { userId: uid, ...(isSupportConv(conv) ? { kind: deskKind(conv) } : {}) });
     if (uid) {
       if (isSupportConv(conv)) {
         await assign.notify([uid], {
           leadId: null, leadRef: conv.guestName || 'Support', product: conv.productTitle ?? null,
-          kind: 'CHAT_MESSAGE', office: 'INDIA', byName: u.name, detail: 'Chat assigned to you', conversationId: conv.id,
+          kind: 'CHAT_MESSAGE', office: deskKind(conv) === 'SUPPLIER_EMAIL' ? 'CHINA' : 'INDIA', byName: u.name, detail: 'Chat assigned to you', conversationId: conv.id,
         });
       } else {
         const lead = await leads.get(requireLeadId(conv.leadId));
@@ -434,8 +461,8 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const uid = String(req.body?.userId ?? '');
     const added = users.byId(uid);
     if (!added) throw Object.assign(new Error('User not found'), { status: 404 });
-    if (isSupportConv(conv) && !canAccessSupportInbox(added)) {
-      throw Object.assign(new Error('China staff cannot join a customer support chat'), { status: 403 });
+    if (isSupportConv(conv) && !deskAllowed(added, conv)) {
+      throw Object.assign(new Error(deskKind(conv) === 'SUPPLIER_EMAIL' ? 'Only China staff can join a supplier email' : 'China staff cannot join a customer support chat'), { status: 403 });
     }
     await chat.addParticipant(conv.id, uid, u.id);
     live(conv.leadId, conv.id, 'participants');

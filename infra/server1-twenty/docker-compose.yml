@@ -37,6 +37,16 @@ services:
       SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Super Admin}
       BACKUP_LINKS: ${BACKUP_LINKS:-[]}
       UPLOADS_DIR: /data/uploads
+      # Email channel for team inboxes: OFF unless EMAIL_CHANNEL_ENABLED=true and the values below are set in .env.
+      EMAIL_CHANNEL_ENABLED: ${EMAIL_CHANNEL_ENABLED:-false}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      EMAIL_API_URL: ${EMAIL_API_URL:-}
+      EMAIL_API_TOKEN: ${EMAIL_API_TOKEN:-}
+      EMAIL_INBOUND_SECRET: ${EMAIL_INBOUND_SECRET:-}
+      EMAIL_CUSTOMER_ADDRESS: ${EMAIL_CUSTOMER_ADDRESS:-}
+      EMAIL_SUPPLIER_ADDRESS: ${EMAIL_SUPPLIER_ADDRESS:-}
+      EMAIL_NOTIFY_FROM: ${EMAIL_NOTIFY_FROM:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Source Easy}
     volumes:
       - api-data:/data   # uploads (+ the retired users.db, kept read-only as an archive)
     mem_limit: 384m

@@ -788,5 +788,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "chatOpenOnWeb": "Open this conversation in the Source Easy web app to reply."
 }

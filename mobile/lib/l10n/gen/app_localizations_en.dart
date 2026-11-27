@@ -1425,4 +1425,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quSessionExpired => 'Your session ended. Please sign in again.';
+
+  @override
+  String get chatOpenOnWeb =>
+      'Open this conversation in the Source Easy web app to reply.';
 }

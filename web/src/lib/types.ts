@@ -186,7 +186,8 @@ export interface LeadChatMessage {
   id: string; kind?: 'text' | 'quote_reference' | 'system'; content: string;
   quoteReference: QuoteReference | null; quoteTag?: ChatQuoteTag | null; quoteId?: string | null;
   senderId?: string | null; senderName: string; at: string; attachments?: ChatAttachment[];
-  authorKind?: 'staff' | 'guest' | 'customer' | 'system'; visibility?: 'customer' | 'staff_only';
+  authorKind?: 'staff' | 'guest' | 'customer' | 'supplier' | 'system'; visibility?: 'customer' | 'staff_only';
+  emailStatus?: 'SENT' | 'FAILED' | 'NOT_CONFIGURED' | null; emailError?: string | null; viaEmail?: boolean;
 }
 export interface LeadChat {
   enabled?: boolean; id?: string; conversationId?: string | null; created?: boolean;
@@ -195,7 +196,8 @@ export interface LeadChat {
   participants?: ChatParticipant[];
   messages: LeadChatMessage[]; quotes: QuoteReference[]; suggestedQuoteId: string | null;
   canSeeSupplier?: boolean;
-  kind?: 'LEAD' | 'CUSTOMER_SUPPORT';
+  kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL';
+  channel?: 'CHAT' | 'EMAIL'; emailAddress?: string | null; emailSubject?: string | null; emailReady?: boolean;
   guestName?: string | null; guestEmail?: string | null; guestPhone?: string | null;
   customerId?: string | null; convertedLeadId?: string | null; convertedLeadRef?: string | null;
   linkedLeadId?: string | null; source?: string | null; canConvert?: boolean;
@@ -205,7 +207,7 @@ export interface ChatThread {
   id: string; leadId: string | null; leadRef: string | null; product: string | null;
   lastBody: string | null; lastAt: string | null; unread: number;
   assignedTo: string | null; assignedToName: string | null;
-  kind?: 'LEAD' | 'CUSTOMER_SUPPORT'; guestName?: string | null;
+  kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL'; guestName?: string | null; channel?: 'CHAT' | 'EMAIL'; emailSubject?: string | null;
   convertedLeadId?: string | null; canConvert?: boolean; conversationId?: string;
 }
 export interface CustomRole {

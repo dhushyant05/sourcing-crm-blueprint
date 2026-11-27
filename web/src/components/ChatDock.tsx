@@ -69,10 +69,10 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
         lastBody: null, lastAt: null, unread: 0, assignedTo: c.assignedTo ?? null, assignedToName: c.assignedToName ?? null,
         kind: c.kind, guestName: c.guestName, canConvert: c.canConvert, convertedLeadId: c.convertedLeadId,
       });
-      if (c.kind === 'CUSTOMER_SUPPORT') setLeadId(null);
+      if (c.kind === 'CUSTOMER_SUPPORT' || c.kind === 'SUPPLIER_EMAIL') setLeadId(null);
       else if (c.leadId) setLeadId(c.leadId);
-      const box = inboxes.find((i) => i.slug === 'customer-support');
-      if (box && c.kind === 'CUSTOMER_SUPPORT') setInboxId(box.id);
+      const box = inboxes.find((i) => i.slug === (c.kind === 'SUPPLIER_EMAIL' ? 'supplier-email' : 'customer-support'));
+      if (box && (c.kind === 'CUSTOMER_SUPPORT' || c.kind === 'SUPPLIER_EMAIL')) setInboxId(box.id);
     }).catch(() => {});
   }, [conversationId, threads, api, inboxes, active?.id]);
 
@@ -218,7 +218,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                       {th.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{th.unread}</span>}
                       <span className="ml-auto text-[10px] text-ink-400">{th.lastAt ? fmtDate(th.lastAt) : ''}</span>
                     </div>
-                    <div className="truncate text-sm text-ink-700 dark:text-ink-200">{th.product || ((th as any).kind === 'CUSTOMER_SUPPORT' ? t('chat.supportThread') : t('chat.thread'))}</div>
+                    <div className="truncate text-sm text-ink-700 dark:text-ink-200">{th.product || ((th as any).kind === 'SUPPLIER_EMAIL' ? t('chat.supplierEmail') : (th as any).kind === 'CUSTOMER_SUPPORT' ? t('chat.supportThread') : t('chat.thread'))}</div>
                     {th.lastBody && <div className="truncate text-xs text-ink-400">{th.lastBody}</div>}
                   </button>
                 ))}
@@ -226,7 +226,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
             </div>
           )}
 
-          {view === 'thread' && (active?.kind === 'CUSTOMER_SUPPORT' || (!leadId && conversationId)) && conversationId && (
+          {view === 'thread' && (active?.kind === 'CUSTOMER_SUPPORT' || active?.kind === 'SUPPLIER_EMAIL' || (!leadId && conversationId)) && conversationId && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <SupportThread key={conversationId} conversationId={conversationId} compact onOpenLead={openLeadId} />
             </div>
