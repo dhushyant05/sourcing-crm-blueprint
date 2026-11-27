@@ -2737,6 +2737,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your session ended. Please sign in again.'**
   String get quSessionExpired;
+
+  /// No description provided for @chatOpenOnWeb.
+  ///
+  /// In en, this message translates to:
+  /// **'Open this conversation in the Source Easy web app to reply.'**
+  String get chatOpenOnWeb;
 }
 
 class _AppLocalizationsDelegate

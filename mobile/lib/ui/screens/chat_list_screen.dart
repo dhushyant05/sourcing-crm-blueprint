@@ -81,6 +81,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         ? CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Text('$unread', style: const TextStyle(color: Colors.white, fontSize: 10)))
                         : const Icon(Icons.chevron_right),
                     onTap: () async {
+                      // Customer support and supplier email threads have no lead; they are answered in the web app.
+                      if (th['leadId'] is! String) {
+                        ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(l.chatOpenOnWeb)));
+                        return;
+                      }
                       await Navigator.push(
                         c,
                         MaterialPageRoute(

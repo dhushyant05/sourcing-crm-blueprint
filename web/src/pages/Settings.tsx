@@ -10,6 +10,27 @@ import { StorageCard } from '../components/Storage';
 import { staffReq } from '../catalog/api';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 
+/** Per-person: email me about unread chat messages (counts and a link only). */
+function ChatEmailCard() {
+  const { api } = useApp();
+  const { t } = useTranslation();
+  const [p, setP] = useState<{ chatEmail: boolean; emailConfigured: boolean } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { void api.notificationPrefs?.().then(setP).catch((e) => setErr((e as Error).message)); }, [api]);
+  return (
+    <section className="card p-6" data-testid="chat-email-card">
+      <h2 className="font-semibold text-ink-900 dark:text-white">{t('settings.notifications')}</h2>
+      <label className="mt-4 flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5" disabled={!p} checked={!!p?.chatEmail} data-testid="chat-email-toggle"
+          onChange={(e) => { const v = e.target.checked; void api.setNotificationPrefs?.({ chatEmail: v }).then(setP).catch((x) => setErr((x as Error).message)); }} />
+        <span>{t('settings.chatEmail')}<span className="mt-1 block text-xs text-ink-400">{t('settings.chatEmailHint')}</span></span>
+      </label>
+      {p && !p.emailConfigured && <p className="mt-2 text-xs text-amber-700">{t('settings.chatEmailOff')}</p>}
+      {err && <p className="mt-2 text-xs text-rose-600">{err}</p>}
+    </section>
+  );
+}
+
 export function Settings() {
   const { api, perms, session, updateSession, refreshPeople } = useApp();
   const { t } = useTranslation();
@@ -32,6 +53,7 @@ export function Settings() {
         </section>
         {session?.role === 'SUPPLIER' && !session.demo && <SupplierProfileCard />}
         {!session?.demo && <PasswordCard />}
+        {!session?.demo && session?.role !== 'SUPPLIER' && api.notificationPrefs && <ChatEmailCard />}
         {!session?.demo && session?.role !== 'SUPPLIER' && <SlaSettingsCard />}
         {!session?.demo && perms.can('data.export') && api.exportCsv && <div className="card p-5" data-testid="export-card">
           <h2 className="font-semibold text-ink-900 dark:text-white">{t('perm.export')}</h2><p className="mt-1 text-sm text-ink-500">{t('perm.exportHint')}</p>

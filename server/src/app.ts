@@ -18,7 +18,9 @@ import { LeadStore } from './leads.js';
 import { CustomerStore, BadCustomer, NO_STATS } from './customers.js';
 import type { UserStore, User } from './users.js';
 import { QuoteStore, QUOTE_STATUSES, cqTotals, quoteCarton, type Quote } from './quotes.js';
-import { ChatStore, canAccessSupportInbox, isChinaRole, SUPPORT_INBOX } from './chat.js';
+import { ChatStore, canAccessSupportInbox, canAccessDeskKind, canAccessSupplierEmail, isChinaRole, SUPPORT_INBOX } from './chat.js';
+import { EmailChannel, emailConfigFromEnv, senderFromConfig, type EmailConfig, type MailSender } from './email-channel.js';
+import { registerPublicEmail, registerStaffEmail } from './email-routes.js';
 import { CustomRoleStore } from './custom-roles.js';
 import { registerStaffChat } from './chat-routes.js';
 import { SupportStore } from './support-chat.js';
@@ -65,9 +67,14 @@ export interface AppOptions {
   now?: () => number;
   /** SLA checker interval in ms (default 30 s; 0 = off, call app.slaTick() manually). */
   slaTickMs?: number;
+  /** Email channel config + sender (tests). Default: from env, disabled unless configured. */
+  emailConfig?: EmailConfig;
+  emailSender?: MailSender;
+  /** Unread-chat email digest interval in ms (default 5 min; 0 = off). */
+  emailTickMs?: number;
 }
 
-declare module 'fastify' { interface FastifyRequest { user?: User; customer?: CustomerUser } interface FastifyInstance { slaTick: () => Promise<{ warn: number; breach: number }> } }
+declare module 'fastify' { interface FastifyRequest { user?: User; customer?: CustomerUser } interface FastifyInstance { slaTick: () => Promise<{ warn: number; breach: number }>; emailChannel?: EmailChannel } }
 
 export async function buildApp(o: AppOptions) {
   const app = Fastify({ logger: o.logger ?? false, trustProxy: true, bodyLimit: 1 << 20 });
@@ -869,10 +876,41 @@ export async function buildApp(o: AppOptions) {
       const sc = await scope(u); if (sc && !sc.has(String(r.id))) return false;
       return true;
     };
+    // ---- Email channel (team inboxes). Disabled unless EMAIL_CHANNEL_ENABLED + provider are configured. ----
+    const emailConfig = o.emailConfig ?? emailConfigFromEnv();
+    const email = new EmailChannel({
+      db: o.db, uploads, config: emailConfig, sender: o.emailSender ?? senderFromConfig(emailConfig),
+      live: liveData, userById: (id) => o.users.byId(id) ?? undefined, staffUsers: () => o.users.list(), now: o.now,
+      notify: async (side, conversationId, recipients, byName, preview) => {
+        if (!recipients.length) return;
+        await assign.notify(recipients, {
+          leadId: null, leadRef: side === 'SUPPLIER' ? 'Supplier email' : 'Support', product: null, kind: 'CHAT_MESSAGE',
+          office: side === 'SUPPLIER' ? 'CHINA' : 'INDIA', byName, detail: preview.slice(0, 140), conversationId,
+        });
+      },
+    });
     registerStaffChat(api, {
       chat: chatStore, roles: customRoles, quotes, leads: leadDb, uploads, assign, users: o.users, perms,
-      attLead, need, liveData, canReadLead, readMultipart, stripImageMetadata, names: userNames,
+      attLead, need, liveData, canReadLead, readMultipart, stripImageMetadata, names: userNames, email,
     });
+    registerPublicEmail(app, email);
+    registerStaffEmail(api, email, {
+      linkSupplierLead: async (u, conversationId, leadId) => {
+        const conv = await chatStore.get(conversationId);
+        if (!conv || conv.kind !== 'SUPPLIER_EMAIL' || !canAccessSupplierEmail(u) || !(await chatStore.canAccessId(u, conv.id, null))) {
+          throw Object.assign(new Error('Not found'), { status: 404 });
+        }
+        if (leadId && !(await canReadLead(u, leadId))) throw Object.assign(new Error('Not found'), { status: 404 });
+        await o.db.run('UPDATE chat_conversations SET linked_lead_id = ? WHERE id = ?', leadId, conv.id);
+        liveData({ type: 'chat', sub: 'link', conversationId: conv.id, kind: 'SUPPLIER_EMAIL', leadId: null });
+      },
+    });
+    app.decorate('emailChannel', email);
+    const emailTick = o.emailTickMs ?? 300_000;
+    if (emailTick > 0 && email.status.outboundReady) {
+      const t = setInterval(() => { email.unreadDigest().catch((e) => app.log.warn(e, 'chat email digest failed')); }, emailTick);
+      t.unref?.(); app.addHook('onClose', async () => clearInterval(t));
+    }
     const supportStore = new SupportStore(o.db, o.bus, chatStore);
     const supportDeps = {
       support: supportStore, chat: chatStore, uploads, assign, jwtSecret: o.jwtSecret, liveData,
@@ -1949,7 +1987,8 @@ export async function buildApp(o: AppOptions) {
       send('hello', { unread: unread0 });
       const off = assign.subscribe(uid, (n, unread) => send('notification', { notification: n, unread }));
       const offData = onLiveData((d) => {
-        if (d?.type === 'chat' && d.kind === 'CUSTOMER_SUPPORT' && isChinaRole(req.user!.role)) return;
+        // Desk conversations: customer support never reaches China; supplier email only reaches China and super admin.
+        if (d?.type === 'chat' && (d.kind === 'CUSTOMER_SUPPORT' || d.kind === 'SUPPLIER_EMAIL') && !canAccessDeskKind(req.user!, d.kind)) return;
         send('change', d);
       });
       const ping = setInterval(() => res.write(': ping\n\n'), 25000);

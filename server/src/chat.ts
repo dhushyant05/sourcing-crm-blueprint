@@ -107,12 +107,14 @@ export const qUploadKey = (id: string) => `q_${id.replace(/-/g, '')}`.slice(0, 6
 export const chatFileKey = (messageId: string) => `cm_${messageId.replace(/-/g, '')}`.slice(0, 64);
 
 export const SUPPORT_INBOX = 'inbox-customer-support';
+export const SUPPLIER_EMAIL_INBOX = 'inbox-supplier-email';
 
 export const TEAM_INBOXES = {
   INDIA: 'inbox-india',
   CHINA: 'inbox-china',
   MARKETPLACE: 'inbox-marketplace',
   SUPPORT: SUPPORT_INBOX,
+  SUPPLIER_EMAIL: SUPPLIER_EMAIL_INBOX,
 } as const;
 
 export function isChinaRole(role: string) {
@@ -123,6 +125,27 @@ export function isChinaRole(role: string) {
 export function canAccessSupportInbox(u: { role: string }) {
   if (!u || isChinaRole(u.role) || u.role === 'SUPPLIER') return false;
   return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM' || u.role.startsWith('INDIA');
+}
+
+/** Supplier email (identity + contact details): China roles and super admin only. Never India, Marketplace or suppliers. */
+export function canAccessSupplierEmail(u: { role: string } | null | undefined) {
+  if (!u) return false;
+  return u.role === 'SUPER_ADMIN' || isChinaRole(u.role);
+}
+
+export type ConvKind = 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL';
+/** Conversation class: lead chat, customer support desk or supplier email desk. */
+export function convClass(c: { kind?: string | null; leadId?: string | null }): 'lead' | 'support' | 'supplier_email' {
+  if (c.kind === 'SUPPLIER_EMAIL') return 'supplier_email';
+  if (c.kind === 'CUSTOMER_SUPPORT' || !c.leadId) return 'support';
+  return 'lead';
+}
+/** May this user see desk conversations of this kind at all (role-level hard rule)? */
+export function canAccessDeskKind(u: { role: string } | null | undefined, kind: string | null | undefined) {
+  if (!u) return false;
+  if (kind === 'SUPPLIER_EMAIL') return canAccessSupplierEmail(u);
+  if (kind === 'CUSTOMER_SUPPORT') return canAccessSupportInbox(u);
+  return true;
 }
 
 export function officeTeamInbox(role: Role): string | null {
@@ -186,6 +209,16 @@ export class ChatStore {
         SUPPORT_INBOX, u.id, null,
       );
     }
+    if (canAccessSupplierEmail(u)) {
+      await this.db.run(
+        "INSERT INTO chat_inboxes (id, slug, name, kind) VALUES (?,?,?,?) ON CONFLICT (id) DO NOTHING",
+        SUPPLIER_EMAIL_INBOX, 'supplier-email', 'Supplier email', 'TEAM',
+      );
+      await this.db.run(
+        'INSERT INTO chat_inbox_members (inbox_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING',
+        SUPPLIER_EMAIL_INBOX, u.id, null,
+      );
+    }
   }
 
   /**
@@ -195,6 +228,16 @@ export class ChatStore {
   supportDesk(u: User): boolean {
     if (!canAccessSupportInbox(u)) return false;
     return u.role === 'SUPER_ADMIN' || this.can(u, 'chat.view_own') || this.can(u, 'chat.view_team') || this.can(u, 'chat.view_all');
+  }
+
+  /** Same idea for the Supplier email desk: China roles (and super admin) with any chat permission. */
+  supplierDesk(u: User): boolean {
+    if (!canAccessSupplierEmail(u)) return false;
+    return u.role === 'SUPER_ADMIN' || this.can(u, 'chat.view_own') || this.can(u, 'chat.view_team') || this.can(u, 'chat.view_all');
+  }
+
+  private deskInbox(u: User, inboxId: string) {
+    return (inboxId === SUPPORT_INBOX && this.supportDesk(u)) || (inboxId === SUPPLIER_EMAIL_INBOX && this.supplierDesk(u));
   }
 
   async listInboxes(u: User) {
@@ -216,7 +259,8 @@ export class ChatStore {
     const out = [];
     for (const r of rows) {
       if (r.id === SUPPORT_INBOX && !canAccessSupportInbox(u)) continue;
-      if (r.kind === 'TEAM' && !(r.id === SUPPORT_INBOX && this.supportDesk(u)) && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all') && u.role !== 'SUPER_ADMIN') continue;
+      if (r.id === SUPPLIER_EMAIL_INBOX && !canAccessSupplierEmail(u)) continue;
+      if (r.kind === 'TEAM' && !this.deskInbox(u, String(r.id)) && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all') && u.role !== 'SUPER_ADMIN') continue;
       const unread = await this.inboxUnread(u, String(r.id), r.kind);
       const members = r.kind === 'TEAM'
         ? await this.db.all('SELECT user_id FROM chat_inbox_members WHERE inbox_id = ?', r.id)
@@ -252,10 +296,11 @@ export class ChatStore {
       throw new ChatError('Inbox not found', 404);
     }
     if (inbox.id === SUPPORT_INBOX && !canAccessSupportInbox(u)) throw new ChatError('Inbox not found', 404);
+    if (inbox.id === SUPPLIER_EMAIL_INBOX && !canAccessSupplierEmail(u)) throw new ChatError('Inbox not found', 404);
     if (inbox.kind === 'TEAM') {
       const mem = await this.db.get('SELECT 1 FROM chat_inbox_members WHERE inbox_id = ? AND user_id = ?', inboxId, u.id);
       if (!mem && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
-      if (!(inbox.id === SUPPORT_INBOX && this.supportDesk(u)) && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
+      if (!this.deskInbox(u, String(inbox.id)) && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
     }
     let rows: any[];
     if (inbox.kind === 'PERSONAL') {
@@ -277,7 +322,7 @@ export class ChatStore {
     const out = [];
     for (const r of rows) {
       const kind = r.kind ?? 'LEAD';
-      if (kind === 'CUSTOMER_SUPPORT' && !canAccessSupportInbox(u)) continue;
+      if (!canAccessDeskKind(u, kind)) continue;
       const unread = await this.unreadCount(u.id, r.id, r.last_read_at ?? null);
       out.push({
         id: r.id,
@@ -295,6 +340,8 @@ export class ChatStore {
         source: r.source ?? null,
         guestEmail: r.guest_email ?? null,
         guestPhone: r.guest_phone ?? null,
+        channel: r.channel ?? 'CHAT',
+        emailSubject: r.email_subject ?? null,
       });
     }
     return out;
@@ -327,7 +374,7 @@ export class ChatStore {
     );
     const out = [];
     for (const r of rows) {
-      if ((r.conv_kind ?? 'LEAD') === 'CUSTOMER_SUPPORT' && !canAccessSupportInbox(u)) continue;
+      if (!canAccessDeskKind(u, r.conv_kind ?? 'LEAD')) continue;
       if (r.lead_id && allowedLeadIds && !allowedLeadIds.has(String(r.lead_id))) continue;
       if (!(await this.canAccessId(u, String(r.conversation_id), r.lead_id ?? null))) continue;
       out.push({
@@ -344,10 +391,10 @@ export class ChatStore {
   async canAccessId(u: User, conversationId: string, leadId?: string | null): Promise<boolean> {
     const row = await this.db.get('SELECT kind FROM chat_conversations WHERE id = ?', conversationId);
     const kind = row?.kind ?? (leadId ? 'LEAD' : 'CUSTOMER_SUPPORT');
-    if (kind === 'CUSTOMER_SUPPORT') {
-      if (!canAccessSupportInbox(u)) return false;
+    if (kind === 'CUSTOMER_SUPPORT' || kind === 'SUPPLIER_EMAIL') {
+      if (!canAccessDeskKind(u, kind)) return false;
       if (this.can(u, 'chat.view_all') || u.role === 'SUPER_ADMIN') return true;
-      if (this.can(u, 'chat.view_team') || this.supportDesk(u)) {
+      if (this.can(u, 'chat.view_team') || (kind === 'SUPPLIER_EMAIL' ? this.supplierDesk(u) : this.supportDesk(u))) {
         const team = await this.db.get(
           `SELECT 1 FROM chat_conversation_inboxes ci
            JOIN chat_inbox_members m ON m.inbox_id = ci.inbox_id AND m.user_id = ?
@@ -379,7 +426,7 @@ export class ChatStore {
     return r ? {
       id: String(r.id),
       leadId: r.lead_id ? String(r.lead_id) : null,
-      kind: (r.kind ?? 'LEAD') as 'LEAD' | 'CUSTOMER_SUPPORT',
+      kind: (r.kind ?? 'LEAD') as ConvKind,
       assignedTo: r.assigned_to as string | null,
       lastMessageAt: r.last_message_at,
       createdAt: r.created_at,
@@ -394,6 +441,11 @@ export class ChatStore {
       linkedLeadId: r.linked_lead_id ?? null,
       linkedOrderId: r.linked_order_id ?? null,
       source: r.source ?? null,
+      channel: (r.channel ?? 'CHAT') as 'CHAT' | 'EMAIL',
+      emailAddress: r.email_address ?? null,
+      emailSubject: r.email_subject ?? null,
+      emailMailbox: r.email_mailbox ?? null,
+      supplierId: r.supplier_id ?? null,
     } : null;
   }
 
@@ -402,7 +454,7 @@ export class ChatStore {
     return r ? {
       id: String(r.id),
       leadId: r.lead_id ? String(r.lead_id) : null,
-      kind: (r.kind ?? 'LEAD') as 'LEAD' | 'CUSTOMER_SUPPORT',
+      kind: (r.kind ?? 'LEAD') as ConvKind,
       assignedTo: r.assigned_to as string | null,
       lastMessageAt: r.last_message_at,
       createdAt: r.created_at,
@@ -417,6 +469,11 @@ export class ChatStore {
       linkedLeadId: r.linked_lead_id ?? null,
       linkedOrderId: r.linked_order_id ?? null,
       source: r.source ?? null,
+      channel: (r.channel ?? 'CHAT') as 'CHAT' | 'EMAIL',
+      emailAddress: r.email_address ?? null,
+      emailSubject: r.email_subject ?? null,
+      emailMailbox: r.email_mailbox ?? null,
+      supplierId: r.supplier_id ?? null,
     } : null;
   }
 

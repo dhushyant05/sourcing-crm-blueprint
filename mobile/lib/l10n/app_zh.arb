@@ -439,5 +439,6 @@
   "quBioToggle": "指纹解锁",
   "quBioUnavailable": "此手机未设置指纹",
   "quPinSaved": "PIN 已保存",
-  "quSessionExpired": "会话已结束，请重新登录。"
+  "quSessionExpired": "会话已结束，请重新登录。",
+  "chatOpenOnWeb": "请在 Source Easy 网页版中打开此对话进行回复。"
 }

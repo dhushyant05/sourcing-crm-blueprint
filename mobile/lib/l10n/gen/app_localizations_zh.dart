@@ -1408,4 +1408,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quSessionExpired => '会话已结束，请重新登录。';
+
+  @override
+  String get chatOpenOnWeb => '请在 Source Easy 网页版中打开此对话进行回复。';
 }

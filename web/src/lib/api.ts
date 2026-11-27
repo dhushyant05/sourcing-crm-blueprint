@@ -112,6 +112,8 @@ export interface Api {
   sendConversationMessage?(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[]; internal?: boolean }): Promise<LeadChatMessage>;
   convertSupportLead?(id: string): Promise<{ leadId: string; leadRef: string | null }>;
   markChatRead?(id: string): Promise<void>;
+  notificationPrefs?(): Promise<{ chatEmail: boolean; emailConfigured: boolean }>;
+  setNotificationPrefs?(p: { chatEmail: boolean }): Promise<{ chatEmail: boolean; emailConfigured: boolean }>;
   sendTyping?(id: string): Promise<void>;
   assignConversation?(id: string, userId: string | null): Promise<void>;
   addChatParticipant?(id: string, userId: string): Promise<void>;
@@ -400,6 +402,8 @@ export class ServerApi implements Api {
   }
   convertSupportLead(id: string) { return this.req<{ leadId: string; leadRef: string | null }>('POST', `/chat/conversations/${encodeURIComponent(id)}/convert-lead`, {}); }
   async markChatRead(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/read`, {}); }
+  notificationPrefs() { return this.req<{ chatEmail: boolean; emailConfigured: boolean }>('GET', '/me/notification-prefs'); }
+  setNotificationPrefs(p: { chatEmail: boolean }) { return this.req<{ chatEmail: boolean; emailConfigured: boolean }>('PUT', '/me/notification-prefs', p); }
   async sendTyping(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/typing`, {}); }
   async assignConversation(id: string, userId: string | null) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/assign`, { userId }); }
   async addChatParticipant(id: string, userId: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/participants`, { userId }); }
