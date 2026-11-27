@@ -12,6 +12,7 @@ import 'auth.dart';
 import 'requests.dart';
 import 'shipping.dart';
 import 'marketplace.dart';
+import 'support_chat.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.session, this.live = true});
@@ -131,7 +132,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _list(_ships, (r) => ShippingTile(r, onTap: () => _open(ShippingDetailScreen(api: api, id: '${r['id']}', changes: _changes.stream))), 'No shipping requests yet.'),
         AlertsScreen(api: api, push: widget.session.push),
       ]),
-      floatingActionButton: (_tab == 0 || _tab == 3) ? null : FloatingActionButton.extended(key: const Key('fab-new'), icon: const Icon(Icons.add), label: Text(_tab == 1 ? 'New request' : 'Ship goods'),
+      floatingActionButton: _tab == 3 ? null : _tab == 0
+          ? FloatingActionButton(key: const Key('fab-chat'), tooltip: 'Chat with support', onPressed: () => _open(SupportChatScreen(api: api, signedIn: true, source: 'app')), child: const Icon(Icons.chat_bubble_outline))
+          : FloatingActionButton.extended(key: const Key('fab-new'), icon: const Icon(Icons.add), label: Text(_tab == 1 ? 'New request' : 'Ship goods'),
           onPressed: () => _open(_tab == 1 ? NewRequestScreen(api: api) : NewShippingScreen(api: api))),
       bottomNavigationBar: NavigationBar(selectedIndex: _tab, onDestinationSelected: (i) => setState(() => _tab = i), destinations: [
         const NavigationDestination(icon: Icon(Icons.storefront_outlined), label: 'Catalog'),

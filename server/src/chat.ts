@@ -106,11 +106,24 @@ export function suggestedQuoteId(quotes: Quote[], preferredId?: string | null): 
 export const qUploadKey = (id: string) => `q_${id.replace(/-/g, '')}`.slice(0, 64);
 export const chatFileKey = (messageId: string) => `cm_${messageId.replace(/-/g, '')}`.slice(0, 64);
 
+export const SUPPORT_INBOX = 'inbox-customer-support';
+
 export const TEAM_INBOXES = {
   INDIA: 'inbox-india',
   CHINA: 'inbox-china',
   MARKETPLACE: 'inbox-marketplace',
+  SUPPORT: SUPPORT_INBOX,
 } as const;
+
+export function isChinaRole(role: string) {
+  return role.startsWith('CHINA');
+}
+
+/** India team, Marketplace Team and super admin. Never China or suppliers. */
+export function canAccessSupportInbox(u: { role: string }) {
+  if (!u || isChinaRole(u.role) || u.role === 'SUPPLIER') return false;
+  return u.role === 'SUPER_ADMIN' || u.role === 'MARKETPLACE_TEAM' || u.role.startsWith('INDIA');
+}
 
 export function officeTeamInbox(role: Role): string | null {
   if (role === 'MARKETPLACE_TEAM') return TEAM_INBOXES.MARKETPLACE;
@@ -163,6 +176,16 @@ export class ChatStore {
   async bootstrapUser(u: User) {
     await this.ensurePersonalInbox(u.id, u.name);
     await this.ensureOfficeMembership(u);
+    if (canAccessSupportInbox(u)) {
+      await this.db.run(
+        "INSERT INTO chat_inboxes (id, slug, name, kind) VALUES (?,?,?,?) ON CONFLICT (id) DO NOTHING",
+        SUPPORT_INBOX, 'customer-support', 'Customer support', 'TEAM',
+      );
+      await this.db.run(
+        'INSERT INTO chat_inbox_members (inbox_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING',
+        SUPPORT_INBOX, u.id, null,
+      );
+    }
   }
 
   async listInboxes(u: User) {
@@ -183,6 +206,7 @@ export class ChatStore {
     );
     const out = [];
     for (const r of rows) {
+      if (r.id === SUPPORT_INBOX && !canAccessSupportInbox(u)) continue;
       if (r.kind === 'TEAM' && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all') && u.role !== 'SUPER_ADMIN') continue;
       const unread = await this.inboxUnread(u, String(r.id), r.kind);
       const members = r.kind === 'TEAM'
@@ -218,6 +242,7 @@ export class ChatStore {
     if (inbox.kind === 'PERSONAL' && inbox.owner_user_id !== u.id && u.role !== 'SUPER_ADMIN' && !this.can(u, 'chat.view_all')) {
       throw new ChatError('Inbox not found', 404);
     }
+    if (inbox.id === SUPPORT_INBOX && !canAccessSupportInbox(u)) throw new ChatError('Inbox not found', 404);
     if (inbox.kind === 'TEAM') {
       const mem = await this.db.get('SELECT 1 FROM chat_inbox_members WHERE inbox_id = ? AND user_id = ?', inboxId, u.id);
       if (!mem && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
@@ -242,8 +267,26 @@ export class ChatStore {
     }
     const out = [];
     for (const r of rows) {
+      const kind = r.kind ?? 'LEAD';
+      if (kind === 'CUSTOMER_SUPPORT' && !canAccessSupportInbox(u)) continue;
       const unread = await this.unreadCount(u.id, r.id, r.last_read_at ?? null);
-      out.push({ id: r.id, leadId: r.lead_id, assignedTo: r.assigned_to, lastMessageAt: r.last_message_at, createdAt: r.created_at, unread });
+      out.push({
+        id: r.id,
+        kind,
+        leadId: r.lead_id ?? null,
+        assignedTo: r.assigned_to,
+        lastMessageAt: r.last_message_at,
+        createdAt: r.created_at,
+        unread,
+        guestName: r.guest_name ?? null,
+        customerId: r.customer_id ?? null,
+        productTitle: r.product_title ?? null,
+        convertedLeadId: r.converted_lead_id ?? null,
+        linkedLeadId: r.linked_lead_id ?? null,
+        source: r.source ?? null,
+        guestEmail: r.guest_email ?? null,
+        guestPhone: r.guest_phone ?? null,
+      });
     }
     return out;
   }
@@ -264,29 +307,49 @@ export class ChatStore {
     if (needle.length < 2) return [];
     const like = `%${needle.replace(/[%_]/g, '')}%`;
     const rows = await this.db.all(
-      `SELECT m.id, m.conversation_id, m.body, m.kind, m.created_at, m.sender_id, c.lead_id, l.lead_ref, l.product_interest
+      `SELECT m.id, m.conversation_id, m.body, m.kind, m.created_at, m.sender_id, c.lead_id, c.kind AS conv_kind,
+              c.guest_name, c.product_title, l.lead_ref, l.product_interest, m.visibility
        FROM chat_messages m
        JOIN chat_conversations c ON c.id = m.conversation_id
-       JOIN leads l ON l.id = c.lead_id
-       WHERE (m.body ILIKE ? OR l.lead_ref ILIKE ? OR l.product_interest ILIKE ?)
+       LEFT JOIN leads l ON l.id = c.lead_id
+       WHERE (m.body ILIKE ? OR l.lead_ref ILIKE ? OR l.product_interest ILIKE ? OR c.guest_name ILIKE ? OR c.product_title ILIKE ?)
        ORDER BY m.created_at DESC LIMIT 80`,
-      like, like, like,
+      like, like, like, like, like,
     );
     const out = [];
     for (const r of rows) {
-      if (allowedLeadIds && !allowedLeadIds.has(String(r.lead_id))) continue;
-      if (!(await this.canAccessId(u, String(r.conversation_id), String(r.lead_id)))) continue;
+      if ((r.conv_kind ?? 'LEAD') === 'CUSTOMER_SUPPORT' && !canAccessSupportInbox(u)) continue;
+      if (r.lead_id && allowedLeadIds && !allowedLeadIds.has(String(r.lead_id))) continue;
+      if (!(await this.canAccessId(u, String(r.conversation_id), r.lead_id ?? null))) continue;
       out.push({
-        messageId: r.id, conversationId: r.conversation_id, leadId: r.lead_id,
-        leadRef: r.lead_ref, product: r.product_interest,
+        messageId: r.id, conversationId: r.conversation_id, leadId: r.lead_id ?? null,
+        leadRef: r.lead_ref ?? r.guest_name, product: r.product_interest ?? r.product_title,
         kind: r.kind, body: String(r.body ?? '').slice(0, 240), at: r.created_at,
+        convKind: r.conv_kind ?? 'LEAD',
       });
       if (out.length >= 40) break;
     }
     return out;
   }
 
-  async canAccessId(u: User, conversationId: string, leadId: string): Promise<boolean> {
+  async canAccessId(u: User, conversationId: string, leadId?: string | null): Promise<boolean> {
+    const row = await this.db.get('SELECT kind FROM chat_conversations WHERE id = ?', conversationId);
+    const kind = row?.kind ?? (leadId ? 'LEAD' : 'CUSTOMER_SUPPORT');
+    if (kind === 'CUSTOMER_SUPPORT') {
+      if (!canAccessSupportInbox(u)) return false;
+      if (this.can(u, 'chat.view_all') || u.role === 'SUPER_ADMIN') return true;
+      if (this.can(u, 'chat.view_team')) {
+        const team = await this.db.get(
+          `SELECT 1 FROM chat_conversation_inboxes ci
+           JOIN chat_inbox_members m ON m.inbox_id = ci.inbox_id AND m.user_id = ?
+           WHERE ci.conversation_id = ?`,
+          u.id, conversationId,
+        );
+        if (team) return true;
+      }
+      const part = await this.db.get('SELECT 1 FROM chat_participants WHERE conversation_id = ? AND user_id = ?', conversationId, u.id);
+      return !!(part && this.can(u, 'chat.view_own'));
+    }
     if (this.can(u, 'chat.view_all')) return true;
     const part = await this.db.get('SELECT 1 FROM chat_participants WHERE conversation_id = ? AND user_id = ?', conversationId, u.id);
     if (part && this.can(u, 'chat.view_own')) return true;
@@ -304,12 +367,48 @@ export class ChatStore {
 
   async get(conversationId: string) {
     const r = await this.db.get('SELECT * FROM chat_conversations WHERE id = ?', conversationId);
-    return r ? { id: String(r.id), leadId: String(r.lead_id), assignedTo: r.assigned_to as string | null, lastMessageAt: r.last_message_at, createdAt: r.created_at } : null;
+    return r ? {
+      id: String(r.id),
+      leadId: r.lead_id ? String(r.lead_id) : null,
+      kind: (r.kind ?? 'LEAD') as 'LEAD' | 'CUSTOMER_SUPPORT',
+      assignedTo: r.assigned_to as string | null,
+      lastMessageAt: r.last_message_at,
+      createdAt: r.created_at,
+      visitorId: r.visitor_id ?? null,
+      customerId: r.customer_id ?? null,
+      guestName: r.guest_name ?? null,
+      guestEmail: r.guest_email ?? null,
+      guestPhone: r.guest_phone ?? null,
+      productTitle: r.product_title ?? null,
+      productId: r.product_id ?? null,
+      convertedLeadId: r.converted_lead_id ?? null,
+      linkedLeadId: r.linked_lead_id ?? null,
+      linkedOrderId: r.linked_order_id ?? null,
+      source: r.source ?? null,
+    } : null;
   }
 
   async byLead(leadId: string) {
     const r = await this.db.get('SELECT * FROM chat_conversations WHERE lead_id = ?', leadId);
-    return r ? { id: String(r.id), leadId: String(r.lead_id), assignedTo: r.assigned_to as string | null, lastMessageAt: r.last_message_at, createdAt: r.created_at } : null;
+    return r ? {
+      id: String(r.id),
+      leadId: r.lead_id ? String(r.lead_id) : null,
+      kind: (r.kind ?? 'LEAD') as 'LEAD' | 'CUSTOMER_SUPPORT',
+      assignedTo: r.assigned_to as string | null,
+      lastMessageAt: r.last_message_at,
+      createdAt: r.created_at,
+      visitorId: r.visitor_id ?? null,
+      customerId: r.customer_id ?? null,
+      guestName: r.guest_name ?? null,
+      guestEmail: r.guest_email ?? null,
+      guestPhone: r.guest_phone ?? null,
+      productTitle: r.product_title ?? null,
+      productId: r.product_id ?? null,
+      convertedLeadId: r.converted_lead_id ?? null,
+      linkedLeadId: r.linked_lead_id ?? null,
+      linkedOrderId: r.linked_order_id ?? null,
+      source: r.source ?? null,
+    } : null;
   }
 
   async ensureForLead(u: User, lead: LeadLite, asg: Assignment | null): Promise<{ id: string; created: boolean }> {
@@ -373,18 +472,20 @@ export class ChatStore {
     return this.db.all('SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY created_at, id', conversationId);
   }
 
-  async post(conversationId: string, senderId: string, body: string, kind: 'text' | 'quote_reference', quoteId: string | null) {
+  async post(conversationId: string, senderId: string | null, body: string, kind: 'text' | 'quote_reference' | 'system', quoteId: string | null, opts?: { authorKind?: string; visibility?: string }) {
     const text = body.trim();
     if (kind === 'text' && !text) throw new ChatError('Message cannot be empty', 400);
     if (text.length > 4000) throw new ChatError('Message is too long', 400);
     const id = randomUUID();
     const at = new Date().toISOString();
+    const authorKind = opts?.authorKind ?? (senderId ? 'staff' : 'guest');
+    const visibility = opts?.visibility ?? 'customer';
     await this.db.run(
-      'INSERT INTO chat_messages (id, conversation_id, sender_id, kind, body, quote_id, created_at) VALUES (?,?,?,?,?,?,?)',
-      id, conversationId, senderId, kind, text, quoteId, at,
+      'INSERT INTO chat_messages (id, conversation_id, sender_id, kind, body, quote_id, created_at, author_kind, visibility) VALUES (?,?,?,?,?,?,?,?,?)',
+      id, conversationId, senderId, kind, text, quoteId, at, authorKind, visibility,
     );
     await this.db.run('UPDATE chat_conversations SET last_message_at = ? WHERE id = ?', at, conversationId);
-    return { id, conversationId, senderId, kind, body: text, quoteId, createdAt: at };
+    return { id, conversationId, senderId, kind, body: text, quoteId, createdAt: at, authorKind, visibility };
   }
 
   messageFiles(messageId: string) { return this.uploads.list(chatFileKey(messageId)); }
@@ -421,6 +522,14 @@ export class ChatStore {
   async setTeamMembers(inboxId: string, userIds: string[], by: string) {
     const inbox = await this.db.get("SELECT * FROM chat_inboxes WHERE id = ? AND kind = 'TEAM'", inboxId);
     if (!inbox) throw new ChatError('Team inbox not found', 404);
+    if (inboxId === SUPPORT_INBOX) {
+      for (const uid of userIds) {
+        const row = await this.db.get<{ role: string }>('SELECT role FROM users WHERE id = ?', uid);
+        if (!row || isChinaRole(row.role) || row.role === 'SUPPLIER') {
+          throw new ChatError('China staff and suppliers cannot join the Customer support inbox', 403);
+        }
+      }
+    }
     await this.db.tx(async (t) => {
       await t.run('DELETE FROM chat_inbox_members WHERE inbox_id = ?', inboxId);
       for (const uid of userIds) {

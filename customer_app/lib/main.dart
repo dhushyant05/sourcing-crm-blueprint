@@ -9,6 +9,7 @@ import 'api.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
 import 'screens/marketplace.dart';
+import 'screens/support_chat.dart';
 import 'push.dart';
 import 'session.dart';
 import 'updater.dart';
@@ -76,5 +77,11 @@ class _GuestShell extends StatelessWidget {
         body: MarketplaceTab(api: session.api, onSignIn: () {
           Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LoginScreen(key: const Key('login'), session: session)));
         }),
+        floatingActionButton: FloatingActionButton(
+          key: const Key('fab-chat'),
+          tooltip: 'Chat with support',
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SupportChatScreen(api: session.api, signedIn: false, source: 'app'))),
+          child: const Icon(Icons.chat_bubble_outline),
+        ),
       );
 }

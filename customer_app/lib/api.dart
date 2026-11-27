@@ -47,6 +47,10 @@ class PortalApi {
   String? token;
   /// Called on 401 (expired / revoked token) so the app signs out immediately.
   void Function()? onAuthError;
+  /// Stores the public support visitor cookie so a guest chat survives app restarts.
+  KeyValue? cookieStore;
+  static const visitorCookieKey = 'se_support_vid';
+  String? _visitorCookie;
 
   Uri _u(String path, [Map<String, String>? q]) {
     if (!path.startsWith('/api/portal/')) throw ArgumentError('Only /api/portal/* is allowed');
@@ -233,6 +237,53 @@ class PortalApi {
     unawaited(cancel.then((_) { sub.cancel(); if (!done.isCompleted) done.complete(); }));
     return done.future;
   }
+
+  Uri _sup(String path) {
+    if (!path.startsWith('/api/support/')) throw ArgumentError('Only /api/support/* is allowed');
+    return base.replace(path: path);
+  }
+
+  Future<void> loadVisitorCookie() async {
+    _visitorCookie ??= await cookieStore?.read(visitorCookieKey);
+  }
+
+  void _captureVisitorCookie(http.BaseResponse r) {
+    final raw = r.headers['set-cookie'];
+    if (raw == null) return;
+    final m = RegExp(r'se_support_vid=([^;]+)').firstMatch(raw);
+    if (m == null) return;
+    _visitorCookie = Uri.decodeComponent(m.group(1)!);
+    final store = cookieStore;
+    final value = _visitorCookie;
+    if (store != null && value != null) unawaited(store.write(visitorCookieKey, value));
+  }
+
+  Map<String, String> get _visitorHeader => {if (_visitorCookie != null) 'cookie': 'se_support_vid=$_visitorCookie'};
+
+  Future<Json> _support(String method, String path, {Object? body}) async {
+    await loadVisitorCookie();
+    final req = http.Request(method, _sup(path))..headers.addAll({'accept': 'application/json', ..._visitorHeader});
+    if (body != null) { req.headers['content-type'] = 'application/json'; req.body = jsonEncode(body); }
+    final r = await http.Response.fromStream(await _client.send(req).timeout(const Duration(seconds: 30)));
+    _captureVisitorCookie(r);
+    return _handle(r);
+  }
+
+  Future<Json> supportStatus({bool portal = false}) async =>
+      ((portal ? await call('GET', '/api/portal/support/status') : await _support('GET', '/api/support/status'))['data'] as Json);
+
+  Future<Json?> guestConversation() async {
+    try { return (await _support('GET', '/api/support/conversation'))['data'] as Json; } on PortalError catch (e) { if (e.status == 404) return null; rethrow; }
+  }
+
+  Future<Json> startGuestSupport(Json body) async => (await _support('POST', '/api/support/start', body: body))['data'] as Json;
+
+  Future<Json> sendGuestSupport(String content) async => (await _support('POST', '/api/support/messages', body: {'content': content}))['data'] as Json;
+
+  Future<List<Json>> portalSupportConversations() => _list('/api/portal/support/conversations');
+  Future<Json> portalSupportConversation(String id) => _data('GET', '/api/portal/support/conversations/${_e(id)}');
+  Future<Json> startPortalSupport(Json body) => _data('POST', '/api/portal/support/start', body);
+  Future<Json> sendPortalSupport(String id, String content) => _data('POST', '/api/portal/support/conversations/${_e(id)}/messages', {'content': content});
 }
 
 /// Parses one SSE block into (event, data). Comments / keep-alives return null.

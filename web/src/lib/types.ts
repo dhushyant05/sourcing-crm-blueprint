@@ -30,7 +30,7 @@ export interface SlaReport { days: number; office: { office: Office; total: numb
 export type Office = 'INDIA' | 'CHINA';
 export interface StaffLite { id: string; name: string; role: import('./roles').Role; avatarUrl?: string | null }
 /** In-app notification. Only SE reference + product summary, never customer details. */
-export interface AppNotification { detail?: string | null; id: string; leadId: string; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY' | 'CHAT_MESSAGE'; office: Office; byName: string | null; createdAt: string; read: boolean }
+export interface AppNotification { detail?: string | null; id: string; leadId: string | null; conversationId?: string | null; leadRef: string | null; product: string | null; kind: 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY' | 'CHAT_MESSAGE'; office: Office; byName: string | null; createdAt: string; read: boolean }
 export interface Attachment { id: string; name: string; mime: string; size: number; createdAt: string; uploadedBy?: string | null; kind?: string | null; sort?: number; isCover?: boolean }
 export interface Quotation {
   id: string; name: string; leadRef?: string; leadId?: string; productName?: string; supplierName?: string;
@@ -180,26 +180,33 @@ export interface QuoteReference {
   coverFileId?: string | null;
 }
 export interface ChatQuoteTag { quoteId: string; quoteLabel: string }
-export interface ChatAttachment { id: string; name: string; mime: string; size: number; createdAt?: string }
+export interface ChatAttachment { id: string; name: string; mime: string; size: number; createdAt?: string; url?: string }
 export interface ChatParticipant { userId: string; name: string; lastReadAt: string | null; lastReadMessageId: string | null }
 export interface LeadChatMessage {
-  id: string; kind?: 'text' | 'quote_reference'; content: string;
+  id: string; kind?: 'text' | 'quote_reference' | 'system'; content: string;
   quoteReference: QuoteReference | null; quoteTag?: ChatQuoteTag | null; quoteId?: string | null;
   senderId?: string | null; senderName: string; at: string; attachments?: ChatAttachment[];
+  authorKind?: 'staff' | 'guest' | 'customer' | 'system'; visibility?: 'customer' | 'staff_only';
 }
 export interface LeadChat {
   enabled?: boolean; id?: string; conversationId?: string | null; created?: boolean;
-  leadId?: string; leadRef?: string; product?: string | null; clientName?: string | null;
+  leadId?: string | null; leadRef?: string; product?: string | null; clientName?: string | null;
   assignedTo?: string | null; assignedToName?: string | null;
   participants?: ChatParticipant[];
   messages: LeadChatMessage[]; quotes: QuoteReference[]; suggestedQuoteId: string | null;
   canSeeSupplier?: boolean;
+  kind?: 'LEAD' | 'CUSTOMER_SUPPORT';
+  guestName?: string | null; guestEmail?: string | null; guestPhone?: string | null;
+  customerId?: string | null; convertedLeadId?: string | null; convertedLeadRef?: string | null;
+  linkedLeadId?: string | null; source?: string | null; canConvert?: boolean;
 }
 export interface ChatInbox { id: string; slug: string; name: string; kind: 'PERSONAL' | 'TEAM'; unread: number; memberIds?: string[] }
 export interface ChatThread {
-  id: string; leadId: string; leadRef: string | null; product: string | null;
+  id: string; leadId: string | null; leadRef: string | null; product: string | null;
   lastBody: string | null; lastAt: string | null; unread: number;
   assignedTo: string | null; assignedToName: string | null;
+  kind?: 'LEAD' | 'CUSTOMER_SUPPORT'; guestName?: string | null;
+  convertedLeadId?: string | null; canConvert?: boolean; conversationId?: string;
 }
 export interface CustomRole {
   id: string; name: string; description: string | null; members: number;
