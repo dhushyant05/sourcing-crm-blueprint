@@ -251,4 +251,27 @@ describe('customer support chat', () => {
     const chinaBoxes = (await call('ca', 'GET', '/api/chat/inboxes')).json().data as { id: string }[];
     expect(chinaBoxes.some((b) => b.id === 'inbox-customer-support')).toBe(false);
   });
+  it('plain India staff can work the Customer support desk; China staff cannot see it', async () => {
+    const { app, call } = await setup();
+    const started = await app.inject({
+      method: 'POST', url: '/api/support/start', remoteAddress: '10.20.9.9',
+      payload: { challenge: challenge(), name: 'Desk Guest', email: 'desk@test.example', consent: true, message: 'Hi desk' },
+    });
+    const cid = started.json().data.id as string;
+    const inboxes = (await call('is', 'GET', '/api/chat/inboxes')).json().data;
+    expect(inboxes.some((i: any) => i.id === 'inbox-customer-support')).toBe(true);
+    const list = await call('is', 'GET', '/api/chat/inboxes/inbox-customer-support/conversations');
+    expect(list.statusCode).toBe(200);
+    expect(list.json().data.some((c: any) => c.id === cid)).toBe(true);
+    const reply = await call('is', 'POST', `/api/chat/conversations/${cid}/messages`, { content: 'India staff here.' });
+    expect(reply.statusCode).toBe(200);
+    for (const who of ['cs', 'ca'] as const) {
+      const ci = (await call(who, 'GET', '/api/chat/inboxes')).json().data ?? [];
+      expect(ci.some((i: any) => i.id === 'inbox-customer-support')).toBe(false);
+      expect([403, 404]).toContain((await call(who, 'GET', '/api/chat/inboxes/inbox-customer-support/conversations')).statusCode);
+      expect([403, 404]).toContain((await call(who, 'GET', `/api/chat/conversations/${cid}`)).statusCode);
+    }
+    const guest = await app.inject({ method: 'GET', url: '/api/support/conversation', headers: cookieHeader(started) });
+    expect(JSON.stringify(guest.json().data.messages)).toContain('India staff here.');
+  });
 });

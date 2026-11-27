@@ -1642,6 +1642,7 @@
     "expand": "打开完整聊天",
     "backToInbox": "返回收件箱",
     "supportInbox": "客户支持",
+    "supportThread": "客户聊天",
     "convertLead": "转为询盘",
     "converted": "已转为 {{ref}}",
     "internalNote": "内部备注（客户不可见）",

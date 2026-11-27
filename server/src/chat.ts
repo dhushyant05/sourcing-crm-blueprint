@@ -156,7 +156,7 @@ export class ChatStore {
     try {
       await this.db.run(
         "INSERT INTO chat_inboxes (id, slug, name, kind, owner_user_id) VALUES (?,?,?,?,?)",
-        id, `person-${userId.slice(0, 8)}`, name || 'My inbox', 'PERSONAL', userId,
+        id, `person-${userId}`, name || 'My inbox', 'PERSONAL', userId,
       );
       await this.db.run('INSERT INTO chat_inbox_members (inbox_id, user_id) VALUES (?,?) ON CONFLICT DO NOTHING', id, userId);
       return id;
@@ -188,6 +188,15 @@ export class ChatStore {
     }
   }
 
+  /**
+   * The Customer support desk is the India side's front line: every India role, the Marketplace Team and
+   * super admin with any chat permission may work it, even without `chat.view_team`. China and suppliers never.
+   */
+  supportDesk(u: User): boolean {
+    if (!canAccessSupportInbox(u)) return false;
+    return u.role === 'SUPER_ADMIN' || this.can(u, 'chat.view_own') || this.can(u, 'chat.view_team') || this.can(u, 'chat.view_all');
+  }
+
   async listInboxes(u: User) {
     await this.bootstrapUser(u);
     const rows = await this.db.all(
@@ -207,7 +216,7 @@ export class ChatStore {
     const out = [];
     for (const r of rows) {
       if (r.id === SUPPORT_INBOX && !canAccessSupportInbox(u)) continue;
-      if (r.kind === 'TEAM' && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all') && u.role !== 'SUPER_ADMIN') continue;
+      if (r.kind === 'TEAM' && !(r.id === SUPPORT_INBOX && this.supportDesk(u)) && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all') && u.role !== 'SUPER_ADMIN') continue;
       const unread = await this.inboxUnread(u, String(r.id), r.kind);
       const members = r.kind === 'TEAM'
         ? await this.db.all('SELECT user_id FROM chat_inbox_members WHERE inbox_id = ?', r.id)
@@ -246,7 +255,7 @@ export class ChatStore {
     if (inbox.kind === 'TEAM') {
       const mem = await this.db.get('SELECT 1 FROM chat_inbox_members WHERE inbox_id = ? AND user_id = ?', inboxId, u.id);
       if (!mem && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
-      if (!this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
+      if (!(inbox.id === SUPPORT_INBOX && this.supportDesk(u)) && !this.can(u, 'chat.view_team') && !this.can(u, 'chat.view_all')) throw new ChatError('Inbox not found', 404);
     }
     let rows: any[];
     if (inbox.kind === 'PERSONAL') {
@@ -338,7 +347,7 @@ export class ChatStore {
     if (kind === 'CUSTOMER_SUPPORT') {
       if (!canAccessSupportInbox(u)) return false;
       if (this.can(u, 'chat.view_all') || u.role === 'SUPER_ADMIN') return true;
-      if (this.can(u, 'chat.view_team')) {
+      if (this.can(u, 'chat.view_team') || this.supportDesk(u)) {
         const team = await this.db.get(
           `SELECT 1 FROM chat_conversation_inboxes ci
            JOIN chat_inbox_members m ON m.inbox_id = ci.inbox_id AND m.user_id = ?
