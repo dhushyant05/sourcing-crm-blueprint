@@ -218,7 +218,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                       {th.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{th.unread}</span>}
                       <span className="ml-auto text-[10px] text-ink-400">{th.lastAt ? fmtDate(th.lastAt) : ''}</span>
                     </div>
-                    <div className="truncate text-sm text-ink-700 dark:text-ink-200">{th.product || t('chat.thread')}</div>
+                    <div className="truncate text-sm text-ink-700 dark:text-ink-200">{th.product || ((th as any).kind === 'CUSTOMER_SUPPORT' ? t('chat.supportThread') : t('chat.thread'))}</div>
                     {th.lastBody && <div className="truncate text-xs text-ink-400">{th.lastBody}</div>}
                   </button>
                 ))}

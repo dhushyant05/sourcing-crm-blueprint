@@ -1642,6 +1642,7 @@
     "expand": "Open full chat",
     "backToInbox": "Back to inbox",
     "supportInbox": "Customer support",
+    "supportThread": "Customer chat",
     "convertLead": "Convert to lead",
     "converted": "Converted to {{ref}}",
     "internalNote": "Internal note — the customer will not see this",
