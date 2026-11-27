@@ -11,7 +11,7 @@ import type { PermStore } from './permissions.js';
 import type { CustomRoleStore } from './custom-roles.js';
 import {
   ChatError, ChatStore, presentQuoteCard, pickerItems, suggestedQuoteId, chatFileKey,
-  redactedFileName, qUploadKey, pickCover,
+  redactedFileName, qUploadKey, pickCover, canAccessSupportInbox, isChinaRole,
 } from './chat.js';
 import { quoteCarton } from './quotes.js';
 import type { Rec } from './policy.js';
@@ -37,7 +37,15 @@ export interface ChatRouteDeps {
 export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
   const { chat, roles, quotes, leads, uploads, assign, users, perms, need, liveData, canReadLead, names } = d;
 
-  const leadRefOf = async (id: string) => ((await leads.get(id))?.leadRef as string | undefined) ?? 'SE';
+  const leadRefOf = async (id: string | null) => {
+    if (!id) return 'support';
+    return ((await leads.get(id))?.leadRef as string | undefined) ?? 'SE';
+  };
+  const isSupportConv = (conv: { kind?: string; leadId?: string | null }) => conv.kind === 'CUSTOMER_SUPPORT' || !conv.leadId;
+  const requireLeadId = (id: string | null | undefined) => {
+    if (!id) throw Object.assign(new Error('Not found'), { status: 404 });
+    return id;
+  };
   const requireChat = (u: User) => {
     if (!perms.can(u, 'chat.view_own') && !perms.can(u, 'chat.view_team') && !perms.can(u, 'chat.view_all')) {
       throw Object.assign(new Error('You do not have permission: chat.view_own'), { status: 403 });
@@ -45,10 +53,17 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
   };
   const guard = async (u: User, conversationId: string) => {
     requireChat(u);
+    await chat.bootstrapUser(u);
     const conv = await chat.get(conversationId);
     if (!conv) throw Object.assign(new Error('Not found'), { status: 404 });
-    if (!(await canReadLead(u, conv.leadId))) throw Object.assign(new Error('Not found'), { status: 404 });
-    if (!(await chat.canAccessId(u, conv.id, conv.leadId))) throw Object.assign(new Error('Not found'), { status: 404 });
+    if (isSupportConv(conv)) {
+      if (!canAccessSupportInbox(u) || !(await chat.canAccessId(u, conv.id, null))) {
+        throw Object.assign(new Error('Not found'), { status: 404 });
+      }
+      return conv;
+    }
+    if (!(await canReadLead(u, requireLeadId(conv.leadId)))) throw Object.assign(new Error('Not found'), { status: 404 });
+    if (!(await chat.canAccessId(u, conv.id, requireLeadId(conv.leadId)))) throw Object.assign(new Error('Not found'), { status: 404 });
     return conv;
   };
   const presentMessage = async (u: User, leadRef: string, list: Quote[], m: any) => {
@@ -66,12 +81,61 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       quoteTag: tagIdx >= 0 ? { quoteId: m.quote_id, quoteLabel: `${leadRef}-Q${tagIdx + 1}` } : null,
       quoteReference,
       attachments: files,
+      authorKind: m.author_kind ?? (m.sender_id ? 'staff' : 'guest'),
+      visibility: m.visibility ?? 'customer',
     };
   };
-  const presentConversation = async (u: User, conv: { id: string; leadId: string; assignedTo: string | null }) => {
-    const lead = await leads.get(conv.leadId);
+  const presentSupport = async (u: User, conv: any) => {
+    const msgs = await chat.messages(conv.id);
+    const parts = await chat.participants(conv.id);
+    const convertedRef = conv.convertedLeadId ? await leadRefOf(conv.convertedLeadId) : null;
+    return {
+      id: conv.id,
+      kind: 'CUSTOMER_SUPPORT' as const,
+      leadId: conv.convertedLeadId ?? null,
+      leadRef: (convertedRef && convertedRef !== 'SE' && convertedRef !== 'support') ? convertedRef : (conv.guestName ?? 'Support'),
+      product: conv.productTitle ?? null,
+      guestName: conv.guestName ?? null,
+      guestEmail: conv.guestEmail ?? null,
+      guestPhone: conv.guestPhone ?? null,
+      customerId: conv.customerId ?? null,
+      convertedLeadId: conv.convertedLeadId ?? null,
+      convertedLeadRef: (convertedRef && convertedRef !== 'SE' && convertedRef !== 'support') ? convertedRef : null,
+      linkedLeadId: conv.linkedLeadId ?? null,
+      linkedOrderId: conv.linkedOrderId ?? null,
+      source: conv.source ?? null,
+      assignedTo: conv.assignedTo,
+      assignedToName: conv.assignedTo ? names().get(conv.assignedTo) ?? null : null,
+      canConvert: !conv.convertedLeadId,
+      quotes: [],
+      suggestedQuoteId: null,
+      participants: parts
+        .filter((p: any) => {
+          const member = users.byId(p.user_id);
+          return !(member && isChinaRole(member.role));
+        })
+        .map((p: any) => ({
+          userId: p.user_id, name: names().get(p.user_id) ?? 'Staff',
+          lastReadAt: p.last_read_at, lastReadMessageId: p.last_read_message_id,
+        })),
+      messages: await Promise.all(msgs.map(async (m) => {
+        const row = await presentMessage(u, 'support', [], m);
+        const kind = row.authorKind;
+        return {
+          ...row,
+          senderName: kind === 'system' ? 'Source Easy'
+            : (kind === 'guest' || kind === 'customer') ? (conv.guestName || 'Customer')
+            : row.senderName,
+        };
+      })),
+      canSeeSupplier: false,
+    };
+  };
+  const presentConversation = async (u: User, conv: any) => {
+    if (isSupportConv(conv)) return presentSupport(u, conv);
+    const lead = await leads.get(requireLeadId(conv.leadId));
     const ref = String(lead?.leadRef ?? 'SE');
-    const list = await quotes.list(conv.leadId);
+    const list = await quotes.list(requireLeadId(conv.leadId));
     const msgs = await chat.messages(conv.id);
     const parts = await chat.participants(conv.id);
     const s = sides(u.role);
@@ -96,21 +160,35 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       canSeeSupplier: showSupplier,
     };
   };
-  const notifyChat = async (conv: { id: string; leadId: string }, by: User, preview: string) => {
-    const lead = await leads.get(conv.leadId);
+  const notifyChat = async (conv: { id: string; leadId: string | null; kind?: string }, by: User, preview: string) => {
+    if (isSupportConv(conv)) {
+      const parts = await chat.participants(conv.id);
+      const ids = parts.map((p: any) => String(p.user_id)).filter((id: string) => {
+        if (id === by.id) return false;
+        const member = users.byId(id);
+        return !!member && canAccessSupportInbox(member);
+      });
+      if (!ids.length) return;
+      await assign.notify(ids, {
+        leadId: null, leadRef: 'Support', product: null, kind: 'CHAT_MESSAGE', office: 'INDIA',
+        byName: by.name, detail: preview.slice(0, 140), conversationId: conv.id,
+      });
+      return;
+    }
+    const lead = await leads.get(requireLeadId(conv.leadId));
     const ref = String(lead?.leadRef ?? 'SE');
     const product = (lead?.productInterest as string | undefined) ?? null;
     const parts = await chat.participants(conv.id);
     const ids = parts.map((p: any) => String(p.user_id)).filter((id: string) => id !== by.id);
     if (!ids.length) return;
-    const asg = await assign.get(conv.leadId);
+    const asg = await assign.get(requireLeadId(conv.leadId));
     const office = (asg?.ownerOffice ?? 'INDIA') as 'INDIA' | 'CHINA';
     await assign.notify(ids, {
       leadId: conv.leadId, leadRef: ref, product, kind: 'CHAT_MESSAGE', office, byName: by.name,
       detail: preview.slice(0, 140),
     });
   };
-  const live = (leadId: string, conversationId: string, sub: string, extra: Rec = {}) => {
+  const live = (leadId: string | null, conversationId: string, sub: string, extra: Rec = {}) => {
     liveData({ type: 'chat', leadId, conversationId, sub, ...extra });
   };
 
@@ -129,8 +207,21 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const list = await chat.listConversations(req.user!, req.params.id);
     const out = [];
     for (const c of list) {
-      if (!(await canReadLead(req.user!, c.leadId))) continue;
-      const lead = await leads.get(c.leadId);
+      if (isSupportConv(c)) {
+        if (!canAccessSupportInbox(req.user!)) continue;
+        const last = (await chat.messages(c.id)).at(-1);
+        out.push({
+          ...c,
+          leadRef: c.guestName || 'Support',
+          product: c.productTitle ?? null,
+          lastBody: last ? String(last.body ?? '').slice(0, 140) : null,
+          lastAt: last?.created_at ?? c.lastMessageAt,
+          assignedToName: c.assignedTo ? names().get(c.assignedTo) ?? null : null,
+        });
+        continue;
+      }
+      if (!(await canReadLead(req.user!, requireLeadId(c.leadId)))) continue;
+      const lead = await leads.get(requireLeadId(c.leadId));
       const last = (await chat.messages(c.id)).at(-1);
       out.push({
         ...c,
@@ -176,7 +267,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     return { data: { enabled: true, conversationId: existing.id, ...(await presentConversation(u, existing)) } };
   });
 
-  const postText = async (req: FastifyRequest<{ Params: { id: string }; Body?: { content?: string; quoteId?: string; cannedId?: string } }>, conversationId: string) => {
+  const postText = async (req: FastifyRequest<{ Params: { id: string }; Body?: { content?: string; quoteId?: string; cannedId?: string; internal?: boolean } }>, conversationId: string) => {
     const u = req.user!;
     const conv = await guard(u, conversationId);
     let content = String(req.body?.content ?? '');
@@ -185,7 +276,16 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       if (!c) throw Object.assign(new Error('Canned reply not found'), { status: 404 });
       content = c.body;
     }
-    const list = await quotes.list(conv.leadId);
+    if (isSupportConv(conv)) {
+      const internal = req.body?.internal === true;
+      await chat.addParticipant(conv.id, u.id, u.id);
+      const m = await chat.post(conv.id, u.id, content, 'text', null, { authorKind: 'staff', visibility: internal ? 'staff_only' : 'customer' });
+      await chat.markRead(conv.id, u.id, m.id);
+      live(null, conv.id, 'message', { messageId: m.id, kind: 'CUSTOMER_SUPPORT', preview: content.slice(0, 140), userId: u.id, visibility: internal ? 'staff_only' : 'customer' });
+      if (!internal) await notifyChat(conv, u, content);
+      return { data: await presentMessage(u, 'support', [], { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind, author_kind: m.authorKind, visibility: m.visibility }) };
+    }
+    const list = await quotes.list(requireLeadId(conv.leadId));
     const tag = req.body?.quoteId ? suggestedQuoteId(list, String(req.body.quoteId)) : null;
     const m = await chat.post(conv.id, u.id, content, 'text', tag);
     await chat.markRead(conv.id, u.id, m.id);
@@ -204,11 +304,21 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       if (mpart.err) return reply.code(mpart.err.status).send({ error: mpart.err.error, code: mpart.err.code });
       await d.stripImageMetadata(mpart.files);
       const content = String(mpart.fields?.content ?? req.body?.content ?? '');
-      const list = await quotes.list(conv.leadId);
+      if (isSupportConv(conv)) {
+        const internal = String(mpart.fields?.internal ?? '') === 'true';
+        await chat.addParticipant(conv.id, u.id, u.id);
+        const msg = await chat.post(conv.id, u.id, content || ' ', 'text', null, { authorKind: 'staff', visibility: internal ? 'staff_only' : 'customer' });
+        uploads.commit(chatFileKey(msg.id), mpart.files, u.id);
+        await chat.markRead(conv.id, u.id, msg.id);
+        live(null, conv.id, 'message', { messageId: msg.id, kind: 'CUSTOMER_SUPPORT', preview: (content || 'Attachment').slice(0, 140), userId: u.id, visibility: internal ? 'staff_only' : 'customer' });
+        if (!internal) await notifyChat(conv, u, content || 'Attachment');
+        const row = { ...msg, sender_id: msg.senderId, body: msg.body, created_at: msg.createdAt, quote_id: msg.quoteId, kind: msg.kind, author_kind: msg.authorKind, visibility: msg.visibility };
+        return { data: await presentMessage(u, 'support', [], row) };
+      }
+      const list = await quotes.list(requireLeadId(conv.leadId));
       const tag = mpart.fields?.quoteId ? suggestedQuoteId(list, String(mpart.fields.quoteId)) : null;
       const msg = await chat.post(conv.id, u.id, content || ' ', 'text', tag);
       const ref = await leadRefOf(conv.leadId);
-      const existing = chat.messageFiles(msg.id).length;
       uploads.commit(chatFileKey(msg.id), mpart.files, u.id);
       // Rename in manifest is already redacted at read time.
       await chat.markRead(conv.id, u.id, msg.id);
@@ -233,7 +343,8 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
   const attachRef = async (u: User, conversationId: string, quoteId?: string) => {
     if (!perms.can(u, 'chat.reference_quotes')) throw Object.assign(new Error('You do not have permission: chat.reference_quotes'), { status: 403 });
     const conv = await guard(u, conversationId);
-    const list = await quotes.list(conv.leadId);
+    if (isSupportConv(conv)) throw Object.assign(new Error('Quote references are only for lead chats'), { status: 400 });
+    const list = await quotes.list(requireLeadId(conv.leadId));
     const qid = suggestedQuoteId(list, quoteId ?? null);
     if (!qid) throw Object.assign(new Error('No quote to attach'), { status: 400 });
     const ref = await leadRefOf(conv.leadId);
@@ -295,14 +406,24 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const conv = await guard(u, req.params.id);
     const uid = req.body?.userId ? String(req.body.userId) : null;
     if (uid && !users.byId(uid)) throw Object.assign(new Error('User not found'), { status: 404 });
+    if (uid && isSupportConv(conv) && !canAccessSupportInbox(users.byId(uid)!)) {
+      throw Object.assign(new Error('This person cannot be assigned to a customer support chat'), { status: 403 });
+    }
     await chat.setAssigned(conv.id, uid);
-    live(conv.leadId, conv.id, 'assign', { userId: uid });
+    live(conv.leadId, conv.id, 'assign', { userId: uid, ...(isSupportConv(conv) ? { kind: 'CUSTOMER_SUPPORT' } : {}) });
     if (uid) {
-      const lead = await leads.get(conv.leadId);
-      await assign.notify([uid], {
-        leadId: conv.leadId, leadRef: String(lead?.leadRef ?? 'SE'), product: (lead?.productInterest as string) ?? null,
-        kind: 'CHAT_MESSAGE', office: (await assign.get(conv.leadId))?.ownerOffice ?? 'INDIA', byName: u.name, detail: 'Chat assigned to you',
-      });
+      if (isSupportConv(conv)) {
+        await assign.notify([uid], {
+          leadId: null, leadRef: conv.guestName || 'Support', product: conv.productTitle ?? null,
+          kind: 'CHAT_MESSAGE', office: 'INDIA', byName: u.name, detail: 'Chat assigned to you', conversationId: conv.id,
+        });
+      } else {
+        const lead = await leads.get(requireLeadId(conv.leadId));
+        await assign.notify([uid], {
+          leadId: conv.leadId, leadRef: String(lead?.leadRef ?? 'SE'), product: (lead?.productInterest as string) ?? null,
+          kind: 'CHAT_MESSAGE', office: (await assign.get(requireLeadId(conv.leadId)))?.ownerOffice ?? 'INDIA', byName: u.name, detail: 'Chat assigned to you',
+        });
+      }
     }
     return { data: await presentConversation(u, (await chat.get(conv.id))!) };
   });
@@ -311,7 +432,11 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     const u = req.user!;
     const conv = await guard(u, req.params.id);
     const uid = String(req.body?.userId ?? '');
-    if (!users.byId(uid)) throw Object.assign(new Error('User not found'), { status: 404 });
+    const added = users.byId(uid);
+    if (!added) throw Object.assign(new Error('User not found'), { status: 404 });
+    if (isSupportConv(conv) && !canAccessSupportInbox(added)) {
+      throw Object.assign(new Error('China staff cannot join a customer support chat'), { status: 403 });
+    }
     await chat.addParticipant(conv.id, uid, u.id);
     live(conv.leadId, conv.id, 'participants');
     return { data: await presentConversation(u, (await chat.get(conv.id))!) };

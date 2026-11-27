@@ -2,10 +2,15 @@ import { Inbox, MessageSquare, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LeadChat } from '../components/LeadChat';
+import { SupportThread } from '../components/SupportThread';
 import { Empty, PageHeader } from '../components/ui';
 import { fmtDate } from '../i18n';
 import { useApp } from '../lib/store';
 import type { ChatInbox, ChatThread, CannedReply, Lead } from '../lib/types';
+
+function isSupportThread(th: ChatThread) {
+  return th.kind === 'CUSTOMER_SUPPORT' || !th.leadId;
+}
 
 /** Personal and team inboxes for India↔China staff chat. */
 export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
@@ -56,7 +61,7 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
   const personal = inboxes.find((i) => i.kind === 'PERSONAL');
   const teams = inboxes.filter((i) => i.kind === 'TEAM');
 
-  const openThread = (th: ChatThread) => { setActive(th); setHits(null); };
+  const openThread = (th: ChatThread) => { setActive({ ...th, id: th.id || th.conversationId || th.id }); setHits(null); };
 
   return (
     <>
@@ -74,7 +79,7 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
           )}
           <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">{t('chat.teamInboxes')}</div>
           {teams.map((b) => (
-            <button type="button" key={b.id} onClick={() => { setInboxId(b.id); setActive(null); }}
+            <button type="button" key={b.id} data-testid={`inbox-${b.slug}`} onClick={() => { setInboxId(b.id); setActive(null); }}
               className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm ${inboxId === b.id ? 'bg-brand-50 text-brand-800 dark:bg-brand-500/10 dark:text-brand-200' : 'hover:bg-ink-50 dark:hover:bg-ink-800'}`}>
               <MessageSquare size={16} />
               <span className="flex-1">{b.name}</span>
@@ -105,14 +110,25 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
         </section>
         <section className="card flex flex-col p-4">
           {!active && <div className="m-auto text-sm text-ink-400">{t('chat.pickThread')}</div>}
-          {active && (
+          {active && isSupportThread(active) && (
+            <>
+              <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-ink-100 pb-3 dark:border-ink-800">
+                <div>
+                  <div className="font-mono text-sm font-medium text-ink-900 dark:text-white">{active.leadRef || active.guestName || t('chat.supportInbox')}</div>
+                  <div className="text-xs text-ink-500">{active.product}</div>
+                </div>
+              </div>
+              <SupportThread key={active.id} conversationId={active.id} onOpenLead={(id) => { void api.lead(id).then((l) => l && openLead(l)); }} />
+            </>
+          )}
+          {active && !isSupportThread(active) && active.leadId && (
             <>
               <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-ink-100 pb-3 dark:border-ink-800">
                 <div>
                   <div className="font-mono text-sm font-medium text-ink-900 dark:text-white">{active.leadRef}</div>
                   <div className="text-xs text-ink-500">{active.product}</div>
                 </div>
-                <button type="button" className="btn-outline ml-auto !py-1 text-xs" onClick={() => { void api.lead(active.leadId).then((l) => l && openLead(l)); }}>{t('chat.openLead')}</button>
+                <button type="button" className="btn-outline ml-auto !py-1 text-xs" onClick={() => { void api.lead(active.leadId!).then((l) => l && openLead(l)); }}>{t('chat.openLead')}</button>
               </div>
               <AssignBar conversationId={active.id} assignedTo={active.assignedTo} assignedToName={active.assignedToName} />
               {canned.length > 0 && (
@@ -124,7 +140,7 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
                 </div>
               )}
               <LeadChat key={active.leadId} leadId={active.leadId} compact
-                onOpenQuote={() => { void api.lead(active.leadId).then((l) => l && openLead(l)); }} />
+                onOpenQuote={() => { void api.lead(active.leadId!).then((l) => l && openLead(l)); }} />
             </>
           )}
           {session?.role !== 'SUPPLIER' && api.createCanned && (

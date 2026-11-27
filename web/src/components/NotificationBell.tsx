@@ -8,6 +8,7 @@ import { fmtDate } from '../i18n';
 import { Avatar } from './ui';
 import { createPortal } from 'react-dom';
 import { desktopNotify, playBell, setupAlerts } from '../lib/live';
+import { openChatDock } from '../lib/chat-dock';
 
 /** Text uses only the SE reference + product summary (never customer details), so it is safe for China recipients. */
 export function notifText(t: (k: string, o?: any) => string, n: AppNotification) {
@@ -44,7 +45,7 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
     setData(d);
   }).catch(() => {}); }, [api]);
   const openRef = useRef(openLead); openRef.current = openLead;
-  const openTargetRef = useRef<(n: AppNotification) => void>((n) => openRef.current(n.leadId));
+  const openTargetRef = useRef<(n: AppNotification) => void>((n) => { if (n.leadId) openRef.current(n.leadId); });
   const tRef = useRef(t); tRef.current = t;
   const china = session?.role?.startsWith('CHINA') ?? false;
   // Real-time: SSE stream, with a 15 s poll + reload on tab focus as the fallback.
@@ -93,9 +94,11 @@ export function NotificationBell({ openLead }: { openLead: (id: string) => void 
   }, [open]);
   /** Shipping-request notifications carry the request id (not a lead id): open it on the Shipping page. */
   const openTarget = (n: AppNotification) => {
-    if (n.kind === 'SHIP_READY') { sessionStorage.openChinaShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-china-shipping-request', { detail: n.leadId })); return; }
-    if (n.kind === 'SHIP_REQUEST' || n.kind === 'SHIP_REQUEST_UPDATE' || n.kind === 'SHIP_SLA_WARN' || n.kind === 'SHIP_SLA_BREACH') { sessionStorage.openShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-shipping-request', { detail: n.leadId })); return; }
-    openLead(n.leadId);
+    if (n.kind === 'SHIP_READY' && n.leadId) { sessionStorage.openChinaShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-china-shipping-request', { detail: n.leadId })); return; }
+    if ((n.kind === 'SHIP_REQUEST' || n.kind === 'SHIP_REQUEST_UPDATE' || n.kind === 'SHIP_SLA_WARN' || n.kind === 'SHIP_SLA_BREACH') && n.leadId) { sessionStorage.openShippingRequest = n.leadId; location.hash = '/shipping'; dispatchEvent(new CustomEvent('open-shipping-request', { detail: n.leadId })); return; }
+    if (n.kind === 'CHAT_MESSAGE' && n.conversationId && !n.leadId) { openChatDock({ conversationId: n.conversationId }); return; }
+    if (n.kind === 'CHAT_MESSAGE' && n.conversationId && n.leadId) { openChatDock({ leadId: n.leadId, conversationId: n.conversationId }); return; }
+    if (n.leadId) openLead(n.leadId);
   };
   openTargetRef.current = openTarget;
   const click = async (n: AppNotification) => {

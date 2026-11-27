@@ -6,6 +6,7 @@ import { NewShipping, ShippingDetail, ShippingList } from './Shipping';
 import { WorkflowTracker } from './Workflow';
 import type { PortalShipping, PortalNotifyPrefs } from './api';
 import { PortalGreeting } from '../greetings/Portal';
+import { SupportWidget } from '../support/SupportWidget';
 
 // Customer portal (English only, mobile-first). Separate login from the staff app; every call goes to /api/portal/*.
 const STAGES: [string, string][] = [['RECEIVED', 'Received'], ['SOURCING', 'Sourcing'], ['QUOTE_READY', 'Quote ready'], ['DECIDED', 'Decided'], ['ORDER', 'Order'], ['SHIPPED', 'Shipped'], ['DELIVERED', 'Delivered']];
@@ -313,6 +314,7 @@ export function Portal() {
         {view.name === 'new' && <NewRequest api={api} cancel={() => go('#/')} done={(r) => { setFlash(`Request ${r.reference} sent. Our team will get back to you.`); void refresh(); go(`#/r/${r.id}`); }} />}
         {view.name === 'request' && <Detail api={api} id={view.id} reasons={reasons} back={() => go('#/')} />}
       </main>
+      <SupportWidget mode="portal" />
     </div>
   );
 }

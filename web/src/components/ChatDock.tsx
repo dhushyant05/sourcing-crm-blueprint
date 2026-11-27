@@ -6,6 +6,7 @@ import { loadChatDock, openChatDock, saveChatDock, type ChatDockOpen } from '../
 import { useApp } from '../lib/store';
 import type { ChatInbox, ChatThread } from '../lib/types';
 import { LeadChat } from './LeadChat';
+import { SupportThread } from './SupportThread';
 
 /** Bottom-right floating chat for the staff app. State survives page changes via sessionStorage. */
 export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'chat') => void; openLeadId: (id: string) => void }) {
@@ -24,7 +25,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
   const [active, setActive] = useState<ChatThread | null>(null);
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<ChatThread[] | null>(null);
-  const [preview, setPreview] = useState<{ leadRef: string; body: string; leadId: string; quoteId?: string | null } | null>(null);
+  const [preview, setPreview] = useState<{ leadRef: string; body: string; leadId: string | null; conversationId?: string | null; quoteId?: string | null } | null>(null);
   const [bump, setBump] = useState(false);
   const onFullChat = route === 'chat';
 
@@ -49,17 +50,39 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
   useEffect(() => { if (inboxId) void loadThreads(inboxId); }, [inboxId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (conversationId && threads.length) {
+      const th = threads.find((x) => x.id === conversationId || (leadId && x.leadId === leadId));
+      if (th) { setActive(th); if (th.leadId) setLeadId(th.leadId); return; }
+    }
     if (!leadId || !threads.length) return;
-    const th = threads.find((x) => x.leadId === leadId || x.id === conversationId);
+    const th = threads.find((x) => x.leadId === leadId);
     if (th) { setActive(th); setConversationId(th.id); }
   }, [threads, leadId, conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || !api.conversation) return;
+    if (active?.id === conversationId) return;
+    if (threads.some((x) => x.id === conversationId)) return;
+    void api.conversation(conversationId).then((c) => {
+      setActive({
+        id: conversationId, leadId: c.leadId ?? null, leadRef: c.leadRef ?? 'Support', product: c.product ?? null,
+        lastBody: null, lastAt: null, unread: 0, assignedTo: c.assignedTo ?? null, assignedToName: c.assignedToName ?? null,
+        kind: c.kind, guestName: c.guestName, canConvert: c.canConvert, convertedLeadId: c.convertedLeadId,
+      });
+      if (c.kind === 'CUSTOMER_SUPPORT') setLeadId(null);
+      else if (c.leadId) setLeadId(c.leadId);
+      const box = inboxes.find((i) => i.slug === 'customer-support');
+      if (box && c.kind === 'CUSTOMER_SUPPORT') setInboxId(box.id);
+    }).catch(() => {});
+  }, [conversationId, threads, api, inboxes, active?.id]);
 
   useEffect(() => {
     const openDock = (e: Event) => {
       const d = (e as CustomEvent<ChatDockOpen>).detail ?? {};
       setOpen(true);
-      if (d.leadId) {
-        setLeadId(d.leadId);
+      if (d.conversationId || d.leadId) {
+        if (d.conversationId) setConversationId(d.conversationId);
+        setLeadId(d.leadId ?? null);
         setView('thread');
         if (d.quoteId) setQuoteId(d.quoteId);
       } else {
@@ -80,12 +103,13 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
       if (open && !onFullChat) return;
       const leadRef = (d.leadRef as string) || t('chat.thread');
       const body = String(d.preview || d.lastBody || d.detail || t('notif.CHAT_MESSAGE_nobody', { ref: leadRef }));
-      const lid = d.leadId as string | undefined;
-      if (!lid) return;
-      setPreview({ leadRef, body: body.slice(0, 140), leadId: lid });
+      const lid = (d.leadId as string | undefined) ?? null;
+      const cid = (d.conversationId as string | undefined) ?? null;
+      if (!lid && !cid) return;
+      setPreview({ leadRef, body: body.slice(0, 140), leadId: lid, conversationId: cid });
       setBump(true);
       setTimeout(() => setBump(false), 900);
-      setTimeout(() => setPreview((p) => (p?.leadId === lid ? null : p)), 6000);
+      setTimeout(() => setPreview((p) => ((lid && p?.leadId === lid) || (cid && p?.conversationId === cid) ? null : p)), 6000);
     };
     addEventListener('se:data', h);
     return () => removeEventListener('se:data', h);
@@ -100,9 +124,10 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
   const showWindow = open && !onFullChat;
 
   const openThread = (th: ChatThread) => {
-    setActive(th);
+    const id = th.id || th.conversationId || '';
+    setActive({ ...th, id });
     setLeadId(th.leadId);
-    setConversationId(th.id);
+    setConversationId(id);
     setView('thread');
     setHits(null);
     setPreview(null);
@@ -122,7 +147,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
       {!showWindow && (
         <div className="pointer-events-none fixed z-[70] flex flex-col items-end gap-2 right-4 md:right-6 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
           {preview && (
-            <button type="button" data-testid="chat-dock-preview" onClick={() => openChatDock({ leadId: preview.leadId })}
+            <button type="button" data-testid="chat-dock-preview" onClick={() => openChatDock({ leadId: preview.leadId ?? undefined, conversationId: preview.conversationId ?? undefined })}
               className="pointer-events-auto w-72 rounded-xl border border-ink-200 bg-white p-3 text-left shadow-lift dark:border-ink-700 dark:bg-ink-900">
               <div className="font-mono text-[11px] font-medium text-ink-700 dark:text-ink-200">{preview.leadRef}</div>
               <div className="mt-0.5 truncate text-sm text-ink-800 dark:text-ink-100">{preview.body}</div>
@@ -172,7 +197,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                   </button>
                 )}
                 {teams.map((b) => (
-                  <button type="button" key={b.id} onClick={() => { setInboxId(b.id); setHits(null); }}
+                  <button type="button" key={b.id} data-testid={`chat-dock-inbox-${b.slug}`} onClick={() => { setInboxId(b.id); setHits(null); }}
                     className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs ${inboxId === b.id ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200'}`}>
                     {b.name}{b.unread > 0 ? ` (${b.unread})` : ''}
                   </button>
@@ -187,7 +212,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                 {shown.length === 0 && <div className="px-4 py-8 text-center text-sm text-ink-400">{t('chat.noThreads')}</div>}
                 {shown.map((th) => (
                   <button type="button" key={th.id} onClick={() => openThread(th)}
-                    className={`block w-full border-b border-ink-50 px-3 py-2.5 text-left dark:border-ink-800 ${leadId === th.leadId ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-ink-50 dark:hover:bg-ink-800'}`}>
+                    className={`block w-full border-b border-ink-50 px-3 py-2.5 text-left dark:border-ink-800 ${conversationId === th.id || (th.leadId && leadId === th.leadId) ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-ink-50 dark:hover:bg-ink-800'}`}>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-medium text-ink-800 dark:text-ink-100">{th.leadRef ?? th.id.slice(0, 8)}</span>
                       {th.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{th.unread}</span>}
@@ -201,7 +226,12 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
             </div>
           )}
 
-          {view === 'thread' && leadId && (
+          {view === 'thread' && (active?.kind === 'CUSTOMER_SUPPORT' || (!leadId && conversationId)) && conversationId && (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <SupportThread key={conversationId} conversationId={conversationId} compact onOpenLead={openLeadId} />
+            </div>
+          )}
+          {view === 'thread' && leadId && active?.kind !== 'CUSTOMER_SUPPORT' && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <LeadChat key={`${leadId}:${quoteId ?? ''}`} leadId={leadId} preferredQuoteId={quoteId} compact
                 onOpenQuote={() => openLeadId(leadId)} />

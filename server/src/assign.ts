@@ -12,11 +12,11 @@ import type { Bus } from './bus.js';
 export type Office = 'INDIA' | 'CHINA';
 export interface Assignment { leadId: string; raisedBy: string | null; assignedTo: string | null; ownerOffice: Office | null; updatedAt: string }
 export type NotifKind = 'ASSIGNED' | 'RETURNED' | 'QUEUE' | 'QUOTE_ACCEPTED' | 'QUOTE_REJECTED' | 'QUOTE_REVERTED' | 'ORDER_NEW' | 'ORDER_UPDATE' | 'SHIPMENT_UPDATE' | 'ORDER_SHIPPED' | 'FOLLOW_UP' | 'REVISE_REQUESTED' | 'LEAD_CLOSED' | 'SLA_WARN' | 'SLA_BREACH' | 'PRIORITY' | 'LEAD_COMPLETED' | 'SENT_BACK' | 'INFO_PROVIDED' | 'QUOTE_REVISED' | 'LOGIN_REQUEST' | 'PORTAL_REQUEST' | 'SHIP_REQUEST' | 'SHIP_REQUEST_UPDATE' | 'SHIP_SLA_WARN' | 'SHIP_SLA_BREACH' | 'SHIP_READY' | 'CHAT_MESSAGE';
-export interface Notification { id: string; leadId: string; leadRef: string | null; product: string | null; kind: NotifKind; office: Office; byName: string | null; detail?: string | null; createdAt: string; read: boolean }
+export interface Notification { id: string; leadId: string | null; leadRef: string | null; product: string | null; kind: NotifKind; office: Office; byName: string | null; detail?: string | null; createdAt: string; read: boolean; conversationId?: string | null }
 export const NOTIF_CHANNEL = 'se:notif';
 
 const asg = (r: any): Assignment => ({ leadId: r.id, raisedBy: r.raised_by, assignedTo: r.assigned_to, ownerOffice: r.owner_office, updatedAt: r.assigned_at });
-const notif = (r: any): Notification => ({ id: r.id, leadId: r.lead_id, leadRef: r.lead_ref, product: r.product, kind: r.kind, office: r.office, byName: r.by_name, detail: r.detail ?? null, createdAt: r.created_at, read: !!r.read_at });
+const notif = (r: any): Notification => ({ id: r.id, leadId: r.lead_id ?? null, leadRef: r.lead_ref, product: r.product, kind: r.kind, office: r.office, byName: r.by_name, detail: r.detail ?? null, createdAt: r.created_at, read: !!r.read_at, conversationId: r.conversation_id ?? null });
 
 export class AssignStore {
   /** Fan-out hook for mobile push (set by the app). */
@@ -51,9 +51,9 @@ export class AssignStore {
     const at = new Date().toISOString(), product = n.product?.slice(0, 120) ?? null;
     for (const u of new Set(userIds)) {
       const id = randomUUID();
-      await this.db.run('INSERT INTO notifications (id,user_id,lead_id,lead_ref,product,kind,office,by_name,created_at,detail) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        id, u, n.leadId, n.leadRef, product, n.kind, n.office, n.byName, at, n.detail ?? null);
-      const ev: Notification = { id, leadId: n.leadId, leadRef: n.leadRef, product, kind: n.kind, office: n.office, byName: n.byName, detail: n.detail ?? null, createdAt: at, read: false };
+      await this.db.run('INSERT INTO notifications (id,user_id,lead_id,lead_ref,product,kind,office,by_name,created_at,detail,conversation_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        id, u, n.leadId ?? null, n.leadRef, product, n.kind, n.office, n.byName, at, n.detail ?? null, n.conversationId ?? null);
+      const ev: Notification = { id, leadId: n.leadId ?? null, leadRef: n.leadRef, product, kind: n.kind, office: n.office, byName: n.byName, detail: n.detail ?? null, createdAt: at, read: false, conversationId: n.conversationId ?? null };
       await this.bus.publish(NOTIF_CHANNEL, { userId: u, n: ev, unread: await this.unreadOf(u) }).catch(() => undefined);
       try { this.onNotify?.([u], ev); } catch { /* push is best effort */ }
     }

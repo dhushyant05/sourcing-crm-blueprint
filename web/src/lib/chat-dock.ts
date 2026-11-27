@@ -1,5 +1,5 @@
 /** Open the staff floating chat window, optionally on a lead thread with a suggested quote. */
-export type ChatDockOpen = { leadId?: string; quoteId?: string | null };
+export type ChatDockOpen = { leadId?: string; conversationId?: string; quoteId?: string | null };
 
 export function openChatDock(opts: ChatDockOpen = {}) {
   window.dispatchEvent(new CustomEvent('se:chat-dock', { detail: opts }));

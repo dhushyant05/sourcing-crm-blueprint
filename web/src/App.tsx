@@ -23,6 +23,7 @@ import { SupplierStatus } from './pages/SupplierStatus';
 import { Banners } from './pages/Banners';
 import { DownloadPage } from './pages/Download';
 import { Portal } from './portal/Portal';
+import { SupportWidget } from './support/SupportWidget';
 import type { Lead } from './lib/types';
 
 const routes: Route[] = ['dashboard', 'leads', 'quotations', 'orders', 'shipping', 'customers', 'suppliers', 'greetings', 'products', 'banners', 'applications', 'chat', 'users', 'settings'];
@@ -89,7 +90,12 @@ function PublicSite() {
   const [mode, setMode] = useState<'loading' | 'landing' | 'market'>('loading');
   useEffect(() => { publicCatalog.status().then((s) => setMode(s.showMarketplace ? 'market' : 'landing')).catch(() => setMode('landing')); }, []);
   if (mode === 'loading') return <div className="min-h-screen bg-white" />;
-  return mode === 'market' ? <Marketplace /> : <Landing />;
+  return (
+    <>
+      {mode === 'market' ? <Marketplace /> : <Landing />}
+      <SupportWidget mode="public" />
+    </>
+  );
 }
 
 export default function App() { if (isPortal()) return <Portal />; return <AppProvider>{isDownload() ? <DownloadPage /> : isSupplierPath() ? <SupplierAccess /> : isApp() ? <Shell /> : <PublicSite />}</AppProvider>; }

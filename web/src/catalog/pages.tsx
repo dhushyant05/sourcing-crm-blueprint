@@ -12,6 +12,7 @@ import { DEFAULT_TRUST } from './fixtures';
 import { priceLabel, useCurrency } from './currency';
 import { type Banner, type BannerSettings, type Breadcrumb, type Category, type Merchandising, type Product, type TrustItem } from './types';
 import { breadcrumbOf, childrenOf, categoryBySlug, topLevel } from './tree';
+import { openSupportWidget } from '../support/open-support';
 
 const CAT_ICON: Record<string, typeof Factory> = {
   Hardware: Wrench, Housewares: Home, Kitchenware: UtensilsCrossed, Lighting: Lamp, Packaging: Package, Textiles: Shirt,
@@ -226,12 +227,11 @@ export function ProductPage({ slug }: { slug: string }) {
   const [p, setP] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
   const [quoteKind, setQuoteKind] = useState<'SOURCING' | 'SHIPPING'>('SOURCING');
   const [qty, setQty] = useState('');
   const [selected, setSelected] = useState<Record<string, string>>({});
   useEffect(() => {
-    let on = true; setP(null); setErr(null); setChatOpen(false); setQuoteKind('SOURCING'); setSelected({});
+    let on = true; setP(null); setErr(null); setQuoteKind('SOURCING'); setSelected({});
     publicCatalog.product(slug).then((d) => {
       if (!on) return;
       setP(d);
@@ -245,6 +245,14 @@ export function ProductPage({ slug }: { slug: string }) {
     }).catch((e) => { if (on) setErr((e as Error).message); });
     return () => { on = false; };
   }, [slug]);
+  useEffect(() => {
+    const h = () => {
+      setQuoteKind('SOURCING');
+      document.getElementById('quote')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    addEventListener('se:open-enquiry', h);
+    return () => removeEventListener('se:open-enquiry', h);
+  }, []);
   if (err) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-500" data-testid="product-gone">This product is no longer available.</div>;
   if (!p) return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-ink-400">Loading…</div>;
   const m: Merchandising = p.merchandising ?? {};
@@ -260,7 +268,7 @@ export function ProductPage({ slug }: { slug: string }) {
   const inquiryNote = Object.entries(selected).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setChatOpen(false);
+   
   };
   const openEnquiry = (kind: 'SOURCING' | 'SHIPPING' = 'SOURCING') => {
     setQuoteKind(kind);
@@ -458,17 +466,10 @@ export function ProductPage({ slug }: { slug: string }) {
                 className="rounded-full bg-warm-500 px-5 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-warm-600">
                 Send enquiry
               </button>
-              <button type="button" data-testid="product-chat" onClick={() => setChatOpen((v) => !v)}
+              <button type="button" data-testid="product-chat" onClick={() => openSupportWidget({ productId: p.id, productSlug: p.slug, productTitle: p.title, source: 'product' })}
                 className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-5 py-2.5 text-sm font-semibold text-ink-800 hover:border-brand-200 hover:text-brand-700">
                 <MessageCircle size={16} /> Chat
               </button>
-              {chatOpen && (
-                <div data-testid="product-chat-panel" className="absolute left-0 top-full z-10 mt-2 w-80 rounded-2xl border border-ink-100 bg-white p-4 text-sm shadow-soft">
-                  <p className="font-medium text-ink-800">Chat with Source Easy</p>
-                  <p className="mt-1 text-ink-500">Use the send-enquiry form on this product and the Source Easy team will reply.</p>
-                  <button type="button" className="mt-3 text-sm font-medium text-brand-700 hover:underline" onClick={() => openEnquiry('SOURCING')}>Open enquiry form</button>
-                </div>
-              )}
             </div>
 
             <SupplierCard product={p} />
@@ -599,7 +600,7 @@ export function ProductPage({ slug }: { slug: string }) {
             <p className="truncate text-sm font-semibold text-brand-700">{priceLabel(p.price, currency)}</p>
             {p.moq != null && <p className="text-xs text-ink-500">MOQ {p.moq} {p.unit || 'pcs'}</p>}
           </div>
-          <button type="button" onClick={() => setChatOpen(true)} className="inline-flex items-center gap-1 rounded-full border border-ink-200 px-3 py-2 text-sm font-semibold text-ink-800">
+          <button type="button" onClick={() => openSupportWidget({ productId: p.id, productSlug: p.slug, productTitle: p.title, source: 'product' })} className="inline-flex items-center gap-1 rounded-full border border-ink-200 px-3 py-2 text-sm font-semibold text-ink-800">
             <MessageCircle size={16} /> Chat
           </button>
           <button type="button" onClick={() => openEnquiry('SOURCING')} className="rounded-full bg-warm-500 px-4 py-2 text-sm font-semibold text-white">

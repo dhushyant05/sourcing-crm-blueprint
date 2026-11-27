@@ -18,9 +18,11 @@ import { LeadStore } from './leads.js';
 import { CustomerStore, BadCustomer, NO_STATS } from './customers.js';
 import type { UserStore, User } from './users.js';
 import { QuoteStore, QUOTE_STATUSES, cqTotals, quoteCarton, type Quote } from './quotes.js';
-import { ChatStore } from './chat.js';
+import { ChatStore, canAccessSupportInbox, isChinaRole, SUPPORT_INBOX } from './chat.js';
 import { CustomRoleStore } from './custom-roles.js';
 import { registerStaffChat } from './chat-routes.js';
+import { SupportStore } from './support-chat.js';
+import { registerPublicSupport, registerPortalSupport, registerStaffSupport } from './support-chat-routes.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
 import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
@@ -91,7 +93,7 @@ export async function buildApp(o: AppOptions) {
   if (push.enabled) assign.onNotify = (ids, n) => {
     const det = n.detail ? ` — ${String(n.detail).replace(/^(production|ship|payment):/, '').replace(/_/g, ' ')}` : '';
     void push.send(ids, { title: `${KIND_EN[n.kind] ?? 'Source Easy'}${n.leadRef ? ` · ${n.leadRef}` : ''}`, body: `${n.product ?? ''}${det}${n.byName ? ` (${n.byName})` : ''}`.trim() || 'Source Easy',
-      data: { id: n.id, leadId: n.leadId, kind: n.kind } }).catch((e) => app.log.warn(e, 'push failed'));
+      data: { id: n.id, leadId: n.leadId ?? n.conversationId ?? '', kind: n.kind, conversationId: n.conversationId ?? '' } }).catch((e) => app.log.warn(e, 'push failed'));
   };
   const quotes = new QuoteStore(o.db);
   const customers = new CustomerStore(o.db);
@@ -593,6 +595,65 @@ export async function buildApp(o: AppOptions) {
     return { leadId: String(lead.id), leadRef, loginRequested };
   };
 
+  const lookupProduct = async (idOrSlug: string) => {
+    const r = await o.db.get<{ id: string; title: string; slug: string }>(
+      "SELECT id, title, slug FROM products WHERE (id = ? OR slug = ?) AND deleted_at IS NULL AND status = 'PUBLISHED'",
+      idOrSlug, idOrSlug,
+    );
+    return r ?? null;
+  };
+  const customerOwnsLead = async (customerId: string, leadId: string) =>
+    !!(await o.db.get('SELECT 1 FROM leads WHERE id = ? AND customer_id = ? AND portal_customer_id = customer_id', leadId, customerId));
+  const customerOwnsOrder = async (customerId: string, orderId: string) =>
+    !!(await o.db.get(
+      `SELECT 1 FROM orders o JOIN leads l ON l.id = o.lead_id
+       WHERE o.id = ? AND l.customer_id = ? AND l.portal_customer_id = l.customer_id`,
+      orderId, customerId,
+    ));
+  const createSupportLead = async (input: {
+    name: string; phone?: string | null; email?: string | null; company?: string | null;
+    productTitle?: string | null; productId?: string | null; message?: string | null;
+  }) => {
+    const leadRef = await nextRef();
+    const name = String(input.name || 'Support guest').slice(0, 160);
+    const product = (input.productTitle || 'Support chat').slice(0, 200);
+    const company = (input.company || name).slice(0, 160);
+    const rec: Rec = {
+      name: `${company} — ${product}`.slice(0, 200),
+      clientName: company,
+      productInterest: product,
+      contactName: name,
+      leadRef,
+      sourceChannel: 'SUPPORT_CHAT',
+      status: 'NEW',
+      assignedOffice: 'INDIA',
+      office: 'INDIA',
+    };
+    const phone = String(input.phone ?? '').trim();
+    if (phone) {
+      let digits = phone.replace(/[\s\-().]/g, '');
+      let code = '+91';
+      if (digits.startsWith('+')) {
+        const m = digits.match(/^(\+\d{1,4})(\d{6,14})$/);
+        if (m) { code = m[1]!; digits = m[2]!; }
+      } else if (digits.startsWith('91') && digits.length === 12) {
+        digits = digits.slice(2);
+      }
+      if (/^\d{6,14}$/.test(digits)) rec.contactPhone = { primaryPhoneNumber: digits, primaryPhoneCallingCode: code };
+    }
+    if (input.email) rec.contactEmail = { primaryEmail: input.email };
+    if (input.message) rec.enquiryMessage = input.message;
+    const lead = await leadDb.create(rec);
+    if (input.productId) await o.db.run('UPDATE leads SET catalog_product_id = ? WHERE id = ?', input.productId, String(lead.id));
+    await ev(String(lead.id), 'CREATED', null, { channel: 'SUPPORT_CHAT' });
+    await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null);
+    const admins = new Set(queueWatchers('INDIA'));
+    const staff = o.users.list().filter((u) => u.active && !admins.has(u.id) && canAccessSupportInbox(u) && !isChinaRole(u.role)).map((u) => u.id);
+    if (staff.length) await assign.notify(staff, { leadId: String(lead.id), leadRef, product, kind: 'QUEUE', office: 'INDIA', byName: null });
+    await liveData({ type: 'lead', id: String(lead.id), leadId: String(lead.id), created: true, at: Date.now() });
+    return { leadId: String(lead.id), leadRef };
+  };
+
   let afterPublicShipping: (r: ShippingRequest) => Promise<void> = async () => undefined;
   const createPublicShipping = async (input: {
     name: string; phone: string; phoneCode: string; email?: string; company?: string;
@@ -812,6 +873,23 @@ export async function buildApp(o: AppOptions) {
       chat: chatStore, roles: customRoles, quotes, leads: leadDb, uploads, assign, users: o.users, perms,
       attLead, need, liveData, canReadLead, readMultipart, stripImageMetadata, names: userNames,
     });
+    const supportStore = new SupportStore(o.db, o.bus, chatStore);
+    const supportDeps = {
+      support: supportStore, chat: chatStore, uploads, assign, jwtSecret: o.jwtSecret, liveData,
+      readMultipart, stripImageMetadata, names: userNames, lookupProduct, createSupportLead,
+      customerOwnsLead, customerOwnsOrder,
+      leadRefOf: async (id: string) => ((await leadDb.get(id))?.leadRef as string | undefined) ?? null,
+      onLive: onLiveData,
+      supportStaffIds: async () => {
+        const ids = await chatStore.membersOf(SUPPORT_INBOX);
+        return ids.filter((id) => {
+          const u = o.users.byId(id);
+          return !!u && u.active && canAccessSupportInbox(u);
+        });
+      },
+    };
+    registerStaffSupport(api, supportDeps);
+    registerPublicSupport(app, supportDeps);
         const hideInvoice = (u: User) => sides(u.role).china && u.role !== 'SUPER_ADMIN';
     api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => {
       const list = uploads.list(await attLead(req));
@@ -1870,7 +1948,10 @@ export async function buildApp(o: AppOptions) {
       res.write('retry: 3000\n\n');
       send('hello', { unread: unread0 });
       const off = assign.subscribe(uid, (n, unread) => send('notification', { notification: n, unread }));
-      const offData = onLiveData((d) => send('change', d));
+      const offData = onLiveData((d) => {
+        if (d?.type === 'chat' && d.kind === 'CUSTOMER_SUPPORT' && isChinaRole(req.user!.role)) return;
+        send('change', d);
+      });
       const ping = setInterval(() => res.write(': ping\n\n'), 25000);
       // Revocation (password/role change, disabled or removed user) arrives on Redis `se:revoke`: end this stream.
       const revoke = () => {
@@ -2247,6 +2328,7 @@ export async function buildApp(o: AppOptions) {
       return q;
     };
     registerPortalCatalog(api, catalogDeps);
+    registerPortalSupport(api, supportDeps);
 
     api.post<{ Params: { qid: string } }>('/api/portal/quotes/:qid/accept', async (req) => {
       const c = req.customer!, q = await ownQuote(c, req.params.qid);

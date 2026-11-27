@@ -1640,7 +1640,15 @@
     "cannedBody": "Reply text",
     "minimize": "Minimize",
     "expand": "Open full chat",
-    "backToInbox": "Back to inbox"
+    "backToInbox": "Back to inbox",
+    "supportInbox": "Customer support",
+    "convertLead": "Convert to lead",
+    "converted": "Converted to {{ref}}",
+    "internalNote": "Internal note — the customer will not see this",
+    "internalPlaceholder": "Write an internal note…",
+    "guest": "Guest",
+    "customer": "Customer",
+    "productAbout": "About this product"
   },
   "roles": {
     "title": "Custom roles and inboxes",

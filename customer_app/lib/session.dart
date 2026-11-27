@@ -11,6 +11,7 @@ import 'push.dart';
 class Session extends ChangeNotifier {
   Session(this.api, this.store, {this.clearFiles, this.push}) {
     api.onAuthError = () => unawaited(signOut(reason: 'Your session ended. Please sign in again.'));
+    api.cookieStore = store;
   }
   final PortalApi api;
   final KeyValue store;

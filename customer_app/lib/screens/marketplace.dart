@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../api.dart';
+import 'support_chat.dart';
 
 class MarketplaceTab extends StatefulWidget {
   const MarketplaceTab({super.key, required this.api, this.onSignIn, this.signedIn = false});
@@ -270,6 +271,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               TextField(controller: _msg, decoration: const InputDecoration(labelText: 'Message'), maxLines: 3),
               const SizedBox(height: 12),
               FilledButton(onPressed: _enquire, child: const Text('Request quote')),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SupportChatScreen(
+                  api: widget.api,
+                  signedIn: widget.signedIn,
+                  productId: '${p['id'] ?? ''}',
+                  productSlug: widget.slug,
+                  productTitle: '${p['title'] ?? ''}',
+                  source: 'product',
+                ))),
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Chat'),
+              ),
               if (_result != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_result!)),
               if (_related.isNotEmpty) ...[
                 const SizedBox(height: 28),

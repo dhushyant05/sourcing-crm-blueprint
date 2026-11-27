@@ -109,7 +109,8 @@ export interface Api {
   chatInboxes?(): Promise<ChatInbox[]>;
   inboxConversations?(inboxId: string): Promise<ChatThread[]>;
   conversation?(id: string): Promise<LeadChat>;
-  sendConversationMessage?(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[] }): Promise<LeadChatMessage>;
+  sendConversationMessage?(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[]; internal?: boolean }): Promise<LeadChatMessage>;
+  convertSupportLead?(id: string): Promise<{ leadId: string; leadRef: string | null }>;
   markChatRead?(id: string): Promise<void>;
   sendTyping?(id: string): Promise<void>;
   assignConversation?(id: string, userId: string | null): Promise<void>;
@@ -381,12 +382,13 @@ export class ServerApi implements Api {
   chatInboxes() { return this.req<ChatInbox[]>('GET', '/chat/inboxes'); }
   inboxConversations(inboxId: string) { return this.req<ChatThread[]>('GET', `/chat/inboxes/${encodeURIComponent(inboxId)}/conversations`); }
   conversation(id: string) { return this.req<LeadChat>('GET', `/chat/conversations/${encodeURIComponent(id)}`); }
-  async sendConversationMessage(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[] }) {
+  async sendConversationMessage(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[]; internal?: boolean }) {
     if (body.files?.length) {
       const fd = new FormData();
       if (body.content) fd.append('content', body.content);
       if (body.quoteId) fd.append('quoteId', body.quoteId);
       if (body.cannedId) fd.append('cannedId', body.cannedId);
+      if (body.internal) fd.append('internal', 'true');
       for (const f of body.files) fd.append('files', f, f.name);
       const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', headers: { authorization: `Bearer ${this.token}` }, body: fd });
       const j = await res.json().catch(() => ({}));
@@ -394,8 +396,9 @@ export class ServerApi implements Api {
       if (!res.ok) throw new HttpError((j as any).error ?? `HTTP ${res.status}`, res.status);
       return (j as any).data as LeadChatMessage;
     }
-    return this.req<LeadChatMessage>('POST', `/chat/conversations/${encodeURIComponent(id)}/messages`, { content: body.content, quoteId: body.quoteId, cannedId: body.cannedId });
+    return this.req<LeadChatMessage>('POST', `/chat/conversations/${encodeURIComponent(id)}/messages`, { content: body.content, quoteId: body.quoteId, cannedId: body.cannedId, internal: body.internal || undefined });
   }
+  convertSupportLead(id: string) { return this.req<{ leadId: string; leadRef: string | null }>('POST', `/chat/conversations/${encodeURIComponent(id)}/convert-lead`, {}); }
   async markChatRead(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/read`, {}); }
   async sendTyping(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/typing`, {}); }
   async assignConversation(id: string, userId: string | null) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/assign`, { userId }); }
@@ -518,6 +521,7 @@ export class DemoApi implements Api {
   async inboxConversations() { return []; }
   async conversation(): Promise<LeadChat> { return { enabled: false, conversationId: null, messages: [], quotes: [], suggestedQuoteId: null }; }
   async sendConversationMessage(): Promise<LeadChatMessage> { throw new Error('Chat is not available in the demo'); }
+  async convertSupportLead(): Promise<{ leadId: string; leadRef: string | null }> { throw new Error('Chat is not available in the demo'); }
   async markChatRead() {}
   async sendTyping() {}
   async assignConversation() {}
