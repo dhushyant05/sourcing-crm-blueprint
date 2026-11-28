@@ -1618,6 +1618,10 @@
     "duplicate": "A category with that name already exists here"
   },
   "chat": {
+    "siteSourceEasy": "Source Easy",
+    "siteFortune": "Fortune Engineering",
+    "siteAll": "All sites",
+    "siteFilter": "Filter by site",
     "title": "India ⇄ China chat",
     "blurb": "A shared thread for this lead. Attach a quote so both offices can see which item you mean. Customer names, prices and supplier details are never posted here.",
     "empty": "No messages yet. Start the conversation or attach a quote reference.",

@@ -7,6 +7,7 @@ import { useApp } from '../lib/store';
 import type { ChatInbox, ChatThread } from '../lib/types';
 import { LeadChat } from './LeadChat';
 import { SupportThread } from './SupportThread';
+import { SiteBadge } from './SiteBadge';
 
 /** Bottom-right floating chat for the staff app. State survives page changes via sessionStorage. */
 export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'chat') => void; openLeadId: (id: string) => void }) {
@@ -214,7 +215,8 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                   <button type="button" key={th.id} onClick={() => openThread(th)}
                     className={`block w-full border-b border-ink-50 px-3 py-2.5 text-left dark:border-ink-800 ${conversationId === th.id || (th.leadId && leadId === th.leadId) ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-ink-50 dark:hover:bg-ink-800'}`}>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-medium text-ink-800 dark:text-ink-100">{th.leadRef ?? th.id.slice(0, 8)}</span>
+                      <span className="truncate font-mono text-xs font-medium text-ink-800 dark:text-ink-100">{th.leadRef ?? th.id.slice(0, 8)}</span>
+                      {th.kind === 'CUSTOMER_SUPPORT' && <SiteBadge site={th.sourceSite ?? 'sourceeasy'} />}
                       {th.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{th.unread}</span>}
                       <span className="ml-auto text-[10px] text-ink-400">{th.lastAt ? fmtDate(th.lastAt) : ''}</span>
                     </div>

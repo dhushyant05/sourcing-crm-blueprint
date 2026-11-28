@@ -1618,6 +1618,10 @@
     "duplicate": "同一层级下已有同名分类"
   },
   "chat": {
+    "siteSourceEasy": "Source Easy",
+    "siteFortune": "Fortune Engineering",
+    "siteAll": "全部网站",
+    "siteFilter": "按网站筛选",
     "title": "印度 ⇄ 中国 聊天",
     "blurb": "这条线索的共享会话。附上报价后，双方都能确认在讨论哪一项。客户姓名、价格和供应商信息不会出现在这里。",
     "empty": "还没有消息。先发一条，或附上报价参考。",

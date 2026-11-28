@@ -24,7 +24,8 @@ import { registerPublicEmail, registerStaffEmail } from './email-routes.js';
 import { CustomRoleStore } from './custom-roles.js';
 import { registerStaffChat } from './chat-routes.js';
 import { SupportStore } from './support-chat.js';
-import { registerPublicSupport, registerPortalSupport, registerStaffSupport } from './support-chat-routes.js';
+import { registerPublicSupport, registerPortalSupport, registerStaffSupport, registerEmbedSupport } from './support-chat-routes.js';
+import { DEFAULT_EMBED_ORIGINS, parseEmbedOrigins } from './support-embed.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
 import { freightQuotePdf, customerQuotePdf } from './pdf.js';
 import { AvatarStore, BadImage, AVATAR_MAX_BYTES } from './avatars.js';
@@ -72,6 +73,8 @@ export interface AppOptions {
   emailSender?: MailSender;
   /** Unread-chat email digest interval in ms (default 5 min; 0 = off). */
   emailTickMs?: number;
+  /** Cross-origin support-chat embed allowlist, "origin=site,..." (default: env SUPPORT_EMBED_ORIGINS, else fortuneengineering.in). */
+  supportEmbedOrigins?: string;
 }
 
 declare module 'fastify' { interface FastifyRequest { user?: User; customer?: CustomerUser } interface FastifyInstance { slaTick: () => Promise<{ warn: number; breach: number }>; emailChannel?: EmailChannel } }
@@ -619,9 +622,10 @@ export async function buildApp(o: AppOptions) {
     ));
   const createSupportLead = async (input: {
     name: string; phone?: string | null; email?: string | null; company?: string | null;
-    productTitle?: string | null; productId?: string | null; message?: string | null;
+    productTitle?: string | null; productId?: string | null; message?: string | null; sourceSite?: string | null;
   }) => {
     const leadRef = await nextRef();
+    const viaFe = input.sourceSite === 'fortune_engineering';
     const name = String(input.name || 'Support guest').slice(0, 160);
     const product = (input.productTitle || 'Support chat').slice(0, 200);
     const company = (input.company || name).slice(0, 160);
@@ -649,10 +653,10 @@ export async function buildApp(o: AppOptions) {
       if (/^\d{6,14}$/.test(digits)) rec.contactPhone = { primaryPhoneNumber: digits, primaryPhoneCallingCode: code };
     }
     if (input.email) rec.contactEmail = { primaryEmail: input.email };
-    if (input.message) rec.enquiryMessage = input.message;
+    if (input.message || viaFe) rec.enquiryMessage = [viaFe ? '[Via Fortune Engineering website chat]' : null, input.message || null].filter(Boolean).join('\n');
     const lead = await leadDb.create(rec);
     if (input.productId) await o.db.run('UPDATE leads SET catalog_product_id = ? WHERE id = ?', input.productId, String(lead.id));
-    await ev(String(lead.id), 'CREATED', null, { channel: 'SUPPORT_CHAT' });
+    await ev(String(lead.id), 'CREATED', null, { channel: 'SUPPORT_CHAT', sourceSite: viaFe ? 'fortune_engineering' : 'sourceeasy' });
     await handoff({ ...lead, leadRef, productInterest: product }, null, 'INDIA', null);
     const admins = new Set(queueWatchers('INDIA'));
     const staff = o.users.list().filter((u) => u.active && !admins.has(u.id) && canAccessSupportInbox(u) && !isChinaRole(u.role)).map((u) => u.id);
@@ -928,6 +932,16 @@ export async function buildApp(o: AppOptions) {
     };
     registerStaffSupport(api, supportDeps);
     registerPublicSupport(app, supportDeps);
+    registerEmbedSupport(app, supportDeps, parseEmbedOrigins(o.supportEmbedOrigins ?? process.env.SUPPORT_EMBED_ORIGINS ?? DEFAULT_EMBED_ORIGINS));
+    // Embeddable widget for partner sites (loaded with <script src>; API calls are CORS-checked separately).
+    const embedJs = new URL('../assets/embed/support-chat.js', import.meta.url);
+    app.get('/embed/support-chat.js', async (_req, reply) => {
+      if (!existsSync(embedJs)) return reply.code(404).send({ error: 'Not found' });
+      return reply.header('content-type', 'application/javascript; charset=utf-8')
+        .header('cache-control', 'public, max-age=300')
+        .header('cross-origin-resource-policy', 'cross-origin')
+        .send(createReadStream(embedJs));
+    });
         const hideInvoice = (u: User) => sides(u.role).china && u.role !== 'SUPER_ADMIN';
     api.get<{ Params: { id: string } }>('/api/leads/:id/attachments', async (req) => {
       const list = uploads.list(await attLead(req));

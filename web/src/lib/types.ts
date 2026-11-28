@@ -201,6 +201,7 @@ export interface LeadChat {
   guestName?: string | null; guestEmail?: string | null; guestPhone?: string | null;
   customerId?: string | null; convertedLeadId?: string | null; convertedLeadRef?: string | null;
   linkedLeadId?: string | null; source?: string | null; canConvert?: boolean;
+  sourceSite?: 'sourceeasy' | 'fortune_engineering';
 }
 export interface ChatInbox { id: string; slug: string; name: string; kind: 'PERSONAL' | 'TEAM'; unread: number; memberIds?: string[] }
 export interface ChatThread {
@@ -209,6 +210,7 @@ export interface ChatThread {
   assignedTo: string | null; assignedToName: string | null;
   kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL'; guestName?: string | null; channel?: 'CHAT' | 'EMAIL'; emailSubject?: string | null;
   convertedLeadId?: string | null; canConvert?: boolean; conversationId?: string;
+  sourceSite?: 'sourceeasy' | 'fortune_engineering';
 }
 export interface CustomRole {
   id: string; name: string; description: string | null; members: number;

@@ -111,11 +111,18 @@ export function cleanName(v?: string | null) {
   return s.length >= 2 ? s : null;
 }
 
-export function publicStaffName(name?: string | null) {
+export type SourceSite = 'sourceeasy' | 'fortune_engineering';
+export const SOURCE_SITES: readonly SourceSite[] = ['sourceeasy', 'fortune_engineering'];
+export const SITE_BRAND: Record<SourceSite, string> = { sourceeasy: 'Source Easy', fortune_engineering: 'Fortune Engineering' };
+export const siteOf = (v: unknown): SourceSite => (v === 'fortune_engineering' ? 'fortune_engineering' : 'sourceeasy');
+export const brandOf = (site?: string | null) => SITE_BRAND[siteOf(site)];
+
+export function publicStaffName(name?: string | null, site?: string | null) {
   const n = String(name ?? '').trim();
-  if (!n) return 'Source Easy team';
+  const team = `${brandOf(site)} team`;
+  if (!n) return team;
   const first = n.split(/\s+/)[0]!;
-  return first || 'Source Easy team';
+  return first || team;
 }
 
 export type SupportConversation = {
@@ -134,6 +141,7 @@ export type SupportConversation = {
   productTitle: string | null;
   productSlug: string | null;
   source: string | null;
+  sourceSite: SourceSite;
   convertedLeadId: string | null;
   linkedLeadId: string | null;
   linkedOrderId: string | null;
@@ -156,6 +164,7 @@ export function mapSupport(r: any): SupportConversation {
     productTitle: r.product_title ?? null,
     productSlug: r.product_slug ?? null,
     source: r.source ?? null,
+    sourceSite: siteOf(r.source_site),
     convertedLeadId: r.converted_lead_id ?? null,
     linkedLeadId: r.linked_lead_id ?? null,
     linkedOrderId: r.linked_order_id ?? null,
@@ -181,20 +190,21 @@ export class SupportStore {
     );
   }
 
-  async visitorFromToken(raw?: string | null) {
+  /** Visitor for a raw token, only if it was issued for `site` (a Source Easy cookie never opens a Fortune Engineering chat and vice versa). */
+  async visitorFromToken(raw?: string | null, site: SourceSite = 'sourceeasy') {
     if (!raw) return null;
     const hash = hashToken(raw);
-    const row = await this.db.get('SELECT * FROM chat_visitors WHERE token_hash = ?', hash);
+    const row = await this.db.get('SELECT * FROM chat_visitors WHERE token_hash = ? AND source_site = ?', hash, site);
     if (!row) return null;
     await this.db.run('UPDATE chat_visitors SET last_seen_at = now() WHERE id = ?', row.id);
     return { id: String(row.id), tokenHash: String(row.token_hash) };
   }
 
-  async createVisitor(raw: string) {
+  async createVisitor(raw: string, site: SourceSite = 'sourceeasy') {
     const id = randomUUID();
     await this.db.run(
-      'INSERT INTO chat_visitors (id, token_hash, created_at, last_seen_at) VALUES (?,?,now(),now())',
-      id, hashToken(raw),
+      'INSERT INTO chat_visitors (id, token_hash, source_site, created_at, last_seen_at) VALUES (?,?,?,now(),now())',
+      id, hashToken(raw), site,
     );
     return { id, tokenHash: hashToken(raw) };
   }
@@ -230,17 +240,19 @@ export class SupportStore {
     productTitle?: string | null;
     productSlug?: string | null;
     source?: string | null;
+    sourceSite?: SourceSite;
     linkedLeadId?: string | null;
     linkedOrderId?: string | null;
     reuse?: boolean;
   }) {
+    const site: SourceSite = siteOf(opts.sourceSite);
     await this.ensureInbox();
     if (opts.reuse && opts.customerId) {
       const existing = (await this.byCustomer(opts.customerId))[0];
       if (existing) return { conv: existing, created: false };
     }
     if (opts.reuse && opts.visitorId && !opts.customerId) {
-      const existing = (await this.byVisitor(opts.visitorId))[0];
+      const existing = (await this.byVisitor(opts.visitorId)).find((c) => c.sourceSite === site);
       if (existing) return { conv: existing, created: false };
     }
     const id = randomUUID();
@@ -248,12 +260,12 @@ export class SupportStore {
     await this.db.run(
       `INSERT INTO chat_conversations (
          id, lead_id, kind, visitor_id, customer_id, guest_name, guest_email, guest_phone,
-         product_id, product_title, product_slug, source, linked_lead_id, linked_order_id, consent_at, created_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         product_id, product_title, product_slug, source, source_site, linked_lead_id, linked_order_id, consent_at, created_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       id, null, 'CUSTOMER_SUPPORT', opts.visitorId ?? null, opts.customerId ?? null,
       opts.guestName, opts.guestEmail ?? null, opts.guestPhone ?? null,
       opts.productId ?? null, opts.productTitle ?? null, opts.productSlug ?? null,
-      opts.source ?? null, opts.linkedLeadId ?? null, opts.linkedOrderId ?? null, at, at,
+      opts.source ?? null, site, opts.linkedLeadId ?? null, opts.linkedOrderId ?? null, at, at,
     );
     await this.db.run(
       'INSERT INTO chat_conversation_inboxes (conversation_id, inbox_id) VALUES (?,?) ON CONFLICT DO NOTHING',
