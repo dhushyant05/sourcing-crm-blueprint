@@ -1410,5 +1410,42 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quSessionExpired => '会话已结束，请重新登录。';
 
   @override
+  String get channels => '频道';
+
+  @override
+  String get directMessages => '私信';
+
+  @override
+  String get inboxes => '收件箱';
+
+  @override
+  String get newMessage => '新消息';
+
+  @override
+  String get startChat => '开始聊天';
+
+  @override
+  String get noChannels => '还没有频道';
+
+  @override
+  String get noDirectMessages => '还没有私信';
+
+  @override
+  String get leaveChannel => '退出';
+
+  @override
+  String get mixedChannelWarning =>
+      '此对话同时包含印度和中国成员。报价卡中会隐藏客户名称、售价和供应商身份。请避免在此输入这些信息。';
+
+  @override
+  String get sensitiveMixedWarning => '这段内容看起来像电话、邮箱或价格。在印度与中国的混合对话中，所有成员都能看到。';
+
+  @override
+  String get sendAnyway => '仍要发送';
+
+  @override
+  String get searchQuotes => '搜索报价';
+
+  @override
   String get chatOpenOnWeb => '请在 Source Easy 网页版中打开此对话进行回复。';
 }

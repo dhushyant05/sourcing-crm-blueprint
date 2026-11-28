@@ -133,12 +133,54 @@ export function canAccessSupplierEmail(u: { role: string } | null | undefined) {
   return u.role === 'SUPER_ADMIN' || isChinaRole(u.role);
 }
 
-export type ConvKind = 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL';
-/** Conversation class: lead chat, customer support desk or supplier email desk. */
-export function convClass(c: { kind?: string | null; leadId?: string | null }): 'lead' | 'support' | 'supplier_email' {
+export type ConvKind = 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL' | 'CHANNEL' | 'DM';
+export type ConvClass = 'lead' | 'support' | 'supplier_email' | 'channel' | 'dm';
+/** Conversation class. CHANNEL/DM must never fall through to "support" (those also have no lead). */
+export function convClass(c: { kind?: string | null; leadId?: string | null }): ConvClass {
   if (c.kind === 'SUPPLIER_EMAIL') return 'supplier_email';
-  if (c.kind === 'CUSTOMER_SUPPORT' || !c.leadId) return 'support';
+  if (c.kind === 'CHANNEL') return 'channel';
+  if (c.kind === 'DM') return 'dm';
+  if (c.kind === 'CUSTOMER_SUPPORT') return 'support';
+  if (!c.kind && !c.leadId) return 'support';
   return 'lead';
+}
+export function isInternalConv(c: { kind?: string | null }) {
+  return c.kind === 'CHANNEL' || c.kind === 'DM';
+}
+/** Staff who may take part in channels/DMs. Customers are portal users; suppliers are users but are never eligible. */
+export function isInternalChatEligible(u: { role: string } | null | undefined) {
+  return !!u && u.role !== 'SUPPLIER';
+}
+export type OfficeSide = 'INDIA' | 'CHINA' | 'MARKETPLACE';
+export function officeSide(role: string): OfficeSide | null {
+  if (role === 'SUPER_ADMIN') return null;
+  if (role === 'MARKETPLACE_TEAM') return 'MARKETPLACE';
+  if (role.startsWith('INDIA')) return 'INDIA';
+  if (role.startsWith('CHINA')) return 'CHINA';
+  return null;
+}
+export function conversationIsMixed(roles: (string | null | undefined)[]) {
+  const sides = new Set<OfficeSide>();
+  for (const r of roles) {
+    const s = r ? officeSide(r) : null;
+    if (s) sides.add(s);
+  }
+  return sides.size >= 2;
+}
+
+export const DEFAULT_CHANNELS = {
+  ALL: { id: 'channel-all-staff', slug: 'all-staff', name: 'All staff' },
+  INDIA: { id: 'channel-india-team', slug: 'india-team', name: 'India team' },
+  CHINA: { id: 'channel-china-team', slug: 'china-team', name: 'China team' },
+} as const;
+export const MAX_GROUP_DM = 8;
+
+export function dmKeyFor(ids: string[]) {
+  return [...new Set(ids)].sort().join(':');
+}
+export function slugifyChannel(name: string) {
+  const s = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return s || 'channel';
 }
 /** May this user see desk conversations of this kind at all (role-level hard rule)? */
 export function canAccessDeskKind(u: { role: string } | null | undefined, kind: string | null | undefined) {
@@ -199,6 +241,7 @@ export class ChatStore {
   async bootstrapUser(u: User) {
     await this.ensurePersonalInbox(u.id, u.name);
     await this.ensureOfficeMembership(u);
+    await this.ensureDefaultChannels(u);
     if (canAccessSupportInbox(u)) {
       await this.db.run(
         "INSERT INTO chat_inboxes (id, slug, name, kind) VALUES (?,?,?,?) ON CONFLICT (id) DO NOTHING",
@@ -278,7 +321,9 @@ export class ChatStore {
       const r = await this.db.get<{ c: number }>(
         `SELECT COUNT(*)::int c FROM chat_messages m
          JOIN chat_participants p ON p.conversation_id = m.conversation_id AND p.user_id = ?
-         WHERE (p.last_read_at IS NULL OR m.created_at > p.last_read_at)
+         JOIN chat_conversations c ON c.id = m.conversation_id
+         WHERE c.kind NOT IN ('CHANNEL', 'DM')
+           AND (p.last_read_at IS NULL OR m.created_at > p.last_read_at)
            AND (m.sender_id IS NULL OR m.sender_id <> ?)`,
         u.id, u.id,
       );
@@ -322,6 +367,7 @@ export class ChatStore {
     const out = [];
     for (const r of rows) {
       const kind = r.kind ?? 'LEAD';
+      if (kind === 'CHANNEL' || kind === 'DM') continue;
       if (!canAccessDeskKind(u, kind)) continue;
       const unread = await this.unreadCount(u.id, r.id, r.last_read_at ?? null);
       out.push({
@@ -365,13 +411,14 @@ export class ChatStore {
     const like = `%${needle.replace(/[%_]/g, '')}%`;
     const rows = await this.db.all(
       `SELECT m.id, m.conversation_id, m.body, m.kind, m.created_at, m.sender_id, c.lead_id, c.kind AS conv_kind,
-              c.guest_name, c.product_title, l.lead_ref, l.product_interest, m.visibility
+              c.guest_name, c.product_title, c.title, l.lead_ref, l.product_interest, m.visibility
        FROM chat_messages m
        JOIN chat_conversations c ON c.id = m.conversation_id
        LEFT JOIN leads l ON l.id = c.lead_id
-       WHERE (m.body ILIKE ? OR l.lead_ref ILIKE ? OR l.product_interest ILIKE ? OR c.guest_name ILIKE ? OR c.product_title ILIKE ?)
+       WHERE (m.body ILIKE ? OR l.lead_ref ILIKE ? OR l.product_interest ILIKE ? OR c.guest_name ILIKE ? OR c.product_title ILIKE ? OR c.title ILIKE ?)
+         AND (m.visibility IS NULL OR m.visibility = 'customer')
        ORDER BY m.created_at DESC LIMIT 80`,
-      like, like, like, like, like,
+      like, like, like, like, like, like,
     );
     const out = [];
     for (const r of rows) {
@@ -380,7 +427,7 @@ export class ChatStore {
       if (!(await this.canAccessId(u, String(r.conversation_id), r.lead_id ?? null))) continue;
       out.push({
         messageId: r.id, conversationId: r.conversation_id, leadId: r.lead_id ?? null,
-        leadRef: r.lead_ref ?? r.guest_name, product: r.product_interest ?? r.product_title,
+        leadRef: r.lead_ref ?? r.guest_name ?? r.title, product: r.product_interest ?? r.product_title ?? r.title,
         kind: r.kind, body: String(r.body ?? '').slice(0, 240), at: r.created_at,
         convKind: r.conv_kind ?? 'LEAD',
       });
@@ -392,6 +439,16 @@ export class ChatStore {
   async canAccessId(u: User, conversationId: string, leadId?: string | null): Promise<boolean> {
     const row = await this.db.get('SELECT kind FROM chat_conversations WHERE id = ?', conversationId);
     const kind = row?.kind ?? (leadId ? 'LEAD' : 'CUSTOMER_SUPPORT');
+    if (kind === 'CHANNEL' || kind === 'DM') {
+      if (!isInternalChatEligible(u)) return false;
+      if (kind === 'CHANNEL' && !this.can(u, 'chat.channels') && u.role !== 'SUPER_ADMIN') return false;
+      if (kind === 'DM' && !this.can(u, 'chat.dm') && u.role !== 'SUPER_ADMIN') return false;
+      const part = await this.db.get('SELECT 1 FROM chat_participants WHERE conversation_id = ? AND user_id = ?', conversationId, u.id);
+      if (part) return true;
+      if (kind === 'CHANNEL' && (u.role === 'SUPER_ADMIN' || this.can(u, 'chat.manage_channels') || this.can(u, 'chat.view_all'))) return true;
+      if (kind === 'DM' && (u.role === 'SUPER_ADMIN' || this.can(u, 'chat.view_all'))) return true;
+      return false;
+    }
     if (kind === 'CUSTOMER_SUPPORT' || kind === 'SUPPLIER_EMAIL') {
       if (!canAccessDeskKind(u, kind)) return false;
       if (this.can(u, 'chat.view_all') || u.role === 'SUPER_ADMIN') return true;
@@ -422,9 +479,9 @@ export class ChatStore {
     return false;
   }
 
-  async get(conversationId: string) {
-    const r = await this.db.get('SELECT * FROM chat_conversations WHERE id = ?', conversationId);
-    return r ? {
+
+  private mapConv(r: any) {
+    return {
       id: String(r.id),
       leadId: r.lead_id ? String(r.lead_id) : null,
       kind: (r.kind ?? 'LEAD') as ConvKind,
@@ -448,37 +505,26 @@ export class ChatStore {
       emailSubject: r.email_subject ?? null,
       emailMailbox: r.email_mailbox ?? null,
       supplierId: r.supplier_id ?? null,
-    } : null;
+      title: r.title ?? null,
+      slug: r.slug ?? null,
+      isMandatory: !!r.is_mandatory,
+      isGroup: !!r.is_group,
+      archivedAt: r.archived_at ?? null,
+      createdBy: r.created_by ?? null,
+      dmKey: r.dm_key ?? null,
+    };
+  }
+
+  async get(conversationId: string) {
+    const r = await this.db.get('SELECT * FROM chat_conversations WHERE id = ?', conversationId);
+    return r ? this.mapConv(r) : null;
   }
 
   async byLead(leadId: string) {
     const r = await this.db.get('SELECT * FROM chat_conversations WHERE lead_id = ?', leadId);
-    return r ? {
-      id: String(r.id),
-      leadId: r.lead_id ? String(r.lead_id) : null,
-      kind: (r.kind ?? 'LEAD') as ConvKind,
-      assignedTo: r.assigned_to as string | null,
-      lastMessageAt: r.last_message_at,
-      createdAt: r.created_at,
-      visitorId: r.visitor_id ?? null,
-      customerId: r.customer_id ?? null,
-      guestName: r.guest_name ?? null,
-      guestEmail: r.guest_email ?? null,
-      guestPhone: r.guest_phone ?? null,
-      productTitle: r.product_title ?? null,
-      productId: r.product_id ?? null,
-      convertedLeadId: r.converted_lead_id ?? null,
-      linkedLeadId: r.linked_lead_id ?? null,
-      linkedOrderId: r.linked_order_id ?? null,
-      source: r.source ?? null,
-      sourceSite: (r.source_site ?? 'sourceeasy') as string,
-      channel: (r.channel ?? 'CHAT') as 'CHAT' | 'EMAIL',
-      emailAddress: r.email_address ?? null,
-      emailSubject: r.email_subject ?? null,
-      emailMailbox: r.email_mailbox ?? null,
-      supplierId: r.supplier_id ?? null,
-    } : null;
+    return r ? this.mapConv(r) : null;
   }
+
 
   async ensureForLead(u: User, lead: LeadLite, asg: Assignment | null): Promise<{ id: string; created: boolean }> {
     const existing = await this.byLead(lead.id);
@@ -605,6 +651,284 @@ export class ChatStore {
         await t.run('INSERT INTO chat_inbox_members (inbox_id, user_id, added_by) VALUES (?,?,?)', inboxId, uid, by);
       }
     });
+  }
+
+
+  // ---- Internal channels and direct messages ----
+
+  async ensureDefaultChannels(u: User) {
+    if (!isInternalChatEligible(u)) return;
+    for (const ch of Object.values(DEFAULT_CHANNELS)) {
+      await this.db.run(
+        `INSERT INTO chat_conversations (id, lead_id, kind, title, slug, is_mandatory, is_group, created_at)
+         VALUES (?,?,?,?,?,?,?,now()) ON CONFLICT (id) DO NOTHING`,
+        ch.id, null, 'CHANNEL', ch.name, ch.slug, true, true,
+      );
+    }
+    const join = async (id: string) => {
+      await this.db.run('INSERT INTO chat_participants (conversation_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING', id, u.id, null);
+    };
+    const leaveIfMandatory = async (id: string) => {
+      // Drop auto-membership when the person's office no longer matches. Manual custom-channel membership is left alone.
+      await this.db.run('DELETE FROM chat_participants WHERE conversation_id = ? AND user_id = ? AND added_by IS NULL', id, u.id);
+    };
+    if (this.can(u, 'chat.channels') || u.role === 'SUPER_ADMIN') await join(DEFAULT_CHANNELS.ALL.id);
+    if (u.role.startsWith('INDIA')) await join(DEFAULT_CHANNELS.INDIA.id);
+    else await leaveIfMandatory(DEFAULT_CHANNELS.INDIA.id);
+    if (u.role.startsWith('CHINA')) await join(DEFAULT_CHANNELS.CHINA.id);
+    else await leaveIfMandatory(DEFAULT_CHANNELS.CHINA.id);
+  }
+
+  defaultMandatoryFor(u: User, conv: { slug?: string | null; isMandatory?: boolean; kind?: string }) {
+    if (conv.kind !== 'CHANNEL' || !conv.isMandatory) return false;
+    if (conv.slug === DEFAULT_CHANNELS.ALL.slug) return true;
+    if (conv.slug === DEFAULT_CHANNELS.INDIA.slug) return u.role.startsWith('INDIA');
+    if (conv.slug === DEFAULT_CHANNELS.CHINA.slug) return u.role.startsWith('CHINA');
+    return !!conv.isMandatory;
+  }
+
+  canManageChannels(u: User) {
+    return u.role === 'SUPER_ADMIN' || this.can(u, 'chat.manage_channels');
+  }
+
+  async participantRoles(conversationId: string): Promise<{ userId: string; role: string; name: string }[]> {
+    const rows = await this.db.all(
+      `SELECT p.user_id, u.role, u.name FROM chat_participants p JOIN users u ON u.id = p.user_id WHERE p.conversation_id = ?`,
+      conversationId,
+    );
+    return rows.map((r: any) => ({ userId: String(r.user_id), role: String(r.role), name: String(r.name) }));
+  }
+
+  async isMixed(conversationId: string) {
+    const parts = await this.participantRoles(conversationId);
+    return conversationIsMixed(parts.map((p) => p.role));
+  }
+
+  private async unreadOf(u: User, conversationId: string, lastReadAt: string | null) {
+    return this.unreadCount(u.id, conversationId, lastReadAt);
+  }
+
+  private async lastMessage(conversationId: string) {
+    return this.db.get('SELECT body, created_at, kind FROM chat_messages WHERE conversation_id = ? AND (visibility IS NULL OR visibility = ?) ORDER BY created_at DESC, id DESC LIMIT 1', conversationId, 'customer');
+  }
+
+  async listInternal(u: User, opts: { includeArchived?: boolean } = {}) {
+    await this.bootstrapUser(u);
+    const manage = this.canManageChannels(u);
+    const archived = opts.includeArchived && manage ? '' : 'AND c.archived_at IS NULL';
+    const channelRows = await this.db.all(
+      `SELECT c.*, p.last_read_at FROM chat_conversations c
+       LEFT JOIN chat_participants p ON p.conversation_id = c.id AND p.user_id = ?
+       WHERE c.kind = 'CHANNEL' ${archived}
+         AND (p.user_id IS NOT NULL OR ? = true)
+       ORDER BY c.is_mandatory DESC, lower(c.title), c.id`,
+      u.id, manage,
+    );
+    const dmRows = await this.db.all(
+      `SELECT c.*, p.last_read_at FROM chat_conversations c
+       JOIN chat_participants p ON p.conversation_id = c.id AND p.user_id = ?
+       WHERE c.kind = 'DM' AND c.archived_at IS NULL
+       ORDER BY COALESCE(c.last_message_at, c.created_at) DESC`,
+      u.id,
+    );
+    const present = async (r: any) => {
+      const conv = this.mapConv(r);
+      const parts = await this.participantRoles(conv.id);
+      const last = await this.lastMessage(conv.id);
+      return {
+        ...conv,
+        members: parts.map((x) => ({ userId: x.userId, name: x.name, role: x.role })),
+        mixed: conversationIsMixed(parts.map((x) => x.role)),
+        unread: await this.unreadOf(u, conv.id, r.last_read_at ?? null),
+        lastBody: last ? String(last.body ?? '').slice(0, 140) : null,
+        lastAt: last?.created_at ?? conv.lastMessageAt,
+        canLeave: this.canLeave(u, conv),
+        isMember: parts.some((x) => x.userId === u.id),
+      };
+    };
+    const canCh = this.can(u, 'chat.channels') || u.role === 'SUPER_ADMIN';
+    const canDm = this.can(u, 'chat.dm') || u.role === 'SUPER_ADMIN';
+    return {
+      channels: canCh ? await Promise.all(channelRows.map(present)) : [],
+      dms: canDm ? await Promise.all(dmRows.map(present)) : [],
+    };
+  }
+
+  canLeave(u: User, conv: { kind?: string; slug?: string | null; isMandatory?: boolean; isGroup?: boolean }) {
+    if (conv.kind === 'DM') return !!conv.isGroup;
+    if (conv.kind !== 'CHANNEL') return false;
+    return !this.defaultMandatoryFor(u, conv);
+  }
+
+  async createChannel(u: User, name: string, memberIds: string[], mandatory = false) {
+    if (!this.canManageChannels(u)) throw new ChatError('You cannot manage channels', 403);
+    const title = name.trim().slice(0, 80);
+    if (title.length < 2) throw new ChatError('Please enter a channel name', 400);
+    let slug = slugifyChannel(title);
+    const id = randomUUID();
+    for (let i = 0; i < 8; i++) {
+      const clash = await this.db.get("SELECT 1 FROM chat_conversations WHERE kind = 'CHANNEL' AND slug = ? AND archived_at IS NULL", slug);
+      if (!clash) break;
+      slug = `${slugifyChannel(title)}-${i + 2}`;
+    }
+    const at = new Date().toISOString();
+    await this.db.run(
+      `INSERT INTO chat_conversations (id, lead_id, kind, title, slug, is_mandatory, is_group, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      id, null, 'CHANNEL', title, slug, !!mandatory, true, u.id, at,
+    );
+    const members = [...new Set([u.id, ...memberIds])];
+    for (const uid of members) await this.addInternalMember(id, uid, u.id, { skipManage: true });
+    await this.post(id, null, `${u.name} created #${title}`, 'system', null, { authorKind: 'system', visibility: 'customer' });
+    return (await this.get(id))!;
+  }
+
+  async updateChannel(u: User, conversationId: string, patch: { title?: string; archived?: boolean }) {
+    if (!this.canManageChannels(u)) throw new ChatError('You cannot manage channels', 403);
+    const conv = await this.get(conversationId);
+    if (!conv || conv.kind !== 'CHANNEL') throw new ChatError('Channel not found', 404);
+    if (patch.title !== undefined) {
+      const title = patch.title.trim().slice(0, 80);
+      if (title.length < 2) throw new ChatError('Please enter a channel name', 400);
+      if (conv.slug && Object.values(DEFAULT_CHANNELS).some((c) => c.slug === conv.slug) && title !== conv.title) {
+        throw new ChatError('The default team channels cannot be renamed', 400);
+      }
+      await this.db.run('UPDATE chat_conversations SET title = ? WHERE id = ?', title, conv.id);
+      if (title !== conv.title) await this.post(conv.id, null, `${u.name} renamed the channel to #${title}`, 'system', null, { authorKind: 'system', visibility: 'customer' });
+    }
+    if (patch.archived === true) {
+      if (conv.slug && Object.values(DEFAULT_CHANNELS).some((c) => c.slug === conv.slug)) {
+        throw new ChatError('The default team channels cannot be archived', 400);
+      }
+      await this.db.run('UPDATE chat_conversations SET archived_at = now() WHERE id = ?', conv.id);
+      await this.post(conv.id, null, `${u.name} archived this channel`, 'system', null, { authorKind: 'system', visibility: 'customer' });
+    }
+    if (patch.archived === false) {
+      await this.db.run('UPDATE chat_conversations SET archived_at = NULL WHERE id = ?', conv.id);
+    }
+    return (await this.get(conv.id))!;
+  }
+
+  async addInternalMember(conversationId: string, userId: string, by: string, opts: { skipManage?: boolean; user?: User } = {}) {
+    const u = opts.user;
+    const conv = await this.get(conversationId);
+    if (!conv || !isInternalConv(conv)) throw new ChatError('Not found', 404);
+    if (conv.archivedAt) throw new ChatError('This channel is archived', 400);
+    const row = await this.db.get<{ role: string; name: string; active: boolean }>('SELECT role, name, active FROM users WHERE id = ?', userId);
+    if (!row || !row.active) throw new ChatError('Person not found', 404);
+    if (!isInternalChatEligible(row)) throw new ChatError('Customers and suppliers cannot join internal chats', 403);
+    if (conv.kind === 'CHANNEL') {
+      // membership itself does not require chat.channels (a manager can add someone who will then need the perm to open it)
+    } else if (conv.kind === 'DM') {
+      const count = (await this.db.get<{ c: number }>('SELECT COUNT(*)::int c FROM chat_participants WHERE conversation_id = ?', conversationId))?.c ?? 0;
+      if (!conv.isGroup && count >= 2) throw new ChatError('Turn this into a group to add more people', 400);
+      if (count >= MAX_GROUP_DM) throw new ChatError(`A group can have up to ${MAX_GROUP_DM} people`, 400);
+      if (count >= 2 && !conv.isGroup) await this.db.run('UPDATE chat_conversations SET is_group = true WHERE id = ?', conversationId);
+    }
+    await this.db.run('INSERT INTO chat_participants (conversation_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING', conversationId, userId, by);
+    const adder = u?.name ?? 'Staff';
+    if (opts.skipManage) return;
+    await this.post(conversationId, null, `${adder} added ${row.name}`, 'system', null, { authorKind: 'system', visibility: 'customer' });
+  }
+
+  async setChannelMembers(u: User, conversationId: string, userIds: string[]) {
+    if (!this.canManageChannels(u)) throw new ChatError('You cannot manage channels', 403);
+    const conv = await this.get(conversationId);
+    if (!conv || conv.kind !== 'CHANNEL') throw new ChatError('Channel not found', 404);
+    const wanted = new Set(userIds);
+    // Mandatory default channels always keep their office members.
+    if (conv.slug === DEFAULT_CHANNELS.ALL.slug) {
+      const all = await this.db.all("SELECT id FROM users WHERE active IS TRUE AND role <> 'SUPPLIER'");
+      for (const r of all) wanted.add(String(r.id));
+    }
+    if (conv.slug === DEFAULT_CHANNELS.INDIA.slug) {
+      const all = await this.db.all("SELECT id FROM users WHERE active IS TRUE AND role LIKE 'INDIA%'");
+      for (const r of all) wanted.add(String(r.id));
+    }
+    if (conv.slug === DEFAULT_CHANNELS.CHINA.slug) {
+      const all = await this.db.all("SELECT id FROM users WHERE active IS TRUE AND role LIKE 'CHINA%'");
+      for (const r of all) wanted.add(String(r.id));
+    }
+    const current = await this.db.all('SELECT user_id FROM chat_participants WHERE conversation_id = ?', conversationId);
+    const have = new Set(current.map((r: any) => String(r.user_id)));
+    for (const id of wanted) if (!have.has(id)) await this.addInternalMember(conversationId, id, u.id, { skipManage: true });
+    for (const id of have) {
+      if (wanted.has(id)) continue;
+      const row = await this.db.get<{ role: string }>('SELECT role FROM users WHERE id = ?', id);
+      if (row && this.defaultMandatoryFor({ ...(u as any), id, role: row.role } as User, conv)) continue;
+      await this.db.run('DELETE FROM chat_participants WHERE conversation_id = ? AND user_id = ?', conversationId, id);
+    }
+  }
+
+  async leaveInternal(u: User, conversationId: string) {
+    const conv = await this.get(conversationId);
+    if (!conv || !isInternalConv(conv)) throw new ChatError('Not found', 404);
+    if (!this.canLeave(u, conv)) throw new ChatError('You cannot leave this conversation', 403);
+    const part = await this.db.get('SELECT 1 FROM chat_participants WHERE conversation_id = ? AND user_id = ?', conversationId, u.id);
+    if (!part) throw new ChatError('You are not in this conversation', 400);
+    await this.db.run('DELETE FROM chat_participants WHERE conversation_id = ? AND user_id = ?', conversationId, u.id);
+    await this.post(conversationId, null, `${u.name} left`, 'system', null, { authorKind: 'system', visibility: 'customer' });
+  }
+
+  async openDm(u: User, userIds: string[]) {
+    if (!this.can(u, 'chat.dm') && u.role !== 'SUPER_ADMIN') throw new ChatError('You do not have permission: chat.dm', 403);
+    const ids = [...new Set([u.id, ...userIds.map(String)])];
+    if (ids.length < 2) throw new ChatError('Pick at least one person to message', 400);
+    if (ids.length > MAX_GROUP_DM) throw new ChatError(`A group can have up to ${MAX_GROUP_DM} people`, 400);
+    const people = [];
+    for (const id of ids) {
+      const row = await this.db.get<{ role: string; name: string; active: boolean }>('SELECT role, name, active FROM users WHERE id = ?', id);
+      if (!row || !row.active) throw new ChatError('Person not found', 404);
+      if (!isInternalChatEligible(row)) throw new ChatError('Customers and suppliers cannot join internal chats', 403);
+      people.push({ id, ...row });
+    }
+    const isGroup = ids.length > 2;
+    if (!isGroup) {
+      const key = dmKeyFor(ids);
+      const existing = await this.db.get("SELECT * FROM chat_conversations WHERE kind = 'DM' AND dm_key = ? AND archived_at IS NULL", key);
+      if (existing) {
+        await this.db.run('INSERT INTO chat_participants (conversation_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING', existing.id, u.id, u.id);
+        return { conv: this.mapConv(existing), created: false };
+      }
+      const id = randomUUID();
+      const at = new Date().toISOString();
+      const other = people.find((x) => x.id !== u.id)!;
+      await this.db.run(
+        `INSERT INTO chat_conversations (id, lead_id, kind, title, is_mandatory, is_group, created_by, dm_key, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        id, null, 'DM', other.name, false, false, u.id, key, at,
+      );
+      for (const pid of ids) await this.db.run('INSERT INTO chat_participants (conversation_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING', id, pid, u.id);
+      return { conv: (await this.get(id))!, created: true };
+    }
+    const id = randomUUID();
+    const at = new Date().toISOString();
+    const title = people.filter((x) => x.id !== u.id).map((x) => x.name).slice(0, 3).join(', ');
+    await this.db.run(
+      `INSERT INTO chat_conversations (id, lead_id, kind, title, is_mandatory, is_group, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      id, null, 'DM', title, false, true, u.id, at,
+    );
+    for (const pid of ids) await this.db.run('INSERT INTO chat_participants (conversation_id, user_id, added_by) VALUES (?,?,?) ON CONFLICT DO NOTHING', id, pid, u.id);
+    await this.post(id, null, `${u.name} started a group chat`, 'system', null, { authorKind: 'system', visibility: 'customer' });
+    return { conv: (await this.get(id))!, created: true };
+  }
+
+  async saveMentions(messageId: string, userIds: string[]) {
+    for (const id of [...new Set(userIds)]) {
+      await this.db.run('INSERT INTO chat_mentions (message_id, user_id) VALUES (?,?) ON CONFLICT DO NOTHING', messageId, id);
+    }
+  }
+
+  /** Resolve @Name tokens against participants (longest name first). Also accepts explicit ids. */
+  resolveMentions(body: string, participants: { userId: string; name: string }[], explicit: string[] = []) {
+    const ids = new Set(explicit.filter((id) => participants.some((p) => p.userId === id)));
+    const named = [...participants].sort((a, b) => b.name.length - a.name.length);
+    for (const p of named) {
+      const re = new RegExp(`(^|[^\\w])@${p.name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(?=$|[^\\w])`, 'i');
+      if (re.test(body)) ids.add(p.userId);
+    }
+    return [...ids];
   }
 
   async linkMarketplace(conversationId: string) {

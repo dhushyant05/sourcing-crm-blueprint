@@ -2738,6 +2738,78 @@ abstract class AppLocalizations {
   /// **'Your session ended. Please sign in again.'**
   String get quSessionExpired;
 
+  /// No description provided for @channels.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels'**
+  String get channels;
+
+  /// No description provided for @directMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct messages'**
+  String get directMessages;
+
+  /// No description provided for @inboxes.
+  ///
+  /// In en, this message translates to:
+  /// **'Inboxes'**
+  String get inboxes;
+
+  /// No description provided for @newMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'New message'**
+  String get newMessage;
+
+  /// No description provided for @startChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Start chat'**
+  String get startChat;
+
+  /// No description provided for @noChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'No channels yet'**
+  String get noChannels;
+
+  /// No description provided for @noDirectMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'No direct messages yet'**
+  String get noDirectMessages;
+
+  /// No description provided for @leaveChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get leaveChannel;
+
+  /// No description provided for @mixedChannelWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation includes both India and China. Customer names, selling prices and supplier identity stay hidden on quote cards. Avoid typing them here.'**
+  String get mixedChannelWarning;
+
+  /// No description provided for @sensitiveMixedWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This looks like a phone number, email or price. In a mixed India–China chat it will be visible to everyone in the conversation.'**
+  String get sensitiveMixedWarning;
+
+  /// No description provided for @sendAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Send anyway'**
+  String get sendAnyway;
+
+  /// No description provided for @searchQuotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Search quotes'**
+  String get searchQuotes;
+
   /// No description provided for @chatOpenOnWeb.
   ///
   /// In en, this message translates to:

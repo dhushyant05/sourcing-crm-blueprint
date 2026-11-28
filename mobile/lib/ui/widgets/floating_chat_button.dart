@@ -35,7 +35,15 @@ class _FloatingChatButtonState extends State<FloatingChatButton> {
             (i) => i?['kind'] == 'PERSONAL',
             orElse: () => boxes.isNotEmpty ? boxes.first : null,
           );
-      final n = (personal?['unread'] as num?)?.toInt() ?? 0;
+      var n = (personal?['unread'] as num?)?.toInt() ?? 0;
+      try {
+        final internal = await s.repo.internalChat();
+        for (final key in const ['channels', 'dms']) {
+          for (final row in ((internal[key] as List?) ?? const []).whereType<Map>()) {
+            n += (row['unread'] as num?)?.toInt() ?? 0;
+          }
+        }
+      } catch (_) {}
       if (mounted) setState(() => _unread = n);
     } catch (_) {}
   }

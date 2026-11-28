@@ -322,6 +322,16 @@ class SourceEasyRepository {
       api.attachQuoteReference(leadId, quoteId: quoteId);
   Future<List<Map<String, dynamic>>> chatInboxes() => api.chatInboxes();
   Future<List<Map<String, dynamic>>> inboxConversations(String inboxId) => api.inboxConversations(inboxId);
+  Future<Map<String, dynamic>> internalChat() => api.internalChat();
+  Future<List<Map<String, dynamic>>> chatDirectory() => api.chatDirectory();
+  Future<Map<String, dynamic>> conversation(String id) => api.conversation(id);
+  Future<Map<String, dynamic>> sendConversationMessage(String id, String content, {List<String>? mentionIds}) =>
+      api.sendConversationMessage(id, content, mentionIds: mentionIds);
+  Future<Map<String, dynamic>> attachConversationQuote(String id, String quoteId) =>
+      api.attachConversationQuote(id, quoteId);
+  Future<List<Map<String, dynamic>>> quoteOptions(String q) => api.quoteOptions(q);
+  Future<Map<String, dynamic>> openDm(List<String> userIds) => api.openDm(userIds);
+  Future<void> leaveConversation(String id) => api.leaveConversation(id);
 
   Future<List<Supplier>> suppliers({String? sourcingRequestId}) async {
     if (!perms.canSeeSupplierDetails) return const [];
