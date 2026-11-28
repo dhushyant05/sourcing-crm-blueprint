@@ -19,7 +19,7 @@
   var STR = {
     en: {
       brand: 'Fortune Engineering', title: 'Chat with Fortune Engineering', open: 'Chat with us', close: 'Close chat', minimise: 'Minimise',
-      online: 'We usually reply within 2 hours.', away: "We're away right now. Leave a message and we'll reply within 1 business day.",
+      online: 'Online – we usually reply in a few minutes', away: "Offline – leave a message and we'll reply soon",
       intro: 'Tell us how to reach you and we’ll pick up the conversation here.', name: 'Name', phone: 'Phone / WhatsApp', email: 'Email',
       oneIsEnough: 'Enter a phone number or email — one is enough.', message: 'Message', placeholder: 'How can we help?',
       consent: 'I agree to be contacted about this conversation.', start: 'Start chat', starting: 'Starting…', send: 'Send',
@@ -31,7 +31,7 @@
     },
     zh: {
       brand: 'Fortune Engineering', title: '与 Fortune Engineering 在线沟通', open: '在线咨询', close: '关闭对话', minimise: '最小化',
-      online: '我们通常在 2 小时内回复。', away: '我们暂时不在线。请留言，我们将在 1 个工作日内回复。',
+      online: '在线 – 我们通常在几分钟内回复', away: '离线 – 请留言，我们会尽快回复',
       intro: '请留下联系方式，我们会在这里继续与您沟通。', name: '姓名', phone: '电话 / WhatsApp', email: '电子邮箱',
       oneIsEnough: '电话或邮箱填写一项即可。', message: '留言', placeholder: '请问有什么可以帮您？',
       consent: '我同意就此对话与我联系。', start: '开始对话', starting: '正在开始…', send: '发送',
@@ -78,7 +78,7 @@
     '.head{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px;background:' + NAVY + ';color:#fff;flex-shrink:0}',
     '.logo{width:36px;height:36px;border-radius:8px;background:#fff;object-fit:contain;padding:3px;flex-shrink:0}',
     '.ht{flex:1;min-width:0}.ht b{display:block;font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '.ht span{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#c5d3e0}.dot{width:7px;height:7px;border-radius:50%;background:#fbbf24;flex-shrink:0}.dot.on{background:#34d399}',
+    '.ht span{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#c5d3e0}.dot{width:7px;height:7px;border-radius:50%;background:#9ca3af;flex-shrink:0}.dot.on{background:#22c55e}',
     '.ib{background:transparent;border:0;color:#fff;opacity:.85;cursor:pointer;border-radius:8px;padding:6px;display:flex}.ib:hover{opacity:1;background:rgba(255,255,255,.12)}.ib svg{width:18px;height:18px}',
     '.body{flex:1;min-height:0;overflow-y:auto;padding:14px;background:#f4f7fa}',
     'form.pre{display:flex;flex-direction:column;gap:4px}.pre p{margin:0 0 8px;color:#475569;font-size:13.5px}',
@@ -143,6 +143,21 @@
   }
   function loadStatus() {
     return api('/status').then(function (d) { state.desk = d; state.challenge = d.challenge; state.challengeAt = Date.now(); render(); }).catch(function () {});
+  }
+  // Live presence: one boolean from the public endpoint, polled every 45 s while the page is visible (HTTPS fetch only: no WebSocket, no images).
+  var presenceTimer = null;
+  function loadPresence() {
+    if (document.visibilityState === 'hidden') return Promise.resolve();
+    return api('/presence').then(function (d) {
+      var on = !!(d && d.online);
+      if (!state.desk) return loadStatus();
+      if (state.desk.online !== on) { state.desk.online = on; render(); }
+    }).catch(function () {});
+  }
+  function startPresence() {
+    if (presenceTimer) return;
+    presenceTimer = setInterval(loadPresence, 45000);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') loadPresence(); });
   }
   function lastSeen() { return store.get(SEEN_KEY) || ''; }
   function computeUnread() {
@@ -289,8 +304,10 @@
     var ht = el('div', 'ht');
     ht.appendChild(el('b', null, t('title')));
     var st = el('span');
-    var online = state.desk ? state.desk.online : true;
+    // Unknown (not loaded yet / unreachable) is shown as grey with no label, never as "online".
+    var online = !!(state.desk && state.desk.online);
     st.appendChild(el('i', 'dot' + (online ? ' on' : '')));
+    st.setAttribute('data-testid', 'fe-chat-presence'); st.setAttribute('data-online', state.desk ? String(online) : 'unknown');
     st.appendChild(document.createTextNode(state.desk ? t(online ? 'online' : 'away') : ''));
     ht.appendChild(st); h.appendChild(ht);
     var mn = el('button', 'ib'); mn.type = 'button'; mn.setAttribute('aria-label', t('minimise')); mn.appendChild(svg(ICON_MIN)); mn.onclick = function () { setOpen(false); };
@@ -365,6 +382,7 @@
     document.body.appendChild(host);
     render();
     loadStatus();
+    startPresence();
     loadConversation();
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && state.open) setOpen(false); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden && state.token && !state.streamOk) loadConversation(); });

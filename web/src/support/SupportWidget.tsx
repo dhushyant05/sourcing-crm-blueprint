@@ -4,7 +4,7 @@ import { portalToken } from '../portal/api';
 import { openEnquiryForm, type SupportOpenDetail } from './open-support';
 
 type Mode = 'public' | 'portal';
-type Desk = { online: boolean; usualReply: string; message: string; timezone: string; challenge?: string; maxMessage?: number };
+type Desk = { online: boolean; usualReply: string; message: string; label?: string; timezone: string; challenge?: string; maxMessage?: number };
 type Attachment = { id: string; name: string; mime: string; size?: number; url: string };
 type Msg = { id: string; kind: string; content: string; at: string; authorKind: string; senderName: string | null; attachments?: Attachment[] };
 type Conv = { id: string; productTitle?: string | null; productSlug?: string | null; convertedLeadRef?: string | null; lastMessageAt?: string | null; lastBody?: string | null; createdAt?: string; messages?: Msg[] };
@@ -21,6 +21,12 @@ async function pub<T>(method: string, path: string, body?: unknown, headers?: Re
   if (!res.ok) throw new Error((j as { error?: string }).error ?? `Something went wrong (${res.status})`);
   return j as T;
 }
+
+const deskLines = (online: boolean) => ({
+  online,
+  label: online ? 'Online – we usually reply in a few minutes' : "Offline – leave a message and we'll reply soon",
+  message: online ? 'We usually reply in a few minutes.' : "Leave a message and we'll reply soon.",
+});
 
 function authHeaders(): Record<string, string> {
   const t = portalToken.get();
@@ -130,6 +136,22 @@ export function SupportWidget({ mode }: { mode: Mode }) {
   }, []);
 
   useEffect(() => { void loadDesk().catch(() => undefined); }, [loadDesk]);
+
+  // Live "Online / Offline": refresh from the public presence endpoint (a single boolean) every 45 s while the tab is visible.
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const r = await pub<{ online: boolean }>('GET', '/api/support/presence');
+        if (!stop) setDesk((d) => (d ? { ...d, ...deskLines(!!r.online) } : d));
+      } catch { /* keep last */ }
+    };
+    const t = setInterval(() => void tick(), 45_000);
+    const vis = () => { if (document.visibilityState === 'visible') void tick(); };
+    document.addEventListener('visibilitychange', vis);
+    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); };
+  }, []);
 
   useEffect(() => {
     if (!isPortal) void loadGuest().catch(() => undefined);
@@ -286,8 +308,8 @@ export function SupportWidget({ mode }: { mode: Mode }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">Chat with Source Easy</div>
         <div className="flex items-center gap-1.5 text-[11px] text-white/80">
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${desk?.online ? 'bg-emerald-300' : 'bg-amber-300'}`} />
-          {desk?.online ? 'Online' : 'Away'} · {desk?.message ?? 'Leave a message and we will reply.'}
+          <span data-testid="support-presence-dot" className={`inline-block h-2 w-2 rounded-full ${desk?.online ? 'bg-emerald-400' : 'bg-ink-300'}`} />
+          <span data-testid="support-presence-label">{desk ? (desk.label ?? (desk.online ? 'Online – we usually reply in a few minutes' : "Offline – leave a message and we'll reply soon")) : "Leave a message and we'll reply soon"}</span>
         </div>
       </div>
       <button type="button" className="rounded-md p-1.5 hover:bg-white/10" aria-label="Minimise" onClick={() => setOpen(false)}><Minus size={16} /></button>

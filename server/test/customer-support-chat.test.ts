@@ -24,7 +24,7 @@ describe('customer support chat', () => {
     const { app } = await setup();
     const st = await app.inject({ method: 'GET', url: '/api/support/status' });
     expect(st.statusCode).toBe(200);
-    expect(st.json().data.usualReply).toMatch(/hours|business day/);
+    expect(typeof st.json().data.online).toBe('boolean');
     expect(st.json().data.challenge).toBeTruthy();
 
     const missing = await app.inject({ method: 'POST', url: '/api/support/start', payload: { challenge: challenge() } });

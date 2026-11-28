@@ -106,6 +106,10 @@ export interface Api {
   openLeadChat?(leadId: string): Promise<LeadChat>;
   sendLeadChat?(leadId: string, content: string, quoteId?: string): Promise<LeadChatMessage>;
   attachQuoteReference?(leadId: string, quoteId?: string): Promise<LeadChatMessage>;
+  /** Own availability for the Customer support desk. `counts` = this person can make the desk show Online. */
+  chatPresence?(): Promise<{ state: 'available' | 'away' | 'offline'; away: 'manual' | 'auto' | null; counts: boolean }>;
+  setChatPresence?(status: 'available' | 'away'): Promise<{ state: 'available' | 'away' | 'offline'; away: 'manual' | 'auto' | null; counts: boolean }>;
+  chatPresenceBeat?(active: boolean): Promise<{ state: 'available' | 'away' | 'offline'; away: 'manual' | 'auto' | null; counts: boolean }>;
   chatInboxes?(): Promise<ChatInbox[]>;
   inboxConversations?(inboxId: string): Promise<ChatThread[]>;
   conversation?(id: string): Promise<LeadChat>;
@@ -389,6 +393,9 @@ export class ServerApi implements Api {
   openLeadChat(leadId: string) { return this.req<LeadChat>('POST', `/leads/${encodeURIComponent(leadId)}/chat`, {}); }
   sendLeadChat(leadId: string, content: string, quoteId?: string) { return this.req<LeadChatMessage>('POST', `/leads/${encodeURIComponent(leadId)}/chat/messages`, { content, ...(quoteId ? { quoteId } : {}) }); }
   attachQuoteReference(leadId: string, quoteId?: string) { return this.req<LeadChatMessage>('POST', `/leads/${encodeURIComponent(leadId)}/chat/quote-reference`, { quoteId }); }
+  chatPresence() { return this.req<{ state: 'available' | 'away' | 'offline'; away: 'manual' | 'auto' | null; counts: boolean }>('GET', '/chat/presence'); }
+  setChatPresence(status: 'available' | 'away') { return this.req<{ state: 'available' | 'away' | 'offline'; away: 'manual' | 'auto' | null; counts: boolean }>('PUT', '/chat/presence', { status }); }
+  chatPresenceBeat(active: boolean) { return this.req<{ state: 'available' | 'away' | 'offline'; away: 'manual' | 'auto' | null; counts: boolean }>('POST', '/chat/presence/heartbeat', { active }); }
   chatInboxes() { return this.req<ChatInbox[]>('GET', '/chat/inboxes'); }
   inboxConversations(inboxId: string) { return this.req<ChatThread[]>('GET', `/chat/inboxes/${encodeURIComponent(inboxId)}/conversations`); }
   conversation(id: string) { return this.req<LeadChat>('GET', `/chat/conversations/${encodeURIComponent(id)}`); }

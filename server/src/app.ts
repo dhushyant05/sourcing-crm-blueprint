@@ -24,6 +24,7 @@ import { registerPublicEmail, registerStaffEmail } from './email-routes.js';
 import { CustomRoleStore } from './custom-roles.js';
 import { registerStaffChat } from './chat-routes.js';
 import { SupportStore } from './support-chat.js';
+import { Presence } from './presence.js';
 import { registerPublicSupport, registerPortalSupport, registerStaffSupport, registerEmbedSupport } from './support-chat-routes.js';
 import { DEFAULT_EMBED_ORIGINS, parseEmbedOrigins } from './support-embed.js';
 import { OrderStore, INDIA_KEYS, CHINA_KEYS, type Order } from './orders.js';
@@ -916,19 +917,24 @@ export async function buildApp(o: AppOptions) {
       t.unref?.(); app.addHook('onClose', async () => clearInterval(t));
     }
     const supportStore = new SupportStore(o.db, o.bus, chatStore);
+    const supportStaffIds = async () => {
+      const ids = await chatStore.membersOf(SUPPORT_INBOX);
+      return ids.filter((id) => {
+        const u = o.users.byId(id);
+        return !!u && u.active && canAccessSupportInbox(u);
+      });
+    };
+    // Who can make the desk show "Online": active India side / Marketplace / super admin users who may work the Customer support desk
+    // (never China or suppliers), whether or not they have opened the chat yet.
+    const presence = new Presence(o.bus, async () => o.users.list().filter((u) => u.active && chatStore.supportDesk(u)).map((u) => u.id));
     const supportDeps = {
+      presence,
       support: supportStore, chat: chatStore, uploads, assign, jwtSecret: o.jwtSecret, liveData,
       readMultipart, stripImageMetadata, names: userNames, lookupProduct, createSupportLead,
       customerOwnsLead, customerOwnsOrder,
       leadRefOf: async (id: string) => ((await leadDb.get(id))?.leadRef as string | undefined) ?? null,
       onLive: onLiveData,
-      supportStaffIds: async () => {
-        const ids = await chatStore.membersOf(SUPPORT_INBOX);
-        return ids.filter((id) => {
-          const u = o.users.byId(id);
-          return !!u && u.active && canAccessSupportInbox(u);
-        });
-      },
+      supportStaffIds,
     };
     registerStaffSupport(api, supportDeps);
     registerPublicSupport(app, supportDeps);
@@ -2013,7 +2019,10 @@ export async function buildApp(o: AppOptions) {
         }
         send('change', d);
       });
-      const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+      // Presence for the customer support desk: an open staff stream = connected (TTL in Redis, so a dropped phone/tab expires on its own).
+      const beat = () => { void presence.touch(uid).catch(() => undefined); };
+      beat();
+      const ping = setInterval(() => { res.write(': ping\n\n'); beat(); }, 25000);
       // Revocation (password/role change, disabled or removed user) arrives on Redis `se:revoke`: end this stream.
       const revoke = () => {
         const u = o.users.byId(uid);

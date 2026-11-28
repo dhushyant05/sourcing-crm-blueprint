@@ -9,12 +9,14 @@ import { LeadChat } from './LeadChat';
 import { SupportThread } from './SupportThread';
 import { SiteBadge } from './SiteBadge';
 import { InternalThread } from './InternalThread';
+import { PresenceToggle, usePresence } from './PresenceToggle';
 
 /** Bottom-right floating chat for the staff app. State survives page changes via sessionStorage. */
 export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'chat') => void; openLeadId: (id: string) => void }) {
   const { api, session, perms } = useApp();
   const { t } = useTranslation();
   const allowed = session?.role !== 'SUPPLIER' && (perms.can('chat.view_own') || perms.can('chat.view_team') || perms.can('chat.view_all'));
+  const presence = usePresence(!!allowed);
   const saved = useMemo(() => loadChatDock(), []);
   const [open, setOpen] = useState(saved.open);
   const [view, setView] = useState<'inbox' | 'thread'>(saved.view);
@@ -206,6 +208,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
             {view === 'thread' && leadId && (
               <button type="button" className="btn-ghost hidden px-2 text-xs sm:inline" onClick={() => openLeadId(leadId)}>{t('chat.openLead')}</button>
             )}
+            {view === 'inbox' && <PresenceToggle st={presence.st} set={presence.set} />}
             <button type="button" className="btn-ghost p-2" title={t('chat.expand')} aria-label={t('chat.expand')} onClick={expand}><Maximize2 size={16} /></button>
             <button type="button" className="btn-ghost p-2" title={t('chat.minimize')} aria-label={t('chat.minimize')} onClick={minimize}><Minus size={16} /></button>
             <button type="button" className="btn-ghost p-2" title={t('common.close')} aria-label={t('common.close')} onClick={close}><X size={16} /></button>

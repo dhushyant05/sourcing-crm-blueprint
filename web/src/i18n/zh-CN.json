@@ -1694,7 +1694,14 @@
     "internalPlaceholder": "输入内部备注…",
     "guest": "访客",
     "customer": "客户",
-    "productAbout": "相关产品"
+    "productAbout": "相关产品",
+    "available": "在线",
+    "away": "离开",
+    "presenceHint": "只有有人处于“在线”状态时，客户才会看到客服聊天为在线。",
+    "autoAway": "闲置时自动离开",
+    "autoAwayOff": "关闭",
+    "autoAwayMin": "{{n}} 分钟",
+    "autoAwayNote": "闲置时离开"
   },
   "roles": {
     "title": "自定义角色与收件箱",

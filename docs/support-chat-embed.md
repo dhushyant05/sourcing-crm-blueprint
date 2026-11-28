@@ -44,3 +44,21 @@ site badge and an *All sites / Source Easy / Fortune Engineering* filter
 (`GET /api/chat/inboxes/:id/conversations?site=`). Convert-to-lead notes the site in the lead's enquiry
 message. Guests see staff first names and "Fortune Engineering" for system messages; internal notes,
 assignment and contact fields never reach the widget.
+
+## Online / Offline presence
+
+The widget shows **Online – we usually reply in a few minutes** (green dot) only while a support staff member is really there,
+otherwise **Offline – leave a message and we'll reply soon** (grey dot). Leaving a message while offline still works.
+
+- Who counts: active India-side / Marketplace / super-admin users who can work the Customer support desk (never China, never suppliers),
+  who are connected and haven't set themselves **Away**.
+- "Connected" = an open staff live stream (web app, floating chat or staff app) or a web-app heartbeat within about 2 minutes.
+  Stored in Redis with TTLs: `se:presence:seen:<userId>` (120 s) and `se:presence:away:<userId>` (`manual` 16 h, `auto` 150 s).
+- Staff switch Available/Away in the floating chat header; the web app marks a person away automatically after 15 idle minutes
+  (choose Off / 5 / 15 / 30 in the same menu).
+- Public endpoints return only `{ "online": true|false }` (no names or counts), cached about 10 s:
+  `GET /api/support/presence` (Source Easy) and `GET /api/embed/support/presence` (CORS allowlist, same as the rest of the embed).
+  The existing `/status` endpoints carry the same live `online` value (+ `label`).
+- Widgets poll every 45 s while the tab is visible. Only HTTPS fetch is used: no WebSocket and no images, so the Fortune Engineering CSP
+  (`connect-src https://sourceeasy.in`, `img-src 'self' data:`) needs no change and the `<script>` tag is unchanged.
+- Staff endpoints: `GET/PUT /api/chat/presence`, `POST /api/chat/presence/heartbeat {active}`.

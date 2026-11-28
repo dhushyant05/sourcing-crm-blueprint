@@ -95,6 +95,20 @@ export function supportDeskStatus(now = new Date()) {
   };
 }
 
+/**
+ * Public desk status driven by real staff presence (see presence.ts). `message` keeps the older field for old clients
+ * (the customer Android app prints "Online · <message>"); `label` is the full line the widgets show.
+ */
+export function deskStatusFor(online: boolean) {
+  return {
+    online,
+    usualReply: online ? 'a few minutes' : 'soon',
+    message: online ? 'We usually reply in a few minutes.' : "Offline – leave a message and we'll reply soon.",
+    label: online ? 'Online – we usually reply in a few minutes' : "Offline – leave a message and we'll reply soon",
+    timezone: 'Asia/Calcutta',
+  };
+}
+
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export function cleanEmail(v?: string | null) {
   const s = String(v ?? '').trim().slice(0, 200);
