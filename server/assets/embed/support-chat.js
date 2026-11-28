@@ -148,11 +148,14 @@
   var presenceTimer = null;
   function loadPresence() {
     if (document.visibilityState === 'hidden') return Promise.resolve();
-    return api('/presence').then(function (d) {
-      var on = !!(d && d.online);
-      if (!state.desk) return loadStatus();
-      if (state.desk.online !== on) { state.desk.online = on; render(); }
-    }).catch(function () {});
+    // The endpoint answers a bare {"online":true|false} (no data wrapper, no ids or counts).
+    return fetch(API + '/presence', { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'omit', mode: 'cors', cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('presence ' + r.status); return r.json(); })
+      .then(function (d) {
+        var on = !!(d && d.online === true);
+        if (!state.desk) return loadStatus();
+        if (state.desk.online !== on) { state.desk.online = on; render(); }
+      }).catch(function () {});
   }
   function startPresence() {
     if (presenceTimer) return;
