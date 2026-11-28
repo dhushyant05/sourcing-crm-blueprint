@@ -8,10 +8,11 @@ import { ChatError, chatFileKey, redactedFileName } from './chat.js';
 import type { UploadStore } from './uploads.js';
 import type { AssignStore } from './assign.js';
 import type { Rec } from './policy.js';
+import type { Presence } from './presence.js';
 import {
   SupportStore, SUPPORT_COOKIE, SUPPORT_INBOX, STARTS_PER_HOUR, MESSAGES_PER_WINDOW, MESSAGE_WINDOW_SEC,
   canAccessSupportInbox, checkSupportChallenge, issueSupportChallenge, parseCookies, visitorCookieHeader,
-  cleanEmail, cleanName, cleanPhone, publicStaffName, supportDeskStatus, newVisitorToken, type SupportConversation,
+  cleanEmail, cleanName, cleanPhone, publicStaffName, deskStatusFor, newVisitorToken, type SupportConversation,
   brandOf, type SourceSite,
 } from './support-chat.js';
 import {
@@ -39,6 +40,7 @@ export interface SupportRouteDeps {
   leadRefOf: (leadId: string) => Promise<string | null>;
   onLive: (fn: (d: Rec) => void) => () => void;
   supportStaffIds: () => Promise<string[]>;
+  presence: Presence;
 }
 
 const cookieOf = (req: FastifyRequest) => parseCookies(req.headers.cookie)[SUPPORT_COOKIE];
@@ -54,8 +56,14 @@ export function registerPublicSupport(app: FastifyInstance, d: SupportRouteDeps)
   const { support, chat, uploads, jwtSecret } = d;
 
   app.get('/api/support/status', async () => {
-    const desk = supportDeskStatus();
+    const desk = deskStatusFor(await d.presence.anyOnline());
     return { data: { ...desk, challenge: issueSupportChallenge(jwtSecret), maxMessage: 4000 } };
+  });
+
+  // Only a boolean: no names, no counts. Cached a few seconds server-side and briefly by browsers.
+  app.get('/api/support/presence', async (_req, reply) => {
+    reply.header('cache-control', 'public, max-age=10');
+    return { online: await d.presence.anyOnline() };
   });
 
   const visitorOf = async (req: FastifyRequest) => support.visitorFromToken(cookieOf(req));
@@ -297,8 +305,13 @@ export function registerEmbedSupport(app: FastifyInstance, d: SupportRouteDeps, 
     app.options(`${P}/*`, { onRequest: cors }, async (_req, reply) => reply.code(204).send());
 
     app.get(`${P}/status`, { onRequest: cors }, async (req) => {
-      const desk = supportDeskStatus();
+      const desk = deskStatusFor(await d.presence.anyOnline());
       return { data: { ...desk, brand: brandOf(siteOfReq(req)), challenge: issueSupportChallenge(jwtSecret), maxMessage: EMBED_MAX_MESSAGE } };
+    });
+
+    app.get(`${P}/presence`, { onRequest: cors }, async (_req, reply) => {
+      reply.header('cache-control', 'public, max-age=10').header('vary', 'Origin');
+      return { online: await d.presence.anyOnline() };
     });
 
     app.post(`${P}/start`, { onRequest: cors, bodyLimit: 16 * 1024 }, async (req, reply) => {
@@ -445,7 +458,7 @@ export function registerPortalSupport(api: FastifyInstance, d: SupportRouteDeps)
   };
 
   api.get('/api/portal/support/status', async () => {
-    const desk = supportDeskStatus();
+    const desk = deskStatusFor(await d.presence.anyOnline());
     return { data: { ...desk, maxMessage: 4000 } };
   });
 
@@ -579,6 +592,25 @@ export function registerStaffSupport(api: FastifyInstance, d: SupportRouteDeps) 
     if (!conv) throw Object.assign(new Error('Not found'), { status: 404 });
     return conv;
   };
+
+  // ---- Own availability for the customer support desk (Available / Away). Only inbox members count towards "Online". ----
+  const presenceOf = async (u: User) => {
+    const st = await d.presence.stateOf(u.id);
+    return { data: { state: st.state, away: st.away, counts: d.chat.supportDesk(u) } };
+  };
+  api.get('/api/chat/presence', async (req) => presenceOf(req.user!));
+  // Heartbeat from the web app / floating chat: `active:false` when the user is idle (auto-away), `active:true` when back.
+  api.post<{ Body: { active?: boolean } | null }>('/api/chat/presence/heartbeat', async (req) => {
+    const active = typeof req.body?.active === 'boolean' ? req.body.active : undefined;
+    await d.presence.touch(req.user!.id, { active });
+    return presenceOf(req.user!);
+  });
+  api.put<{ Body: { status?: string } | null }>('/api/chat/presence', async (req, reply) => {
+    const st = String(req.body?.status ?? '');
+    if (st !== 'available' && st !== 'away') return reply.code(400).send({ error: 'status must be available or away' });
+    await d.presence.setAway(req.user!.id, st === 'away');
+    return presenceOf(req.user!);
+  });
 
   api.post<{ Params: { id: string } }>('/api/chat/conversations/:id/convert-lead', async (req) => {
     const conv = await guard(req.user!, req.params.id);

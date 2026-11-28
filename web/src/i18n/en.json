@@ -1694,7 +1694,14 @@
     "internalPlaceholder": "Write an internal note…",
     "guest": "Guest",
     "customer": "Customer",
-    "productAbout": "About this product"
+    "productAbout": "About this product",
+    "available": "Available",
+    "away": "Away",
+    "presenceHint": "Customers see the support chat as Online only while someone is Available.",
+    "autoAway": "Auto-away when idle",
+    "autoAwayOff": "Off",
+    "autoAwayMin": "{{n}} min",
+    "autoAwayNote": "Away on idle"
   },
   "roles": {
     "title": "Custom roles and inboxes",
