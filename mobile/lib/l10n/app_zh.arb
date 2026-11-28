@@ -440,5 +440,17 @@
   "quBioUnavailable": "此手机未设置指纹",
   "quPinSaved": "PIN 已保存",
   "quSessionExpired": "会话已结束，请重新登录。",
+  "channels": "频道",
+  "directMessages": "私信",
+  "inboxes": "收件箱",
+  "newMessage": "新消息",
+  "startChat": "开始聊天",
+  "noChannels": "还没有频道",
+  "noDirectMessages": "还没有私信",
+  "leaveChannel": "退出",
+  "mixedChannelWarning": "此对话同时包含印度和中国成员。报价卡中会隐藏客户名称、售价和供应商身份。请避免在此输入这些信息。",
+  "sensitiveMixedWarning": "这段内容看起来像电话、邮箱或价格。在印度与中国的混合对话中，所有成员都能看到。",
+  "sendAnyway": "仍要发送",
+  "searchQuotes": "搜索报价",
   "chatOpenOnWeb": "请在 Source Easy 网页版中打开此对话进行回复。"
 }

@@ -1427,6 +1427,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quSessionExpired => 'Your session ended. Please sign in again.';
 
   @override
+  String get channels => 'Channels';
+
+  @override
+  String get directMessages => 'Direct messages';
+
+  @override
+  String get inboxes => 'Inboxes';
+
+  @override
+  String get newMessage => 'New message';
+
+  @override
+  String get startChat => 'Start chat';
+
+  @override
+  String get noChannels => 'No channels yet';
+
+  @override
+  String get noDirectMessages => 'No direct messages yet';
+
+  @override
+  String get leaveChannel => 'Leave';
+
+  @override
+  String get mixedChannelWarning =>
+      'This conversation includes both India and China. Customer names, selling prices and supplier identity stay hidden on quote cards. Avoid typing them here.';
+
+  @override
+  String get sensitiveMixedWarning =>
+      'This looks like a phone number, email or price. In a mixed India–China chat it will be visible to everyone in the conversation.';
+
+  @override
+  String get sendAnyway => 'Send anyway';
+
+  @override
+  String get searchQuotes => 'Search quotes';
+
+  @override
   String get chatOpenOnWeb =>
       'Open this conversation in the Source Easy web app to reply.';
 }

@@ -5,6 +5,7 @@ import type { CustomRole, TeamInboxAdmin, User } from '../lib/types';
 const CHAT_KEYS = [
   'chat.view_own', 'chat.view_team', 'chat.view_all', 'chat.start',
   'chat.reference_quotes', 'chat.send_attachments', 'chat.manage_canned',
+  'chat.dm', 'chat.channels', 'chat.manage_channels',
   'chat.see_customer_fields', 'chat.see_supplier_fields',
 ];
 

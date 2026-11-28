@@ -216,4 +216,30 @@ class ServerClient {
 
   Future<List<Map<String, dynamic>>> inboxConversations(String inboxId) =>
       _list('GET', '/api/chat/inboxes/${Uri.encodeComponent(inboxId)}/conversations');
+
+  Future<Map<String, dynamic>> internalChat() => _data('GET', '/api/chat/internal');
+
+  Future<List<Map<String, dynamic>>> chatDirectory() => _list('GET', '/api/chat/directory');
+
+  Future<Map<String, dynamic>> conversation(String id) =>
+      _data('GET', '/api/chat/conversations/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> sendConversationMessage(String id, String content, {List<String>? mentionIds}) =>
+      _data('POST', '/api/chat/conversations/${Uri.encodeComponent(id)}/messages', {
+        'content': content,
+        if (mentionIds != null && mentionIds.isNotEmpty) 'mentionIds': mentionIds,
+      });
+
+  Future<Map<String, dynamic>> attachConversationQuote(String id, String quoteId) =>
+      _data('POST', '/api/chat/conversations/${Uri.encodeComponent(id)}/quote-reference', {'quoteId': quoteId});
+
+  Future<List<Map<String, dynamic>>> quoteOptions(String q) =>
+      _list('GET', '/api/chat/quote-options?q=${Uri.encodeQueryComponent(q)}');
+
+  Future<Map<String, dynamic>> openDm(List<String> userIds) =>
+      _data('POST', '/api/chat/dms', {'userIds': userIds});
+
+  Future<void> leaveConversation(String id) async {
+    await send('POST', '/api/chat/conversations/${Uri.encodeComponent(id)}/leave');
+  }
 }

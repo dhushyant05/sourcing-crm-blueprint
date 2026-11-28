@@ -45,6 +45,9 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'chat.reference_quotes', group: 'chat', side: 'ANY' },
   { key: 'chat.send_attachments', group: 'chat', side: 'ANY' },
   { key: 'chat.manage_canned', group: 'chat', side: 'ANY' },
+  { key: 'chat.dm', group: 'chat', side: 'ANY' },
+  { key: 'chat.channels', group: 'chat', side: 'ANY' },
+  { key: 'chat.manage_channels', group: 'chat', side: 'ANY' },
   // These only hide extra fields in chat. They can never override office privacy rules.
   { key: 'chat.see_customer_fields', group: 'chat', side: 'INDIA' },
   { key: 'chat.see_supplier_fields', group: 'chat', side: 'CHINA' },
@@ -53,12 +56,12 @@ export type Perm = (typeof PERMISSIONS)[number]['key'];
 export const PERM_KEYS = PERMISSIONS.map((p) => p.key);
 const DEF = new Map(PERMISSIONS.map((p) => [p.key, p]));
 
-const CHAT_OWN = ['chat.view_own', 'chat.start', 'chat.reference_quotes', 'chat.send_attachments'];
+const CHAT_OWN = ['chat.view_own', 'chat.start', 'chat.reference_quotes', 'chat.send_attachments', 'chat.dm', 'chat.channels'];
 const CHAT_TEAM = [...CHAT_OWN, 'chat.view_team', 'chat.manage_canned'];
 const INDIA_STAFF = ['quotes.view', 'quotes.customer', 'prices.inr', 'orders.create', 'orders.production', 'orders.payment', 'leads.all', ...CHAT_OWN, 'chat.see_customer_fields'];
 const CHINA_STAFF = ['suppliers.view', 'suppliers.edit', 'quotes.view', 'quotes.create', 'orders.production', 'leads.all', ...CHAT_OWN, 'chat.see_supplier_fields'];
-const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export', 'chat.view_team', 'chat.manage_canned'];
-const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish', 'catalog.price', 'chat.view_own', 'chat.view_team', 'chat.reference_quotes', 'chat.see_supplier_fields'];
+const ADMIN_EXTRA = ['reports.view', 'staff.manage', 'data.export', 'chat.view_team', 'chat.manage_canned', 'chat.manage_channels'];
+const MARKETPLACE_TEAM = ['catalog.edit', 'catalog.delete', 'catalog.publish', 'catalog.price', 'chat.view_own', 'chat.view_team', 'chat.reference_quotes', 'chat.dm', 'chat.channels', 'chat.see_supplier_fields'];
 const SUPPLIER = ['catalog.edit', 'catalog.delete'];
 const INDIA_CATALOG = ['catalog.edit', 'catalog.price', 'catalog.delete'];
 export const ROLE_DEFAULTS: Record<Role, string[]> = {

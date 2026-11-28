@@ -789,5 +789,17 @@
       }
     }
   },
+  "channels": "Channels",
+  "directMessages": "Direct messages",
+  "inboxes": "Inboxes",
+  "newMessage": "New message",
+  "startChat": "Start chat",
+  "noChannels": "No channels yet",
+  "noDirectMessages": "No direct messages yet",
+  "leaveChannel": "Leave",
+  "mixedChannelWarning": "This conversation includes both India and China. Customer names, selling prices and supplier identity stay hidden on quote cards. Avoid typing them here.",
+  "sensitiveMixedWarning": "This looks like a phone number, email or price. In a mixed India–China chat it will be visible to everyone in the conversation.",
+  "sendAnyway": "Send anyway",
+  "searchQuotes": "Search quotes",
   "chatOpenOnWeb": "Open this conversation in the Source Easy web app to reply."
 }

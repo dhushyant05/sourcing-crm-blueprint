@@ -66,7 +66,7 @@ export async function setup(extra: Record<string, unknown> & { makeNotifier?: (d
     await during(); await new Promise((r) => setTimeout(r, settleMs)); ac.abort(); await pump;
     return { status: res.status, text };
   };
-  return { app, db, call, as, ids, tok, enquire, login, customer, orderFor, sse, uploadsDir };
+  return { app, db, users, call, as, ids, tok, enquire, login, customer, orderFor, sse, uploadsDir };
 }
 
 

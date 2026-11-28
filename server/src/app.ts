@@ -2003,6 +2003,14 @@ export async function buildApp(o: AppOptions) {
       const offData = onLiveData((d) => {
         // Desk conversations: customer support never reaches China; supplier email only reaches China and super admin.
         if (d?.type === 'chat' && (d.kind === 'CUSTOMER_SUPPORT' || d.kind === 'SUPPLIER_EMAIL') && !canAccessDeskKind(req.user!, d.kind)) return;
+        // Internal channels/DMs: only members (plus channel managers / super admin) receive the event.
+        if (d?.type === 'chat' && (d.kind === 'CHANNEL' || d.kind === 'DM')) {
+          const ids = Array.isArray(d.memberIds) ? d.memberIds.map(String) : [];
+          const u = req.user!;
+          const allowed = ids.includes(u.id) || u.role === 'SUPER_ADMIN' || perms.can(u, 'chat.view_all')
+            || (d.kind === 'CHANNEL' && perms.can(u, 'chat.manage_channels'));
+          if (!allowed) return;
+        }
         send('change', d);
       });
       const ping = setInterval(() => res.write(': ping\n\n'), 25000);

@@ -196,8 +196,12 @@ export interface LeadChat {
   participants?: ChatParticipant[];
   messages: LeadChatMessage[]; quotes: QuoteReference[]; suggestedQuoteId: string | null;
   canSeeSupplier?: boolean;
-  kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL';
-  channel?: 'CHAT' | 'EMAIL'; emailAddress?: string | null; emailSubject?: string | null; emailReady?: boolean;
+  kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL' | 'CHANNEL' | 'DM';
+  channel?: 'CHAT' | 'EMAIL';
+  title?: string | null; slug?: string | null; isMandatory?: boolean; isGroup?: boolean; archivedAt?: string | null;
+  mixed?: boolean; canLeave?: boolean; canManage?: boolean; isMember?: boolean;
+  members?: { userId: string; name: string; role: string }[];
+ emailAddress?: string | null; emailSubject?: string | null; emailReady?: boolean;
   guestName?: string | null; guestEmail?: string | null; guestPhone?: string | null;
   customerId?: string | null; convertedLeadId?: string | null; convertedLeadRef?: string | null;
   linkedLeadId?: string | null; source?: string | null; canConvert?: boolean;
@@ -208,7 +212,9 @@ export interface ChatThread {
   id: string; leadId: string | null; leadRef: string | null; product: string | null;
   lastBody: string | null; lastAt: string | null; unread: number;
   assignedTo: string | null; assignedToName: string | null;
-  kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL'; guestName?: string | null; channel?: 'CHAT' | 'EMAIL'; emailSubject?: string | null;
+  kind?: 'LEAD' | 'CUSTOMER_SUPPORT' | 'SUPPLIER_EMAIL' | 'CHANNEL' | 'DM'; guestName?: string | null; channel?: 'CHAT' | 'EMAIL'; emailSubject?: string | null;
+  title?: string | null; mixed?: boolean; isGroup?: boolean; slug?: string | null;
+  members?: { userId: string; name: string; role?: string }[];
   convertedLeadId?: string | null; canConvert?: boolean; conversationId?: string;
   sourceSite?: 'sourceeasy' | 'fortune_engineering';
 }
@@ -218,3 +224,14 @@ export interface CustomRole {
 }
 export interface TeamInboxAdmin { id: string; slug: string; name: string; kind: string; memberIds: string[] }
 export interface CannedReply { id: string; title: string; body: string }
+
+export interface ChatMember { userId: string; name: string; role: string }
+export interface InternalItem {
+  id: string; kind: 'CHANNEL' | 'DM'; title: string | null; slug: string | null;
+  isMandatory: boolean; isGroup: boolean; archivedAt: string | null; mixed: boolean;
+  unread: number; lastBody: string | null; lastAt: string | null;
+  canLeave: boolean; isMember: boolean;
+  members: ChatMember[];
+}
+export interface QuoteOption { quoteId: string; leadId: string; leadRef: string; quoteLabel: string; product: string; moq: string | null }
+export interface ChatDirectoryPerson { id: string; name: string; role: string }

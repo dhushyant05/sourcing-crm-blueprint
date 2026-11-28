@@ -12,7 +12,7 @@ import type { CustomRoleStore } from './custom-roles.js';
 import {
   ChatError, ChatStore, presentQuoteCard, pickerItems, suggestedQuoteId, chatFileKey,
   redactedFileName, qUploadKey, pickCover, canAccessSupportInbox, isChinaRole,
-  convClass, canAccessDeskKind,
+  convClass, canAccessDeskKind, isInternalConv, isInternalChatEligible,
 } from './chat.js';
 import type { EmailChannel } from './email-channel.js';
 import { quoteCarton } from './quotes.js';
@@ -45,8 +45,11 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     if (!id) return 'support';
     return ((await leads.get(id))?.leadRef as string | undefined) ?? 'SE';
   };
-  /** Desk conversation (customer support or supplier email), i.e. not a lead chat. */
-  const isSupportConv = (conv: { kind?: string; leadId?: string | null }) => convClass(conv) !== 'lead';
+  /** Desk conversation (customer support or supplier email). Internal channels/DMs are a separate class. */
+  const isSupportConv = (conv: { kind?: string; leadId?: string | null }) => {
+    const k = convClass(conv);
+    return k === 'support' || k === 'supplier_email';
+  };
   const deskKind = (conv: { kind?: string }) => (conv.kind === 'SUPPLIER_EMAIL' ? 'SUPPLIER_EMAIL' : 'CUSTOMER_SUPPORT') as 'SUPPLIER_EMAIL' | 'CUSTOMER_SUPPORT';
   const deskAllowed = (u: User | undefined | null, conv: { kind?: string }) => canAccessDeskKind(u, deskKind(conv));
   const requireLeadId = (id: string | null | undefined) => {
@@ -63,6 +66,16 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     await chat.bootstrapUser(u);
     const conv = await chat.get(conversationId);
     if (!conv) throw Object.assign(new Error('Not found'), { status: 404 });
+    if (isInternalConv(conv)) {
+      if (conv.kind === 'CHANNEL' && !perms.can(u, 'chat.channels') && u.role !== 'SUPER_ADMIN') {
+        throw Object.assign(new Error('You do not have permission: chat.channels'), { status: 403 });
+      }
+      if (conv.kind === 'DM' && !perms.can(u, 'chat.dm') && u.role !== 'SUPER_ADMIN') {
+        throw Object.assign(new Error('You do not have permission: chat.dm'), { status: 403 });
+      }
+      if (!(await chat.canAccessId(u, conv.id, null))) throw Object.assign(new Error('Not found'), { status: 404 });
+      return conv;
+    }
     if (isSupportConv(conv)) {
       if (!deskAllowed(u, conv) || !(await chat.canAccessId(u, conv.id, null))) {
         throw Object.assign(new Error('Not found'), { status: 404 });
@@ -149,7 +162,69 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       canSeeSupplier: false,
     };
   };
+  const presentInternal = async (u: User, conv: any) => {
+    const msgs = await chat.messages(conv.id);
+    const parts = await chat.participantRoles(conv.id);
+    const mixed = conversationMixed(parts);
+    const members = parts.map((p) => ({ userId: p.userId, name: p.name, role: p.role }));
+    const title = internalTitle(conv, parts, u);
+    return {
+      id: conv.id,
+      kind: conv.kind,
+      leadId: null,
+      leadRef: title,
+      product: null,
+      title,
+      slug: conv.slug ?? null,
+      isMandatory: !!conv.isMandatory,
+      isGroup: !!conv.isGroup,
+      archivedAt: conv.archivedAt ?? null,
+      mixed,
+      canLeave: chat.canLeave(u, conv),
+      canManage: conv.kind === 'CHANNEL' && chat.canManageChannels(u),
+      isMember: parts.some((p) => p.userId === u.id),
+      assignedTo: conv.assignedTo ?? null,
+      assignedToName: null,
+      quotes: [],
+      suggestedQuoteId: null,
+      participants: parts.map((p) => ({ userId: p.userId, name: p.name, lastReadAt: null, lastReadMessageId: null })),
+      members,
+      messages: await Promise.all(msgs.map(async (m) => {
+        const row = await presentMessage(u, (m as any).quote_id ? '' : title, [], m);
+        // Re-render quote cards per viewer when we have the quote id.
+        if (m.kind === 'quote_reference' && m.quote_id) {
+          const card = await quoteCardFor(u, String(m.quote_id));
+          if (card) row.quoteReference = card;
+        }
+        return {
+          ...row,
+          senderName: (m.author_kind ?? row.authorKind) === 'system' ? 'Source Easy' : row.senderName,
+        };
+      })),
+      canSeeSupplier: false,
+    };
+  };
+  const conversationMixed = (parts: { role: string }[]) => {
+    const sides = new Set(parts.map((p) => p.role).map((r) => r === 'MARKETPLACE_TEAM' ? 'MARKETPLACE' : r.startsWith('INDIA') ? 'INDIA' : r.startsWith('CHINA') ? 'CHINA' : null).filter(Boolean));
+    return sides.size >= 2;
+  };
+  const internalTitle = (conv: any, parts: { userId: string; name: string }[], u: User) => {
+    if (conv.kind === 'CHANNEL') return conv.title || 'Channel';
+    if (conv.isGroup) return conv.title || parts.filter((p) => p.userId !== u.id).map((p) => p.name).join(', ') || 'Group';
+    return parts.find((p) => p.userId !== u.id)?.name || conv.title || 'Direct message';
+  };
+  const quoteCardFor = async (u: User, quoteId: string) => {
+    try {
+      const q = await quotes.get(quoteId);
+      if (!q || !(await canReadLead(u, q.leadId))) return null;
+      const lead = await leads.get(q.leadId);
+      const ref = String(lead?.leadRef ?? 'SE');
+      const list = await quotes.list(q.leadId);
+      return presentQuoteCard(ref, list, quoteId, uploads);
+    } catch { return null; }
+  };
   const presentConversation = async (u: User, conv: any) => {
+    if (isInternalConv(conv)) return presentInternal(u, conv);
     if (isSupportConv(conv)) return presentSupport(u, conv);
     const lead = await leads.get(requireLeadId(conv.leadId));
     const ref = String(lead?.leadRef ?? 'SE');
@@ -178,7 +253,29 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       canSeeSupplier: showSupplier,
     };
   };
-  const notifyChat = async (conv: { id: string; leadId: string | null; kind?: string }, by: User, preview: string) => {
+  const notifyInternal = async (conv: { id: string; kind?: string; title?: string | null }, by: User, preview: string, mentions: string[] = []) => {
+    const parts = await chat.participantRoles(conv.id);
+    const mixed = conversationMixed(parts);
+    const ids = parts.map((p) => p.userId).filter((id) => id !== by.id);
+    const title = conv.title || (conv.kind === 'DM' ? 'Direct message' : 'Channel');
+    const safePreview = mixed ? null : preview.slice(0, 140);
+    if (ids.length) {
+      await assign.notify(ids, {
+        leadId: null, leadRef: title, product: null, kind: 'CHAT_MESSAGE', office: 'INDIA',
+        byName: by.name, detail: safePreview, conversationId: conv.id,
+      });
+    }
+    const extra = mentions.filter((id) => id !== by.id && parts.some((p) => p.userId === id));
+    if (extra.length) {
+      await assign.notify(extra, {
+        leadId: null, leadRef: title, product: null, kind: 'CHAT_MESSAGE', office: 'INDIA',
+        byName: by.name, detail: `${by.name} mentioned you in ${title}`, conversationId: conv.id,
+      });
+    }
+  };
+  const memberIdsOf = async (conversationId: string) => (await chat.participants(conversationId)).map((p: any) => String(p.user_id));
+  const notifyChat = async (conv: { id: string; leadId: string | null; kind?: string; title?: string | null }, by: User, preview: string, mentions: string[] = []) => {
+    if (isInternalConv(conv)) { await notifyInternal(conv, by, preview, mentions); return; }
     if (isSupportConv(conv)) {
       const parts = await chat.participants(conv.id);
       const ids = parts.map((p: any) => String(p.user_id)).filter((id: string) => {
@@ -209,6 +306,9 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
   };
   const live = (leadId: string | null, conversationId: string, sub: string, extra: Rec = {}) => {
     liveData({ type: 'chat', leadId, conversationId, sub, ...extra });
+  };
+  const liveInternal = async (conv: { id: string; kind?: string }, sub: string, extra: Rec = {}) => {
+    live(null, conv.id, sub, { kind: conv.kind, memberIds: await memberIdsOf(conv.id), ...extra });
   };
 
   api.get('/api/chat/status', async (req) => {
@@ -304,6 +404,18 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       if (!c) throw Object.assign(new Error('Canned reply not found'), { status: 404 });
       content = c.body;
     }
+    if (isInternalConv(conv)) {
+      if (conv.archivedAt) throw Object.assign(new Error('This channel is archived'), { status: 400 });
+      const parts = await chat.participantRoles(conv.id);
+      if (!parts.some((p) => p.userId === u.id)) throw Object.assign(new Error('Join this conversation to send a message'), { status: 403 });
+      const m = await chat.post(conv.id, u.id, content, 'text', null, { authorKind: 'staff', visibility: 'customer' });
+      const mentions = chat.resolveMentions(content, parts, Array.isArray((req.body as any)?.mentionIds) ? (req.body as any).mentionIds.map(String) : []);
+      await chat.saveMentions(m.id, mentions);
+      await chat.markRead(conv.id, u.id, m.id);
+      await liveInternal(conv, 'message', { messageId: m.id, preview: content.slice(0, 140), userId: u.id, mentions });
+      await notifyChat(conv, u, content, mentions);
+      return { data: await presentMessage(u, conv.title || 'Chat', [], { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind, author_kind: m.authorKind, visibility: m.visibility }) };
+    }
     if (isSupportConv(conv)) {
       const internal = req.body?.internal === true;
       await chat.addParticipant(conv.id, u.id, u.id);
@@ -333,6 +445,20 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       if (mpart.err) return reply.code(mpart.err.status).send({ error: mpart.err.error, code: mpart.err.code });
       await d.stripImageMetadata(mpart.files);
       const content = String(mpart.fields?.content ?? req.body?.content ?? '');
+      if (isInternalConv(conv)) {
+        if (conv.archivedAt) throw Object.assign(new Error('This channel is archived'), { status: 400 });
+        const parts = await chat.participantRoles(conv.id);
+        if (!parts.some((p) => p.userId === u.id)) throw Object.assign(new Error('Join this conversation to send a message'), { status: 403 });
+        const msg = await chat.post(conv.id, u.id, content || ' ', 'text', null, { authorKind: 'staff', visibility: 'customer' });
+        uploads.commit(chatFileKey(msg.id), mpart.files, u.id);
+        const mentions = chat.resolveMentions(content, parts, String(mpart.fields?.mentionIds ?? '').split(',').filter(Boolean));
+        await chat.saveMentions(msg.id, mentions);
+        await chat.markRead(conv.id, u.id, msg.id);
+        await liveInternal(conv, 'message', { messageId: msg.id, preview: (content || 'Attachment').slice(0, 140), userId: u.id, mentions });
+        await notifyChat(conv, u, content || 'Attachment', mentions);
+        const row = { ...msg, sender_id: msg.senderId, body: msg.body, created_at: msg.createdAt, quote_id: msg.quoteId, kind: msg.kind, author_kind: msg.authorKind, visibility: msg.visibility };
+        return { data: await presentMessage(u, conv.title || 'Chat', [], row) };
+      }
       if (isSupportConv(conv)) {
         const internal = String(mpart.fields?.internal ?? '') === 'true';
         await chat.addParticipant(conv.id, u.id, u.id);
@@ -374,6 +500,21 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     if (!perms.can(u, 'chat.reference_quotes')) throw Object.assign(new Error('You do not have permission: chat.reference_quotes'), { status: 403 });
     const conv = await guard(u, conversationId);
     if (isSupportConv(conv)) throw Object.assign(new Error('Quote references are only for lead chats'), { status: 400 });
+    if (isInternalConv(conv)) {
+      if (!quoteId) throw Object.assign(new Error('Pick a quote to attach'), { status: 400 });
+      const q = await quotes.get(String(quoteId));
+      if (!q || !(await canReadLead(u, q.leadId))) throw Object.assign(new Error('Quote not found'), { status: 404 });
+      const list = await quotes.list(q.leadId);
+      const lead = await leads.get(q.leadId);
+      const ref = String(lead?.leadRef ?? 'SE');
+      const card = presentQuoteCard(ref, list, q.id, uploads);
+      if (!card) throw Object.assign(new Error('Quote not found'), { status: 404 });
+      const m = await chat.post(conv.id, u.id, formatSafe(card), 'quote_reference', q.id);
+      await chat.markRead(conv.id, u.id, m.id);
+      await liveInternal(conv, 'message', { messageId: m.id, preview: `Quote reference: ${card.quoteLabel}`, userId: u.id });
+      await notifyChat(conv, u, `Quote reference: ${card.quoteLabel}`);
+      return { data: await presentMessage(u, ref, list, { ...m, sender_id: m.senderId, body: m.body, created_at: m.createdAt, quote_id: m.quoteId, kind: m.kind }) };
+    }
     const list = await quotes.list(requireLeadId(conv.leadId));
     const qid = suggestedQuoteId(list, quoteId ?? null);
     if (!qid) throw Object.assign(new Error('No quote to attach'), { status: 400 });
@@ -418,13 +559,15 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
   api.post<{ Params: { id: string } }>('/api/chat/conversations/:id/read', async (req) => {
     const conv = await guard(req.user!, req.params.id);
     await chat.markRead(conv.id, req.user!.id);
-    live(conv.leadId, conv.id, 'read', { userId: req.user!.id });
+    if (isInternalConv(conv)) await liveInternal(conv, 'read', { userId: req.user!.id });
+    else live(conv.leadId, conv.id, 'read', { userId: req.user!.id });
     return { data: { ok: true } };
   });
 
   api.post<{ Params: { id: string } }>('/api/chat/conversations/:id/typing', async (req) => {
     const conv = await guard(req.user!, req.params.id);
-    live(conv.leadId, conv.id, 'typing', { userId: req.user!.id, name: req.user!.name });
+    if (isInternalConv(conv)) await liveInternal(conv, 'typing', { userId: req.user!.id, name: req.user!.name });
+    else live(conv.leadId, conv.id, 'typing', { userId: req.user!.id, name: req.user!.name });
     return { data: { ok: true } };
   });
 
@@ -467,9 +610,84 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     if (isSupportConv(conv) && !deskAllowed(added, conv)) {
       throw Object.assign(new Error(deskKind(conv) === 'SUPPLIER_EMAIL' ? 'Only China staff can join a supplier email' : 'China staff cannot join a customer support chat'), { status: 403 });
     }
+    if (isInternalConv(conv)) {
+      if (conv.kind === 'CHANNEL' && !chat.canManageChannels(u) && u.role !== 'SUPER_ADMIN') {
+        throw Object.assign(new Error('You cannot manage channels'), { status: 403 });
+      }
+      await chat.addInternalMember(conv.id, uid, u.id, { user: u });
+      await liveInternal(conv, 'participants');
+      return { data: await presentConversation(u, (await chat.get(conv.id))!) };
+    }
     await chat.addParticipant(conv.id, uid, u.id);
     live(conv.leadId, conv.id, 'participants');
     return { data: await presentConversation(u, (await chat.get(conv.id))!) };
+  });
+
+
+  api.get('/api/chat/internal', async (req) => {
+    requireChat(req.user!);
+    return { data: await chat.listInternal(req.user!) };
+  });
+  api.get('/api/chat/directory', async (req) => {
+    requireChat(req.user!);
+    const u = req.user!;
+    const people = users.list().filter((x) => x.active && x.id !== u.id && isInternalChatEligible(x));
+    return { data: people.map((x) => ({ id: x.id, name: x.name, role: x.role })) };
+  });
+  api.post<{ Body: { userId?: string; userIds?: string[] } }>('/api/chat/dms', async (req, reply) => {
+    const ids = Array.isArray(req.body?.userIds) ? req.body!.userIds! : (req.body?.userId ? [req.body.userId] : []);
+    const out = await chat.openDm(req.user!, ids.map(String));
+    await liveInternal(out.conv, 'opened', { created: out.created });
+    const full = await presentConversation(req.user!, (await chat.get(out.conv.id))!);
+    return reply.code(out.created ? 201 : 200).send({ data: { created: out.created, ...full } });
+  });
+  api.post<{ Body: { name?: string; memberIds?: string[]; mandatory?: boolean } }>('/api/chat/channels', async (req, reply) => {
+    const conv = await chat.createChannel(req.user!, String(req.body?.name ?? ''), Array.isArray(req.body?.memberIds) ? req.body!.memberIds!.map(String) : [], !!req.body?.mandatory);
+    await liveInternal(conv, 'opened', { created: true });
+    return reply.code(201).send({ data: await presentConversation(req.user!, (await chat.get(conv.id))!) });
+  });
+  api.patch<{ Params: { id: string }; Body: { title?: string; archived?: boolean; memberIds?: string[] } }>('/api/chat/channels/:id', async (req) => {
+    const conv = await chat.updateChannel(req.user!, req.params.id, { title: req.body?.title, archived: req.body?.archived });
+    if (Array.isArray(req.body?.memberIds)) await chat.setChannelMembers(req.user!, conv.id, req.body!.memberIds!.map(String));
+    await liveInternal(conv, 'participants');
+    return { data: await presentConversation(req.user!, (await chat.get(conv.id))!) };
+  });
+  api.post<{ Params: { id: string }; Body: { userIds?: string[] } }>('/api/chat/channels/:id/members', async (req) => {
+    const ids = Array.isArray(req.body?.userIds) ? req.body!.userIds!.map(String) : [];
+    await chat.setChannelMembers(req.user!, req.params.id, ids);
+    const conv = (await chat.get(req.params.id))!;
+    await liveInternal(conv, 'participants');
+    return { data: await presentConversation(req.user!, conv) };
+  });
+  api.post<{ Params: { id: string } }>('/api/chat/conversations/:id/leave', async (req) => {
+    const conv = await guard(req.user!, req.params.id);
+    await chat.leaveInternal(req.user!, conv.id);
+    await liveInternal(conv, 'participants', { left: req.user!.id });
+    return { data: { ok: true } };
+  });
+  api.get<{ Querystring: { q?: string } }>('/api/chat/quote-options', async (req) => {
+    requireChat(req.user!);
+    const u = req.user!;
+    if (!perms.can(u, 'chat.reference_quotes')) throw Object.assign(new Error('You do not have permission: chat.reference_quotes'), { status: 403 });
+    const q = String(req.query.q ?? '').trim().slice(0, 80);
+    const leadsList = await leads.list();
+    const out: any[] = [];
+    const needle = q.toLowerCase();
+    for (const lead of leadsList) {
+      const id = String(lead.id);
+      if (!(await canReadLead(u, id))) continue;
+      const ref = String(lead.leadRef ?? '');
+      const product = String(lead.productInterest ?? '');
+      if (needle && !ref.toLowerCase().includes(needle) && !product.toLowerCase().includes(needle)) continue;
+      const list = await quotes.list(id);
+      list.forEach((qq, i) => {
+        const card = presentQuoteCard(ref || 'SE', list, qq.id, uploads);
+        if (!card) return;
+        out.push({ quoteId: qq.id, leadId: id, leadRef: ref, quoteLabel: card.quoteLabel, product: card.product, moq: card.moq });
+      });
+      if (out.length >= 40) break;
+    }
+    return { data: out.slice(0, 40) };
   });
 
   api.get<{ Querystring: { q?: string } }>('/api/chat/search', async (req) => {

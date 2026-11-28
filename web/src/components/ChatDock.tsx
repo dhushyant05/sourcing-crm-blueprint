@@ -1,13 +1,14 @@
-import { ChevronLeft, Maximize2, MessageSquare, Minus, Search, X } from 'lucide-react';
+import { ChevronLeft, Hash, Maximize2, MessageSquare, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fmtDate } from '../i18n';
 import { loadChatDock, openChatDock, saveChatDock, type ChatDockOpen } from '../lib/chat-dock';
 import { useApp } from '../lib/store';
-import type { ChatInbox, ChatThread } from '../lib/types';
+import type { ChatInbox, ChatThread, InternalItem } from '../lib/types';
 import { LeadChat } from './LeadChat';
 import { SupportThread } from './SupportThread';
 import { SiteBadge } from './SiteBadge';
+import { InternalThread } from './InternalThread';
 
 /** Bottom-right floating chat for the staff app. State survives page changes via sessionStorage. */
 export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'chat') => void; openLeadId: (id: string) => void }) {
@@ -28,12 +29,21 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
   const [hits, setHits] = useState<ChatThread[] | null>(null);
   const [preview, setPreview] = useState<{ leadRef: string; body: string; leadId: string | null; conversationId?: string | null; quoteId?: string | null } | null>(null);
   const [bump, setBump] = useState(false);
+  const [channels, setChannels] = useState<InternalItem[]>([]);
+  const [dms, setDms] = useState<InternalItem[]>([]);
+  const [compose, setCompose] = useState<null | 'dm'>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
   const onFullChat = route === 'chat';
 
   useEffect(() => {
     saveChatDock({ open, view, inboxId, leadId, conversationId, quoteId });
   }, [open, view, inboxId, leadId, conversationId, quoteId]);
 
+  const loadInternal = async () => {
+    if (!api.internalChat) return;
+    try { const d = await api.internalChat(); setChannels(d.channels); setDms(d.dms); } catch { /* keep last */ }
+  };
   const loadBoxes = async () => {
     if (!api.chatInboxes) return;
     try {
@@ -47,7 +57,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
     try { setThreads(await api.inboxConversations(id)); } catch { /* keep last */ }
   };
 
-  useEffect(() => { if (allowed) void loadBoxes(); }, [api, allowed]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (allowed) { void loadBoxes(); void loadInternal(); if (api.chatDirectory) void api.chatDirectory().then(setPeople).catch(() => {}); } }, [api, allowed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (inboxId) void loadThreads(inboxId); }, [inboxId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -99,6 +109,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
       const d = (e as CustomEvent).detail;
       if (d?.type !== 'chat') return;
       void loadBoxes();
+      void loadInternal();
       if (inboxId) void loadThreads(inboxId);
       if (d.sub !== 'message' || d.userId === session?.id) return;
       if (open && !onFullChat) return;
@@ -118,7 +129,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
 
   if (!allowed) return null;
 
-  const unread = inboxes.find((i) => i.kind === 'PERSONAL')?.unread ?? 0;
+  const unread = (inboxes.find((i) => i.kind === 'PERSONAL')?.unread ?? 0) + channels.reduce((n, c) => n + (c.unread || 0), 0) + dms.reduce((n, c) => n + (c.unread || 0), 0);
   const shown = hits ?? threads;
   const personal = inboxes.find((i) => i.kind === 'PERSONAL');
   const teams = inboxes.filter((i) => i.kind === 'TEAM');
@@ -129,6 +140,18 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
     setActive({ ...th, id });
     setLeadId(th.leadId);
     setConversationId(id);
+    setView('thread');
+    setHits(null);
+    setPreview(null);
+  };
+  const openInternal = (it: InternalItem) => {
+    setActive({
+      id: it.id, leadId: null, leadRef: it.title, product: null, lastBody: it.lastBody, lastAt: it.lastAt,
+      unread: it.unread, assignedTo: null, assignedToName: null, kind: it.kind, title: it.title, mixed: it.mixed,
+      isGroup: it.isGroup, slug: it.slug, members: it.members, conversationId: it.id,
+    });
+    setLeadId(null);
+    setConversationId(it.id);
     setView('thread');
     setHits(null);
     setPreview(null);
@@ -176,7 +199,7 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
             )}
             <div className="min-w-0 flex-1 px-1">
               <div className="truncate text-sm font-semibold text-ink-900 dark:text-white">
-                {view === 'thread' ? (active?.leadRef || t('chat.thread')) : t('chat.title')}
+                {view === 'thread' ? (active?.title || active?.leadRef || t('chat.thread')) : t('chat.title')}
               </div>
               {view === 'thread' && active?.product && <div className="truncate text-[11px] text-ink-500">{active.product}</div>}
             </div>
@@ -190,6 +213,40 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
 
           {view === 'inbox' && (
             <div className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto" data-testid="chat-dock-threads">
+                <div className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">{t('chat.channels')}</div>
+                {channels.map((c) => (
+                  <button type="button" key={c.id} data-testid={`dock-channel-${c.slug || c.id}`} onClick={() => openInternal(c)}
+                    className="flex w-full items-center gap-2 border-b border-ink-50 px-3 py-2 text-left text-sm hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800">
+                    <Hash size={14} className="text-ink-400" />
+                    <span className="flex-1 truncate">{c.title}</span>
+                    {c.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{c.unread}</span>}
+                  </button>
+                ))}
+                <div className="flex items-center justify-between px-3 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                  <span>{t('chat.directMessages')}</span>
+                  {api.openDm && <button type="button" className="text-brand-700" data-testid="dock-new-dm" onClick={() => setCompose((v) => v ? null : 'dm')}><Plus size={12} className="inline" /></button>}
+                </div>
+                {compose === 'dm' && (
+                  <div className="space-y-1 border-b border-ink-50 p-2 text-sm">
+                    {people.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2">
+                        <input type="checkbox" checked={picked.includes(p.id)} onChange={(e) => setPicked((xs) => e.target.checked ? [...xs, p.id] : xs.filter((x) => x !== p.id))} />
+                        {p.name}
+                      </label>
+                    ))}
+                    <button type="button" className="btn-primary !py-1 text-xs" disabled={!picked.length} onClick={() => { if (!api.openDm) return; void api.openDm(picked).then((d) => { setCompose(null); setPicked([]); openInternal({ id: d.id!, kind: 'DM', title: d.title || d.leadRef || 'DM', slug: null, isMandatory: false, isGroup: !!d.isGroup, archivedAt: null, mixed: !!d.mixed, unread: 0, lastBody: null, lastAt: null, canLeave: !!d.canLeave, isMember: true, members: d.members ?? [] }); void loadInternal(); }); }}>{t('chat.startChat')}</button>
+                  </div>
+                )}
+                {dms.map((c) => (
+                  <button type="button" key={c.id} data-testid={`dock-dm-${c.id}`} onClick={() => openInternal(c)}
+                    className="flex w-full items-center gap-2 border-b border-ink-50 px-3 py-2 text-left text-sm hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800">
+                    <MessageSquare size={14} className="text-ink-400" />
+                    <span className="flex-1 truncate">{c.title}</span>
+                    {c.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{c.unread}</span>}
+                  </button>
+                ))}
+                <div className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">{t('chat.inboxes')}</div>
               <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-ink-100 px-2 py-2 dark:border-ink-800" data-testid="chat-dock-inboxes">
                 {personal && (
                   <button type="button" data-testid="chat-dock-personal" onClick={() => { setInboxId(personal.id); setHits(null); }}
@@ -209,8 +266,8 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                 <input className="input !border-0 !bg-transparent !py-2 text-sm" value={q} placeholder={t('chat.search')}
                   onChange={(e) => { setQ(e.target.value); if (!e.target.value) setHits(null); }} />
               </form>
-              <div className="min-h-0 flex-1 overflow-y-auto" data-testid="chat-dock-threads">
-                {shown.length === 0 && <div className="px-4 py-8 text-center text-sm text-ink-400">{t('chat.noThreads')}</div>}
+              <div>
+                {shown.length === 0 && <div className="px-4 py-4 text-center text-sm text-ink-400">{t('chat.noThreads')}</div>}
                 {shown.map((th) => (
                   <button type="button" key={th.id} onClick={() => openThread(th)}
                     className={`block w-full border-b border-ink-50 px-3 py-2.5 text-left dark:border-ink-800 ${conversationId === th.id || (th.leadId && leadId === th.leadId) ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-ink-50 dark:hover:bg-ink-800'}`}>
@@ -225,15 +282,21 @@ export function ChatDock({ route, go, openLeadId }: { route: string; go: (r: 'ch
                   </button>
                 ))}
               </div>
+              </div>
             </div>
           )}
 
-          {view === 'thread' && (active?.kind === 'CUSTOMER_SUPPORT' || active?.kind === 'SUPPLIER_EMAIL' || (!leadId && conversationId)) && conversationId && (
+          {view === 'thread' && (active?.kind === 'CHANNEL' || active?.kind === 'DM') && conversationId && (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <InternalThread key={conversationId} conversationId={conversationId} compact onOpenLead={openLeadId} onLeft={() => { setView('inbox'); void loadInternal(); }} />
+            </div>
+          )}
+          {view === 'thread' && (active?.kind === 'CUSTOMER_SUPPORT' || active?.kind === 'SUPPLIER_EMAIL') && conversationId && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <SupportThread key={conversationId} conversationId={conversationId} compact onOpenLead={openLeadId} />
             </div>
           )}
-          {view === 'thread' && leadId && active?.kind !== 'CUSTOMER_SUPPORT' && (
+          {view === 'thread' && leadId && active?.kind !== 'CUSTOMER_SUPPORT' && active?.kind !== 'CHANNEL' && active?.kind !== 'DM' && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <LeadChat key={`${leadId}:${quoteId ?? ''}`} leadId={leadId} preferredQuoteId={quoteId} compact
                 onOpenQuote={() => openLeadId(leadId)} />

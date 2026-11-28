@@ -109,7 +109,7 @@ export interface Api {
   chatInboxes?(): Promise<ChatInbox[]>;
   inboxConversations?(inboxId: string): Promise<ChatThread[]>;
   conversation?(id: string): Promise<LeadChat>;
-  sendConversationMessage?(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[]; internal?: boolean }): Promise<LeadChatMessage>;
+  sendConversationMessage?(id: string, body: { content?: string; quoteId?: string; cannedId?: string; files?: File[]; internal?: boolean; mentionIds?: string[] }): Promise<LeadChatMessage>;
   convertSupportLead?(id: string): Promise<{ leadId: string; leadRef: string | null }>;
   markChatRead?(id: string): Promise<void>;
   notificationPrefs?(): Promise<{ chatEmail: boolean; emailConfigured: boolean }>;
@@ -118,6 +118,14 @@ export interface Api {
   assignConversation?(id: string, userId: string | null): Promise<void>;
   addChatParticipant?(id: string, userId: string): Promise<void>;
   searchChat?(q: string): Promise<ChatThread[]>;
+  internalChat?(): Promise<{ channels: import('./types').InternalItem[]; dms: import('./types').InternalItem[] }>;
+  chatDirectory?(): Promise<import('./types').ChatDirectoryPerson[]>;
+  openDm?(userIds: string[]): Promise<import('./types').LeadChat & { created?: boolean }>;
+  createChannel?(name: string, memberIds?: string[]): Promise<import('./types').LeadChat>;
+  updateChannel?(id: string, patch: { title?: string; archived?: boolean; memberIds?: string[] }): Promise<import('./types').LeadChat>;
+  leaveConversation?(id: string): Promise<void>;
+  attachConversationQuote?(id: string, quoteId: string): Promise<import('./types').LeadChatMessage>;
+  quoteOptions?(q: string): Promise<import('./types').QuoteOption[]>;
   cannedReplies?(): Promise<CannedReply[]>;
   createCanned?(title: string, body: string): Promise<CannedReply>;
   updateCanned?(id: string, patch: { title?: string; body?: string }): Promise<CannedReply>;
@@ -407,7 +415,15 @@ export class ServerApi implements Api {
   async sendTyping(id: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/typing`, {}); }
   async assignConversation(id: string, userId: string | null) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/assign`, { userId }); }
   async addChatParticipant(id: string, userId: string) { await this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/participants`, { userId }); }
+  attachConversationQuote(id: string, quoteId: string) { return this.req<import('./types').LeadChatMessage>('POST', `/chat/conversations/${encodeURIComponent(id)}/quote-reference`, { quoteId }); }
   searchChat(q: string) { return this.req<ChatThread[]>('GET', `/chat/search?q=${encodeURIComponent(q)}`); }
+  internalChat() { return this.req<{ channels: import('./types').InternalItem[]; dms: import('./types').InternalItem[] }>('GET', '/chat/internal'); }
+  chatDirectory() { return this.req<import('./types').ChatDirectoryPerson[]>('GET', '/chat/directory'); }
+  openDm(userIds: string[]) { return this.req<import('./types').LeadChat & { created?: boolean }>('POST', '/chat/dms', { userIds }); }
+  createChannel(name: string, memberIds: string[] = []) { return this.req<import('./types').LeadChat>('POST', '/chat/channels', { name, memberIds }); }
+  updateChannel(id: string, patch: { title?: string; archived?: boolean; memberIds?: string[] }) { return this.req<import('./types').LeadChat>('PATCH', `/chat/channels/${encodeURIComponent(id)}`, patch); }
+  leaveConversation(id: string) { return this.req('POST', `/chat/conversations/${encodeURIComponent(id)}/leave`, {}); }
+  quoteOptions(q: string) { return this.req<import('./types').QuoteOption[]>('GET', `/chat/quote-options?q=${encodeURIComponent(q)}`); }
   cannedReplies() { return this.req<CannedReply[]>('GET', '/chat/canned'); }
   createCanned(title: string, body: string) { return this.req<CannedReply>('POST', '/chat/canned', { title, body }); }
   updateCanned(id: string, patch: { title?: string; body?: string }) { return this.req<CannedReply>('PATCH', `/chat/canned/${encodeURIComponent(id)}`, patch); }
