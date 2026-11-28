@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { fmtDate } from '../i18n';
 import { useApp } from '../lib/store';
 import type { CannedReply, ChatAttachment, LeadChat, LeadChatMessage, StaffLite } from '../lib/types';
+import { SiteBadge } from './SiteBadge';
 
 /** Staff view of a customer-support conversation, including internal notes and convert-to-lead. */
 export function SupportThread({ conversationId, compact, onOpenLead }: { conversationId: string; compact?: boolean; onOpenLead: (id: string) => void }) {
@@ -81,7 +82,8 @@ export function SupportThread({ conversationId, compact, onOpenLead }: { convers
   return (
     <div className={`flex h-full min-h-0 flex-col ${compact ? '' : 'gap-3'}`} data-testid="support-thread">
       <div className={`shrink-0 space-y-1 text-xs text-ink-600 ${compact ? 'mb-2' : ''}`}>
-        <div><span className="font-medium text-ink-800">{data.guestName || t('chat.guest')}</span>{supplierDesk ? ` · ${t('chat.supplierLabel')}` : data.customerId ? ` · ${t('chat.customer')}` : ` · ${t('chat.guest')}`}</div>
+        <div className="flex flex-wrap items-center gap-1.5"><span><span className="font-medium text-ink-800">{data.guestName || t('chat.guest')}</span>{supplierDesk ? ` · ${t('chat.supplierLabel')}` : data.customerId ? ` · ${t('chat.customer')}` : ` · ${t('chat.guest')}`}</span>
+          {!supplierDesk && data.kind === 'CUSTOMER_SUPPORT' && <SiteBadge site={data.sourceSite ?? 'sourceeasy'} />}</div>
         {(data.guestEmail || data.guestPhone) && <div data-testid="support-contact">{[data.guestEmail, data.guestPhone].filter(Boolean).join(' · ')}</div>}
         {data.channel === 'EMAIL' && (
           <div className="flex items-center gap-1 text-ink-500" data-testid="support-email-header">

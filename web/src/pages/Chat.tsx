@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LeadChat } from '../components/LeadChat';
 import { SupportThread } from '../components/SupportThread';
+import { SiteBadge, type SourceSite } from '../components/SiteBadge';
 import { Empty, PageHeader } from '../components/ui';
 import { fmtDate } from '../i18n';
 import { useApp } from '../lib/store';
@@ -25,6 +26,7 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
   const [canned, setCanned] = useState<CannedReply[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [cannedForm, setCannedForm] = useState({ title: '', body: '' });
+  const [site, setSite] = useState<'all' | SourceSite>('all');
 
   const loadBoxes = async () => {
     if (!api.chatInboxes) return;
@@ -57,8 +59,9 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
     try { setHits(await api.searchChat(q.trim())); } catch (e) { setErr((e as Error).message); }
   };
 
-  const shown = hits ?? threads;
   const personal = inboxes.find((i) => i.kind === 'PERSONAL');
+  const supportBox = inboxes.find((i) => i.id === inboxId)?.slug === 'customer-support';
+  const shown = (hits ?? threads).filter((th) => !supportBox || site === 'all' || (th.kind === 'CUSTOMER_SUPPORT' && (th.sourceSite ?? 'sourceeasy') === site));
   const teams = inboxes.filter((i) => i.kind === 'TEAM');
 
   const openThread = (th: ChatThread) => { setActive({ ...th, id: th.id || th.conversationId || th.id }); setHits(null); };
@@ -92,13 +95,24 @@ export function ChatPage({ openLead }: { openLead: (l: Lead) => void }) {
             <Search size={14} className="mt-2.5 text-ink-400" />
             <input className="input !border-0 !bg-transparent" value={q} placeholder={t('chat.search')} onChange={(e) => { setQ(e.target.value); if (!e.target.value) setHits(null); }} />
           </form>
+          {supportBox && (
+            <div className="flex flex-wrap gap-1 border-b border-ink-100 px-2 py-1.5 dark:border-ink-800" role="group" aria-label={t('chat.siteFilter')} data-testid="chat-site-filter">
+              {(['all', 'sourceeasy', 'fortune_engineering'] as const).map((s) => (
+                <button type="button" key={s} data-testid={`chat-site-${s}`} aria-pressed={site === s} onClick={() => setSite(s)}
+                  className={`rounded-full px-2.5 py-1 text-xs ${site === s ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-200'}`}>
+                  {s === 'all' ? t('chat.siteAll') : s === 'sourceeasy' ? t('chat.siteSourceEasy') : t('chat.siteFortune')}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto" data-testid="inbox-threads">
             {shown.length === 0 && <Empty title={t('chat.noThreads')} />}
             {shown.map((th) => (
               <button type="button" key={th.id} onClick={() => openThread(th)}
                 className={`block w-full border-b border-ink-50 px-3 py-2.5 text-left dark:border-ink-800 ${active?.id === th.id ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-ink-50 dark:hover:bg-ink-800'}`}>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-medium text-ink-800 dark:text-ink-100">{th.leadRef ?? th.id.slice(0, 8)}</span>
+                  <span className="truncate font-mono text-xs font-medium text-ink-800 dark:text-ink-100">{th.leadRef ?? th.id.slice(0, 8)}</span>
+                  {th.kind === 'CUSTOMER_SUPPORT' && <SiteBadge site={th.sourceSite ?? 'sourceeasy'} />}
                   {th.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{th.unread}</span>}
                   <span className="ml-auto text-[10px] text-ink-400">{th.lastAt ? fmtDate(th.lastAt) : ''}</span>
                 </div>

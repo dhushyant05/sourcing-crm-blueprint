@@ -119,6 +119,7 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
       linkedLeadId: conv.linkedLeadId ?? null,
       linkedOrderId: conv.linkedOrderId ?? null,
       source: conv.source ?? null,
+      sourceSite: conv.sourceSite ?? 'sourceeasy',
       assignedTo: conv.assignedTo,
       assignedToName: conv.assignedTo ? names().get(conv.assignedTo) ?? null : null,
       canConvert: kind === 'CUSTOMER_SUPPORT' && !conv.convertedLeadId,
@@ -220,11 +221,13 @@ export function registerStaffChat(api: FastifyInstance, d: ChatRouteDeps) {
     return { data: await chat.listInboxes(req.user!) };
   });
 
-  api.get<{ Params: { id: string } }>('/api/chat/inboxes/:id/conversations', async (req) => {
+  api.get<{ Params: { id: string }; Querystring: { site?: string } }>('/api/chat/inboxes/:id/conversations', async (req) => {
     requireChat(req.user!);
     const list = await chat.listConversations(req.user!, req.params.id);
+    const site = req.query?.site === 'sourceeasy' || req.query?.site === 'fortune_engineering' ? req.query.site : null;
     const out = [];
     for (const c of list) {
+      if (site && (!isSupportConv(c) || c.kind !== 'CUSTOMER_SUPPORT' || (c.sourceSite ?? 'sourceeasy') !== site)) continue;
       if (isSupportConv(c)) {
         if (!deskAllowed(req.user!, c)) continue;
         const last = (await chat.messages(c.id)).at(-1);
